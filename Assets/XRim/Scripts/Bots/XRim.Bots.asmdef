@@ -1,0 +1,19 @@
+{
+    "name": "XRim.Bots",
+    "rootNamespace": "XRim.Bots",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Simulation",
+        "XRim.Networking"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

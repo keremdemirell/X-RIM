@@ -1,0 +1,16 @@
+{
+    "name": "XRim.Rules",
+    "rootNamespace": "XRim.Rules",
+    "references": [
+        "XRim.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

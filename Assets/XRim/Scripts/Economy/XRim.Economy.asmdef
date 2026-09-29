@@ -1,0 +1,17 @@
+{
+    "name": "XRim.Economy",
+    "rootNamespace": "XRim.Economy",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

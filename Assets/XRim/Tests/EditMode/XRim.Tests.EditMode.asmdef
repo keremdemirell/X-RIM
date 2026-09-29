@@ -1,0 +1,29 @@
+{
+    "name": "XRim.Tests.EditMode",
+    "rootNamespace": "XRim.Tests.EditMode",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Economy",
+        "XRim.Simulation",
+        "XRim.Networking",
+        "XRim.Bots"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
