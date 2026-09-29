@@ -72,6 +72,15 @@ namespace XRim.Rules.Settings
                 if (weapon.InkLengthUnits <= 0f || weapon.InkThicknessUnits <= 0f)
                     issues.Add($"Weapons: '{weapon.Id}' needs a positive ink length and thickness.");
                 if (weapon.SpeedUnitsPerSecond <= 0f) issues.Add($"Weapons: '{weapon.Id}' needs a positive speed.");
+                RigiditySettings rigidity = weapon.Rigidity;
+                if (rigidity != null && rigidity.Enabled)
+                {
+                    if (rigidity.BendCostK < 0f) issues.Add($"Weapons: '{weapon.Id}' rigidity k must not be negative.");
+                    if (rigidity.BreakAngleDegrees <= rigidity.BendThresholdDegrees)
+                        issues.Add($"Weapons: '{weapon.Id}' rigidity break angle must be above the bend threshold.");
+                    if (rigidity.BreakWindowUnits < 0f)
+                        issues.Add($"Weapons: '{weapon.Id}' rigidity break window must not be negative.");
+                }
             }
 
             WeaponStats rapier = FindWeapon(WeaponIds.Rapier);

@@ -12,8 +12,8 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 - **In progress: Session 01 (tooling and path rules)**, started 2026-09-29. Batch plan (approved):
   1. `Tools/check.py`: editor, player and dev compile passes, warnings as failures, engine-free guard. (DONE)
   2. Test runner (`Tools/TestRunner/`), `--filter`, `Tools/README.md`, the four proof probes (a)–(d). (DONE)
-  3. `PathResampler`, ink cost models (plain and §6 rigidity), ink cut-off, sharp-turn check; EditMode tests. (NEXT)
-  4. D3/D4/D5 policies, reach limit, `PathBuilder` pipeline, `RulePolicies` defaults, weapon/arm lengths, `XRim > Setup > Fill New Tuning Fields`; tests; session wrap-up.
+  3. `PathResampler`, ink cost models (plain and §6 rigidity), ink cut-off, sharp-turn check; EditMode tests. (DONE)
+  4. D3/D4/D5 policies, reach limit, `PathBuilder` pipeline, `RulePolicies` defaults, weapon/arm lengths, `XRim > Setup > Fill New Tuning Fields`; tests; session wrap-up. (NEXT)
 - **Next session to start:** Session 02, `Docs/sessions/session-02-feel-spike.md` (after Session 01).
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
@@ -40,6 +40,11 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
   - `Tools/TestRunner/XRimTestRunner.cs` hosts NUnit's own framework runner (Unity's `nunit.framework.dll` 3.5) on Unity's .NET 8, so all NUnit attributes behave as in Unity. `check.py` builds it into `Temp/XRimCheck/runner/`.
   - Current code: EditMode 21 passed, 11 need Unity (App 1, Config 4, Input 3, Presentation 3) = Unity's 32; PlayMode 1 needs Unity.
   - Proof (temporary files, deleted): (a) syntax error in Rules, (b) `using UnityEngine;` in Rules, (c) runtime code calling a `#if UNITY_EDITOR`-only method (editor pass OK, player and dev fail), (d) a failing test: each made the check print `CHECK FAILED` and exit 1.
+- **Session 01 batch 3, 2026-09-29: paths, ink, rigidity** (`Rules/Paths/`).
+  - `PathResampler`: arc-length resampling, a point every `PathSettings.SampleSpacingUnits`, ends kept, duplicates dropped, no timing.
+  - `InkMeasurement` now carries per-point cumulative cost. `LengthInkCostModel` (plain) and `RigidityInkCostModel` (§6 formula as written, only when `weapon.Rigidity.Enabled`; sharp-turn break measured over `BreakWindowUnits` so a corner between two samples still counts; the invalid index is where the sharp turn completes).
+  - `InkCutoff` → `InkedPath` (path cut exactly where cost reaches `InkLengthUnits`, thickness from the weapon, remaining ink).
+  - `RulesSettings.Validate` checks rigidity values. Tests: `Tests/EditMode/Rules/Paths/` (28). 60 Hz vs 120 Hz and two resolutions differ by about 0.2% of ink (tolerance 1%).
 
 ---
 
@@ -85,6 +90,8 @@ Chosen during setup (ARCHITECTURE.md §4). `XRim > Reports > Placeholder Values`
 - Wall: damage 10, bounce 5, advance 50, spawn offset 60.
 - Arena width 2000, starting gap 700, path sample spacing 10; 0.01 world units per arena unit.
 
+- Session 01: `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
+
 Add new placeholders here, with the session that introduced them.
 
 ---
@@ -109,6 +116,7 @@ Add new placeholders here, with the session that introduced them.
 
 - Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). D1 and D2 are answered at PT1. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
 - Later decisions by session: `Docs/SESSION_PLAN.md` §4, *Later decisions*.
+- (Session 01) What happens to an invalid (red, too-sharp) spear path when the turn executes: rejected completely, or cut at the break? Needed by Session 03 (validation) and Session 08 (preview). The rules report the first invalid point only.
 - Optional: a rough SFX set before Session 13 (`Docs/SESSION_PLAN.md` §3).
 
 ---
