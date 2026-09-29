@@ -9,9 +9,15 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ## Current status
 
 - **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
-- **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, `f1269a7`).
-- **Waiting for:** the designer's Unity check of Session 01 (0 red Console errors; EditMode 75/75 green; run `XRim > Setup > Fill New Tuning Fields`). Unity creates `.meta` files for the new Session 01 scripts; commit them at the start of Session 02 if they are still untracked.
-- **Next session to start:** Session 02, `Docs/sessions/session-02-feel-spike.md`. PT1 follows it.
+- **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, `f1269a7`). The designer committed the Session 01 `.meta` files and filled weapon assets (`0b31d73`).
+- **Session 02 (feel spike) IN PROGRESS**, plan approved 2026-09-29. Batches:
+  1. Engine-free path following: settings (driver, motor, root drive, ragdoll), torso frame, path cursor, weapon-aim seam, kinematic + motor drivers, `ContactAngle` rule, impact-time refiner. EditMode tests. — **done**
+  2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **next**
+  3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs).
+  4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests.
+  5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`).
+  6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run.
+- **Next session after 02:** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`. PT1 comes first.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
   - Which tests run: those whose namespace names an engine-free module (`XRim.Tests.EditMode.<Module>…`). Keep test namespaces matching their folders.
@@ -19,6 +25,13 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ---
 
 ## Completed work log
+
+- **Session 02 batch 1, 2026-09-29: engine-free path following** (`Simulation/{Settings,Drivers,Execution}`, `Rules/Combat/ContactAngle.cs`).
+  - `SimulationSettings` gains `WeaponDriver` (D1), `Segmentation` (D2), `GravityUnitsPerSecondSquared`, nested `WeaponMotor`, `RootDrive`, `Ragdoll` (sizes, masses, joint limits, pose-holding servo), and `Validate`.
+  - `TorsoFrame` (pelvis origin, +X toward the opponent, mirrored for Right), `PathCursor`, `IWeaponAimModel` + `AimFromShoulderModel`.
+  - `IWeaponDriver.Drive(stepStart, stepEnd, torso, heldItem)` → `HeldItemCommand` (MoveTo or Push, mass-free accelerations). `PathWeaponDriver` base (tip at d = v·t), `KinematicPathDriver`, `MotorPathDriver` (PD with target-velocity feed-forward, strength-limited), `WeaponDriverFactory`.
+  - `ContactAngle.Degrees` (§10 stage 1). `ImpactTimeRefiner` sweeps a `BladeShape` over `PoseSample`s. Core: `Vec2.FromAngleDegrees/AngleDegrees/Rotated`, `XMath.DeltaAngleDegrees/LerpAngleDegrees/TwoPi`.
+  - Tests: 61 new (125 run here + 11 need Unity).
 
 - **Setup (architecture), 2026-09-29.**
   - 15 asmdefs, settings and Config SOs, the Unity 2D physics world shell, the timeline player, the debug overlay, the Editor menus, Docs/ARCHITECTURE.md and CLAUDE.md.
@@ -76,6 +89,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 | 2026-09-29 | **D5 (§6 strokes): Decided, one continuous stroke per turn; redrawing replaces it.** | Designer | `IStrokePolicy` default (Session 01) |
 | 2026-09-29 | **An invalid (too-sharp) path is cut at the break**, not rejected: it executes up to the point where the sharp turn completes. | Designer | `PathBuilder` (Session 01) |
 | 2026-09-29 | §6 rigidity formula read as written: Δθ is the whole turn angle, applied to segments turning more than the threshold (cost jumps at the threshold). Keep/cut rigidity stays TBD; k stays a placeholder. | Designer | `RigidityInkCostModel` (Session 01) |
+| 2026-09-29 | **Weapon orientation along the path (not in the GDD): aim from the shoulder** as the default seam. The path is the tip's path; the weapon lies on the line shoulder → path point, the hand slides along it within arm reach. Every such choice must maximize feel, rush and legendary moments. | Designer | `IWeaponAimModel` (Session 02) |
 
 Other prototype decisions (D1, D2, D6–D27 in SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
 
@@ -95,6 +109,8 @@ Chosen during setup (ARCHITECTURE.md §4). `XRim > Reports > Placeholder Values`
 
 - Session 01: `PathSettings.ArmLengthUnits` 240, `ShoulderOffsetUnits` (0, 100); `WeaponStats.LengthUnits` rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200 (at roughly 2.5 mm per unit, the rapier nearly reaches across the 700 starting gap, the mace must close in). `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
 
+- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo).
+
 Add new placeholders here, with the session that introduced them.
 
 ---
@@ -102,6 +118,15 @@ Add new placeholders here, with the session that introduced them.
 ## Deviations from the GDD or architecture
 
 - ARCHITECTURE.md §4: `*Settings` field initializers are the single source of truth. SOs wrap them (`SettingsConfig<T>`) instead of copying into a snapshot class. This refines the approved plan.
+- **Session 02 (approved 2026-09-29):**
+  - A1 `IPhysicsWorld.Load` also takes `SimulationSettings`; new `GetHeldItemState`, `PushHeldItem`; `SetHeldItemTarget` is the kinematic move.
+  - A2 `IWeaponDriver.Drive(...)` returns a move (kinematic) or push (motor) command; both drivers are engine-free.
+  - A3 `FighterPose` has optional lower-limb segment poses (10-body option).
+  - A4 Torso frame = root target at the pelvis; shoulder and arm length come from `PathSettings`. Standing: dynamic torso tied to a kinematic root anchor by a strength-limited `RelativeJoint2D`; joints hold pose with hinge-motor servos; a kinematic-torso fallback toggle.
+  - A5 Contacts: new pairs per step by polling, floor excluded, no self-collision, relative velocity from pre-step body velocities, order by load-time indices.
+  - A6 Impact time: swept blade over the last two recorded steps (Box2D reports a contact one step late), then d = path distance at that time.
+  - A7 `SwingSimulator` (spike loop, folded into `TurnSimulator` in Session 04); runtime ragdoll builder in `Simulation.Unity2D`; harness in `XRim.DebugTools` (references Input System).
+  - A8 Gravity per body via gravity scale, tunable in arena units.
 
 ---
 

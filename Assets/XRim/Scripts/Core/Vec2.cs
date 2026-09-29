@@ -42,6 +42,25 @@ namespace XRim.Core
 
         public static float Distance(Vec2 a, Vec2 b) => (a - b).Length;
 
+        /// <summary>Unit vector at an angle, counter-clockwise from +X.</summary>
+        public static Vec2 FromAngleDegrees(float degrees)
+        {
+            double radians = degrees * XMath.DegreesToRadians;
+            return new Vec2((float)Math.Cos(radians), (float)Math.Sin(radians));
+        }
+
+        /// <summary>Angle of this vector, counter-clockwise from +X, in (-180, 180].</summary>
+        public float AngleDegrees => (float)Math.Atan2(Y, X) * XMath.RadiansToDegrees;
+
+        /// <summary>This vector rotated counter-clockwise.</summary>
+        public Vec2 Rotated(float degrees)
+        {
+            double radians = degrees * XMath.DegreesToRadians;
+            float cos = (float)Math.Cos(radians);
+            float sin = (float)Math.Sin(radians);
+            return new Vec2(X * cos - Y * sin, X * sin + Y * cos);
+        }
+
         public static Vec2 Lerp(Vec2 a, Vec2 b, float t) => new Vec2(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
 
         public static Vec2 operator +(Vec2 a, Vec2 b) => new Vec2(a.X + b.X, a.Y + b.Y);
