@@ -48,6 +48,11 @@ EDITOR_PLATFORM = "Editor"
 SHIP_PLATFORMS = ("Android", "iOS")
 
 COMPILE_TIMEOUT_SECONDS = 300
+RUNNER_TIMEOUT_SECONDS = 600
+RUNNER_SOURCE = PROJECT_ROOT + "/Tools/TestRunner/XRimTestRunner.cs"
+SCRIPT_ASSEMBLIES_DIR = PROJECT_ROOT + "/Library/ScriptAssemblies"   # read only: full package DLLs for tests
+NUNIT_FILE_NAME = "nunit.framework.dll"
+PLAYMODE_REASON = "PlayMode test: run it in the Unity Test Runner"
 MAX_PARALLEL_COMPILES = 8
 NAME_COLUMN_WIDTH = 30
 MAX_RAW_OUTPUT_LINES = 30
@@ -335,6 +340,7 @@ class Asmdef:
     path: str                        # absolute path of the .asmdef file
     folder: str                      # absolute folder that owns the scripts
     guid: str
+    root_namespace: str
     raw_references: List[str]
     include_platforms: List[str]
     exclude_platforms: List[str]
@@ -374,6 +380,7 @@ def load_asmdef(path: str) -> Asmdef:
     name = data.get("name") or os.path.splitext(os.path.basename(path))[0]
     return Asmdef(
         name=name, path=norm(path), folder=norm(os.path.dirname(path)), guid=read_guid(path + ".meta"),
+        root_namespace=data.get("rootNamespace") or name,
         raw_references=list(data.get("references", [])),
         include_platforms=list(data.get("includePlatforms", [])),
         exclude_platforms=list(data.get("excludePlatforms", [])),
@@ -1289,6 +1296,146 @@ class Checker:
             return False, "the probe failed for an unexpected reason", [text for _, _, text in diagnostics][:5]
         return True, "no Unity references; UnityEngine probe rejected", []
 
+    # -- tests ---------------------------------------------------------------------------------------
+
+    def reference_pack(self) -> Tuple[str, str]:
+        packs = os.path.dirname(self.toolchain.dotnet) + "/packs/Microsoft.NETCore.App.Ref"
+        versions = sorted(os.listdir(packs), key=version_key, reverse=True) if os.path.isdir(packs) else []
+        for version in versions:
+            major, minor = (version.split(".") + ["0"])[:2]
+            ref_dir = f"{packs}/{version}/ref/net{major}.{minor}"
+            if os.path.isdir(ref_dir):
+                return ref_dir, f"{major}.{minor}"
+        raise CheckError(f"No .NET reference pack under {packs}; the test runner cannot be built.")
+
+    def build_runner(self, nunit: str) -> str:
+        folder = f"{OUTPUT_ROOT}/runner"
+        runner = f"{folder}/XRimTestRunner.dll"
+        ref_dir, framework = self.reference_pack()
+        stamp = f"{os.path.getmtime(RUNNER_SOURCE)}|{nunit}|{ref_dir}|{os.path.getmtime(nunit)}"
+        stamp_file = f"{folder}/build.stamp"
+        if os.path.isfile(runner) and os.path.isfile(stamp_file) and read_text(stamp_file) == stamp:
+            return runner
+        shutil.rmtree(folder, ignore_errors=True)
+        lines = ["-target:exe", "-nologo", "-langversion:latest", "-deterministic", "-debug:portable",
+                 f'-out:"{runner}"', f'"{RUNNER_SOURCE}"', f'-r:"{nunit}"']
+        lines += [f'-r:"{norm(os.path.join(ref_dir, name))}"' for name in sorted(os.listdir(ref_dir))
+                  if name.endswith(".dll")]
+        response_file = f"{folder}/runner.rsp"
+        write_text(response_file, "\n".join(lines) + "\n")
+        code, output = self.run_compiler(response_file)
+        if code != 0:
+            details = "\n".join(text for _, _, text in self.parse_diagnostics(output)) or "\n".join(output)
+            raise CheckError(f"The test runner ({project_relative(RUNNER_SOURCE)}) did not compile:\n{details}")
+        shutil.copy2(nunit, f"{folder}/{NUNIT_FILE_NAME}")
+        write_text(f"{folder}/XRimTestRunner.runtimeconfig.json", json.dumps({"runtimeOptions": {
+            "tfm": f"net{framework}", "framework": {"name": "Microsoft.NETCore.App", "version": f"{framework}.0"}}}))
+        write_text(stamp_file, stamp)
+        return runner
+
+    def run_tests(self, results: Dict[str, Tuple[Optional[CompileUnit], CompileResult]]) -> None:
+        test_names = [name for name in self.order if self.scan.xrim[name].is_test]
+        modules = [(name[len(XRIM_ASSEMBLY_PREFIX):], self.scan.xrim[name].no_engine_references)
+                   for name in self.order if not self.scan.xrim[name].is_test]
+        engine_free = ", ".join(module for module, free in modules if free)
+        print(f"\ntests (run here: tests whose namespace names an engine-free module: {engine_free})")
+        matched_any = False
+        for name in test_names:
+            asmdef = self.scan.xrim[name]
+            unit, result = results[name]
+            if unit is None:
+                print(f"  {dotted(name)} SKIPPED {result.detail}")
+                continue
+            if not result.produced_output:
+                print(f"  {dotted(name)} NOT RUN the test assembly did not compile")
+                self.failed = True
+                continue
+            nunit = next((path for path in unit.references if os.path.basename(path).lower() == NUNIT_FILE_NAME), None)
+            if nunit is None:
+                print(f"  {dotted(name)} NOT RUN it does not reference {NUNIT_FILE_NAME}")
+                self.failed = True
+                continue
+            report = self.run_test_assembly(self.build_runner(nunit), unit, asmdef, modules)
+            matched_any |= self.print_test_report(name, report)
+        if self.arguments.filter and not matched_any:
+            print(f"  no test name contains '{self.arguments.filter}'")
+            self.failed = True
+
+    def run_test_assembly(self, runner: str, unit: CompileUnit, asmdef: Asmdef,
+                          modules: List[Tuple[str, bool]]) -> dict:
+        folder = f"{OUTPUT_ROOT}/tests/{asmdef.name}"
+        shutil.rmtree(folder, ignore_errors=True)
+        os.makedirs(folder, exist_ok=True)
+        results_file = f"{folder}/results.json"
+        command = [self.toolchain.dotnet, runner, "--assembly", unit.output, "--results", results_file,
+                   "--work-directory", folder, "--test-root", asmdef.root_namespace]
+        for directory in (unit.output_dir, os.path.dirname(runner), SCRIPT_ASSEMBLIES_DIR,
+                          self.toolchain.unity_dir + "/Data/Managed/UnityEngine",
+                          self.toolchain.unity_dir + "/Data/Managed"):
+            command += ["--probe", directory]
+        for module, free in modules:
+            command += ["--engine-free-module" if free else "--engine-module", module]
+        if self.arguments.filter:
+            command += ["--filter", self.arguments.filter]
+        if not asmdef.is_editor_only:
+            command += ["--list-only", PLAYMODE_REASON]
+        try:
+            completed = subprocess.run(command, cwd=PROJECT_ROOT, env=self.environment, capture_output=True,
+                                       text=True, encoding="utf-8", errors="replace", timeout=RUNNER_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            return {"Error": f"the tests did not finish within {RUNNER_TIMEOUT_SECONDS} s"}
+        if not os.path.isfile(results_file):
+            output = (completed.stdout + completed.stderr).strip()
+            return {"Error": f"the test runner exited with code {completed.returncode} and wrote no results.\n{output}"}
+        return json.loads(read_text(results_file))
+
+    def print_test_report(self, name: str, report: dict) -> bool:
+        passed, failed = report.get("Passed", []), report.get("Failed", [])
+        skipped, inconclusive = report.get("Skipped", []), report.get("Inconclusive", [])
+        needs_unity = report.get("NeedsUnity", [])
+        if report.get("Error"):
+            print(f"  {dotted(name)} FAILED  the test runner stopped")
+            for line in str(report["Error"]).splitlines()[:MAX_RAW_OUTPUT_LINES]:
+                print(f"      | {line}")
+            self.failed = True
+            return True
+        total = len(passed) + len(failed) + len(skipped) + len(inconclusive) + len(needs_unity)
+        summary = f"{len(passed)} passed, {len(failed)} failed, {len(needs_unity)} need Unity"
+        if skipped:
+            summary += f", {len(skipped)} skipped"
+        if inconclusive:
+            summary += f", {len(inconclusive)} inconclusive"
+        status = "FAILED" if failed else "OK"
+        print(f"  {dotted(name)} {status:<7} {summary} ({total} test{'' if total == 1 else 's'})")
+        for entry in failed:
+            location = entry.get("Location", "")
+            where = ""
+            if location:
+                file_name, _, line = location.rpartition(":")
+                where = f"{project_relative(file_name)}:{line}: "
+            message = " ".join(entry.get("Message", "").split()) or "(no message)"
+            print(f"      FAILED {entry['Name']}")
+            print(f"          {where}{message}")
+            if self.verbose and entry.get("StackTrace"):
+                for line in entry["StackTrace"].splitlines()[:MAX_RAW_OUTPUT_LINES]:
+                    print(f"          | {line.strip()}")
+        if failed:
+            self.failed = True
+        if needs_unity:
+            counts: Dict[str, int] = {}
+            for entry in needs_unity:
+                counts[entry["Module"]] = counts.get(entry["Module"], 0) + 1
+            listed = ", ".join(f"{module} {count}" for module, count in counts.items())
+            print(f"      needs Unity (run in the Editor): {listed}")
+        for entry in skipped + inconclusive:
+            print(f"      not run: {entry['Name']} {entry.get('Message', '')}".rstrip())
+        if self.verbose:
+            for entry in passed:
+                print(f"      pass {entry['Name']}")
+            for entry in needs_unity:
+                print(f"      needs Unity {entry['Name']}: {entry['Reason']}")
+        return total > 0
+
     # -- main ----------------------------------------------------------------------------------------
 
     def run(self) -> int:
@@ -1296,17 +1443,22 @@ class Checker:
         self.print_header()
         passes = PASS_ORDER if self.arguments.pass_name == "all" else (self.arguments.pass_name,)
         guarded = False
+        editor_results = None
         for key in passes:
             spec = PASS_SPECS[key]
             results = self.run_pass(spec)
             self.print_pass(spec, results)
+            if key == "editor":
+                editor_results = results
             if not guarded:
                 self.run_guard(spec, results)
                 guarded = True
         if self.arguments.no_tests:
             print("\ntests: skipped (--no-tests)")
+        elif editor_results is None:
+            print("\ntests: skipped (tests run after the editor pass; use --pass editor or all)")
         else:
-            print("\ntests: not run yet (the test runner arrives in Session 01, batch 2)")
+            self.run_tests(editor_results)
         elapsed = time.monotonic() - started
         print(f"\n{'CHECK FAILED' if self.failed else 'CHECK PASSED'} in {elapsed:.1f} s")
         return 1 if self.failed else 0
