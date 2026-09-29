@@ -43,16 +43,32 @@ namespace XRim.Simulation.Unity2D
             _pendingContacts.Clear();
         }
 
-        public void Load(PoseSnapshot pose, MatchState state, RulesSettings settings)
+        public float TouchDistanceUnits =>
+            // Placeholder: implemented in Session 02 batch 4.
+            throw new NotImplementedException("Unity2DPhysicsWorld.TouchDistanceUnits is not implemented yet.");
+
+        public void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation)
         {
-            // Placeholder: architecture setup only. Gameplay implementation comes later.
+            // Placeholder: implemented in Session 02 batch 4.
             throw new NotImplementedException("Unity2DPhysicsWorld.Load is not implemented yet.");
         }
 
         public void SetHeldItemTarget(Side side, BodyPose target)
         {
-            // Placeholder: architecture setup only. Gameplay implementation comes later.
+            // Placeholder: implemented in Session 02 batch 4.
             throw new NotImplementedException("Unity2DPhysicsWorld.SetHeldItemTarget is not implemented yet.");
+        }
+
+        public void PushHeldItem(Side side, Vec2 accelerationUnitsPerSecondSquared, float angularAccelerationDegreesPerSecondSquared)
+        {
+            // Placeholder: implemented in Session 02 batch 4.
+            throw new NotImplementedException("Unity2DPhysicsWorld.PushHeldItem is not implemented yet.");
+        }
+
+        public BodyState GetHeldItemState(Side side)
+        {
+            // Placeholder: implemented in Session 02 batch 4.
+            throw new NotImplementedException("Unity2DPhysicsWorld.GetHeldItemState is not implemented yet.");
         }
 
         public void SetRootTarget(Side side, BodyPose target)

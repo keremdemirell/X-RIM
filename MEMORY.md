@@ -12,8 +12,8 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 - **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, `f1269a7`). The designer committed the Session 01 `.meta` files and filled weapon assets (`0b31d73`).
 - **Session 02 (feel spike) IN PROGRESS**, plan approved 2026-09-29. Batches:
   1. Engine-free path following: settings (driver, motor, root drive, ragdoll), torso frame, path cursor, weapon-aim seam, kinematic + motor drivers, `ContactAngle` rule, impact-time refiner. EditMode tests. — **done**
-  2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **next**
-  3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs).
+  2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **done**
+  3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **next**
   4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests.
   5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`).
   6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run.
@@ -25,6 +25,13 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ---
 
 ## Completed work log
+
+- **Session 02 batch 2, 2026-09-29: swing loop** (`Simulation/Execution/Swing*`).
+  - `IPhysicsWorld`: `Load(pose, state, rules, simulation)`, `TouchDistanceUnits`, `PushHeldItem`, `GetHeldItemState` (Unity side still throws until batch 4). `FighterPose.LowerSegments` + `HasLowerSegments` (D2 ten bodies).
+  - `SwingSimulator.Run(SwingInput)` → `SwingResult` (timeline, `SwingContact`s, steps, `SwingEndReason`, final pose). Roots hold the start torso pose; drivers from `WeaponDriverFactory`; weapon contacts refined over the last two steps, then d = v·t; contacts sorted stably by time within a step; ends when paths are done and settled for `SettleStepsRequired`, or at the 1.5 s cap.
+  - `FakePhysicsWorld`: exact moves, integrated pushes, `ScheduleContacts(step, …)`.
+  - Tests: `SwingSimulatorTests` (9): t = L/v ± 1 step, impact time within the step (< 20 µs), ordering, body contacts, hard cap, motor, recording, load. 134 run here + 11 need Unity.
+  - Note for PT1: with the motor driver the same scripted contact came out ~0.1 ms later than the path schedule (the blade trails its target slightly).
 
 - **Session 02 batch 1, 2026-09-29: engine-free path following** (`Simulation/{Settings,Drivers,Execution}`, `Rules/Combat/ContactAngle.cs`).
   - `SimulationSettings` gains `WeaponDriver` (D1), `Segmentation` (D2), `GravityUnitsPerSecondSquared`, nested `WeaponMotor`, `RootDrive`, `Ragdoll` (sizes, masses, joint limits, pose-holding servo), and `Validate`.
