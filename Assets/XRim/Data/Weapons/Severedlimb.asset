@@ -19,6 +19,7 @@ MonoBehaviour:
     DesignIsTbd: 1
     InkLengthUnits: 200
     InkThicknessUnits: 25
+    LengthUnits: 200
     Mass: 6
     SpeedUnitsPerSecond: 300
     BaseDamage: 10
@@ -27,6 +28,7 @@ MonoBehaviour:
       BendThresholdDegrees: 15
       BendCostK: 0.02
       BreakAngleDegrees: 90
+      BreakWindowUnits: 20
     HasSwingArmour: 0
     KnockbackImpulse: 0
     TraitIds: []
