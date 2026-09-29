@@ -1,0 +1,19 @@
+{
+    "name": "XRim.Simulation.Unity2D",
+    "rootNamespace": "XRim.Simulation.Unity2D",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Simulation",
+        "XRim.Config"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,20 @@
+{
+    "name": "XRim.Input",
+    "rootNamespace": "XRim.Input",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Config",
+        "XRim.Networking",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

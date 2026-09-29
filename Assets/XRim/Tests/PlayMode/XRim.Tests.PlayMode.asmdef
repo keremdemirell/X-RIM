@@ -1,23 +1,15 @@
 {
-    "name": "XRim.Tests.EditMode",
-    "rootNamespace": "XRim.Tests.EditMode",
+    "name": "XRim.Tests.PlayMode",
+    "rootNamespace": "XRim.Tests.PlayMode",
     "references": [
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "XRim.Core",
-        "XRim.Rules",
-        "XRim.Economy",
-        "XRim.Simulation",
-        "XRim.Networking",
-        "XRim.Bots",
         "XRim.Config",
-        "XRim.Input",
-        "XRim.Presentation",
-        "XRim.App"
+        "XRim.Simulation",
+        "XRim.Simulation.Unity2D"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,

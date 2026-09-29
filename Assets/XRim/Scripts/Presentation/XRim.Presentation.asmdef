@@ -1,0 +1,19 @@
+{
+    "name": "XRim.Presentation",
+    "rootNamespace": "XRim.Presentation",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Simulation",
+        "XRim.Config"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

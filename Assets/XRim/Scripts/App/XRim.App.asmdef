@@ -1,0 +1,25 @@
+{
+    "name": "XRim.App",
+    "rootNamespace": "XRim.App",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Economy",
+        "XRim.Simulation",
+        "XRim.Simulation.Unity2D",
+        "XRim.Networking",
+        "XRim.Bots",
+        "XRim.Config",
+        "XRim.Input",
+        "XRim.Presentation"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,13 +1,12 @@
 {
-    "name": "XRim.Tests.EditMode",
-    "rootNamespace": "XRim.Tests.EditMode",
+    "name": "XRim.DebugTools",
+    "rootNamespace": "XRim.DebugTools",
     "references": [
-        "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner",
         "XRim.Core",
         "XRim.Rules",
         "XRim.Economy",
         "XRim.Simulation",
+        "XRim.Simulation.Unity2D",
         "XRim.Networking",
         "XRim.Bots",
         "XRim.Config",
@@ -15,18 +14,14 @@
         "XRim.Presentation",
         "XRim.App"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": true,
-    "precompiledReferences": [
-        "nunit.framework.dll"
-    ],
+    "overrideReferences": false,
+    "precompiledReferences": [],
     "autoReferenced": false,
     "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
+        "UNITY_EDITOR || DEVELOPMENT_BUILD"
     ],
     "versionDefines": [],
     "noEngineReferences": false
