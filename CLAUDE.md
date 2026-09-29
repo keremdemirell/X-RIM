@@ -1,6 +1,11 @@
 # X-RIM: notes for Claude
 
-**Always read `MEMORY.md` (project root) first.** It holds decisions and progress between sessions. If it does not exist yet, it will be created in a later session.
+**Always read `MEMORY.md` (project root) first.** It holds progress, decisions, deviations, open questions and playtest reports between sessions. Update it after every batch.
+
+## Build plan and sessions
+- **`Docs/SESSION_PLAN.md`:** the ordered build plan (22 sessions), the up-front decision table (D1–D25), the art schedule and the playtest checkpoints.
+- **`Docs/sessions/session-XX-<name>.md`:** the exact prompt that starts each session in a fresh chat.
+- **`Tools/check`** (built in session 01): the out-of-Editor compile and test check. Run it after every batch.
 
 ## What this is
 A 2D mobile (iOS and Android) Unity game: a simultaneous-turn, physics-driven melee duel between crash-test dummies. Both players secretly plan a weapon, a body move and a drawn weapon path; the turn then resolves in one physics simulation.
