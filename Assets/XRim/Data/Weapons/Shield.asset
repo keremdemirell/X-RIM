@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f7e00ecd46d0d2841ad65bdc47cd6dae, type: 3}
+  m_Name: Shield
+  m_EditorClassIdentifier: XRim.Config::XRim.Config.WeaponDefinition
+  _settings:
+    Id: shield
+    DisplayName: Shield
+    Kind: 1
+    DesignIsTbd: 1
+    InkLengthUnits: 150
+    InkThicknessUnits: 40
+    Mass: 8
+    SpeedUnitsPerSecond: 400
+    BaseDamage: 3
+    Rigidity:
+      Enabled: 0
+      BendThresholdDegrees: 15
+      BendCostK: 0.02
+      BreakAngleDegrees: 90
+    HasSwingArmour: 0
+    KnockbackImpulse: 5
+    TraitIds: []

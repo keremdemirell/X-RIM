@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 986b031410fb27a4b946b4a40683945c, type: 3}
+  m_Name: TuningProfile
+  m_EditorClassIdentifier: XRim.Config::XRim.Config.TuningProfile
+  _match: {fileID: 11400000, guid: a6b866ad8afe06d4ba9d4eb26640e570, type: 2}
+  _paths: {fileID: 11400000, guid: 9554ff75cec9cc4478945f118dfd37c1, type: 2}
+  _damage: {fileID: 11400000, guid: 5853b6113cd49f8499fb39bd6de02c89, type: 2}
+  _hitZones: {fileID: 11400000, guid: 04511c85065be4c448d57f8fcbf5758b, type: 2}
+  _clash: {fileID: 11400000, guid: 7a8259d209d2d654c920f6e6b730713c, type: 2}
+  _electricWall: {fileID: 11400000, guid: 77bbcd7b4d7cc544bb0d576b1f3c52da, type: 2}
+  _arena: {fileID: 11400000, guid: ac2fd60f96050b643ae88312840b9eae, type: 2}
+  _loadout: {fileID: 11400000, guid: c66dbf317df57e046beb3286f0f54cd6, type: 2}
+  _signature: {fileID: 11400000, guid: 36a60d50739000d4fa642158a6dcb6cf, type: 2}
+  _suddenDeath: {fileID: 11400000, guid: 1fd292fc9b02da648b4013bfb4673d6e, type: 2}
+  _weapons:
+  - {fileID: 11400000, guid: 6ce2099ecb494ae4a98930d5844848c3, type: 2}
+  - {fileID: 11400000, guid: 15c84c5cb54139040b426a1c1bf5292c, type: 2}
+  - {fileID: 11400000, guid: 250d6c0ba77adae42893e2cd4f29633f, type: 2}
+  - {fileID: 11400000, guid: 2caa6ead267f7814caa528a352e582d0, type: 2}
+  - {fileID: 11400000, guid: 60b34aba15805ec4a8775661c5b16675, type: 2}
+  - {fileID: 11400000, guid: 582f41293512d9a4c8838719ae426fa7, type: 2}
+  _bodyMoves:
+  - {fileID: 11400000, guid: dba189e23a6b30148a627637cacced0f, type: 2}
+  - {fileID: 11400000, guid: 5bc127ba329b9694593982099ed98fef, type: 2}
+  - {fileID: 11400000, guid: 0e0e5086c5dce024c8d8b9573971ad9c, type: 2}
+  - {fileID: 11400000, guid: 2d30d704766c9064f9b9967cd2134b72, type: 2}
+  _signatureMoves: []
+  _simulation: {fileID: 11400000, guid: 12e5dcac9253dae4fb23942c7430ff34, type: 2}
+  _economy: {fileID: 11400000, guid: 7ac58b0022897674b84856101450203d, type: 2}
+  _input: {fileID: 11400000, guid: 45c287293fb6e4144b47fab0c15f225c, type: 2}
+  _arenaSpace: {fileID: 11400000, guid: f2fa716adf639a44d8d29c213e46672d, type: 2}
+  _feel: {fileID: 11400000, guid: 194ccb5518b5ff64c9c987a6115ba7ab, type: 2}
+  _balanceTargets: {fileID: 11400000, guid: 26f8fdbc648ea834fa5e2f098fc381e8, type: 2}

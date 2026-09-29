@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88080c77b72cc4346a146b4cede7e96d, type: 3}
+  m_Name: MatchRules
+  m_EditorClassIdentifier: XRim.Config::XRim.Config.MatchRulesConfig
+  _settings:
+    PlanningDurationSeconds: 12
+    TurnCap: 30
+    ExecutionHardCapSeconds: 1.5
+    WeaponSwitchLockoutSeconds: 1.5
+    AllowReadyCancel: 0
+    AllowDrawingDuringLockout: 1
