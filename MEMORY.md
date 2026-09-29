@@ -8,13 +8,14 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 ## Current status
 
-- **Last completed:** Session 00 (build planning), batch 2 of 3.
-- **In progress:** Session 00 (build planning). Batch plan:
-  1. `Docs/SESSION_PLAN.md`, `MEMORY.md`, `CLAUDE.md` pointers (DONE).
-  2. Session prompt files 01–11; D26/D27 added to the decision table (DONE).
-  3. Session prompt files 12–22.
-- **Next session to start:** Session 01, `Docs/sessions/session-01-tooling-and-paths.md` (after Session 00 finishes).
-- **Compile-check tool:** not built yet (Session 01 builds `python Tools/check.py`).
+- **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
+- **In progress: Session 01 (tooling and path rules)**, started 2026-09-29. Batch plan (approved):
+  1. `Tools/check.py`: editor, player and dev compile passes, warnings as failures, engine-free guard. (DONE)
+  2. Test runner (`Tools/TestRunner/`), `--filter`, `Tools/README.md`, the four proof probes (a)–(d). (NEXT)
+  3. `PathResampler`, ink cost models (plain and §6 rigidity), ink cut-off, sharp-turn check; EditMode tests.
+  4. D3/D4/D5 policies, reach limit, `PathBuilder` pipeline, `RulePolicies` defaults, weapon/arm lengths, `XRim > Setup > Fill New Tuning Fields`; tests; session wrap-up.
+- **Next session to start:** Session 02, `Docs/sessions/session-02-feel-spike.md` (after Session 01).
+- **Compile-check tool:** `python Tools/check.py` compiles all passes and runs the guard (batch 1). Tests and README arrive in batch 2.
 
 ---
 
@@ -27,6 +28,12 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 - **Session 00 (build planning), 2026-09-29.**
   - The 22-session build plan, this file, the session prompts and the CLAUDE.md pointers.
   - Commits: see git log ("Add session build plan…").
+- **Session 01 batch 1, 2026-09-29: `Tools/check.py`.**
+  - Compiles every `XRim.*.asmdef` with Unity's Roslyn (`dotnet exec csc.dll -shared`, as Bee does). Sources come from the asmdef folders; XRim references come from the tool's fresh outputs; all other flags, analyzers and source generators come from `Library/Bee/artifacts/<hash>.dag/XRim.*.rsp`. A module with no `.rsp` falls back to a same-kind base `.rsp`, with a note.
+  - Passes: editor (as is), player and dev (Editor/test asmdefs skipped, define constraints evaluated, `UnityEditor*` refs and Editor-only plugins/package asmdefs dropped, engine DLLs swapped for the player variation's).
+  - Warnings fail the check; a warning does not block dependents, errors do.
+  - Engine-free guard: no Unity refs, and a `MonoBehaviour` probe must fail with CS0246.
+  - Current code: 15/11/12 assemblies OK, 6 guards OK, about 6 s warm (about 23 s when the compiler server starts cold). Outputs only in `Temp/XRimCheck/`.
 
 ---
 
@@ -50,8 +57,13 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 | 2026-09-29 | Landscape is locked through `XRim > Setup > Apply Project Settings` (landscape is still "assumed", TBD §4). | Claude, delegated | Editor menu |
 | 2026-09-29 | Removed the packages Visual Scripting, Unity Version Control (collab-proxy) and Multiplayer Center. | Claude, delegated | `Packages/manifest.json` |
 | 2026-09-29 | Session plan adopted: 22 sessions, feel spike at 02, first playable at 09 (Docs/SESSION_PLAN.md). | Designer asked for the plan | – |
+| 2026-09-29 | **D3 (§6 path start): Decided, anywhere.** An automatic straight lead-in from the current weapon tip to the first drawn point is added; it costs ink and time. | Designer | `IPathStartPolicy` default (Session 01) |
+| 2026-09-29 | **D4 (§6 reach limit): Decided, clip at the reach limit** by clamping: points beyond reach are pulled onto the reach limit and the path continues when it comes back (not cut at the first exit). | Designer | `IReachPolicy` default (Session 01) |
+| 2026-09-29 | **D4 detail: the lunge does not enlarge the torso-frame reach limit** (arm + weapon). A lunge extends reach in the arena because the torso-relative path moves with the body. | Designer | Reach limit (Session 01) |
+| 2026-09-29 | **D5 (§6 strokes): Decided, one continuous stroke per turn; redrawing replaces it.** | Designer | `IStrokePolicy` default (Session 01) |
+| 2026-09-29 | §6 rigidity formula read as written: Δθ is the whole turn angle, applied to segments turning more than the threshold (cost jumps at the threshold). Keep/cut rigidity stays TBD; k stays a placeholder. | Designer | `RigidityInkCostModel` (Session 01) |
 
-Prototype decisions D1–D27 (SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
+Other prototype decisions (D1, D2, D6–D27 in SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
 
 ---
 
@@ -79,7 +91,7 @@ Add new placeholders here, with the session that introduced them.
 
 ## Known issues and tech debt
 
-- Only the **Editor** Bee response files exist (`Library/Bee/artifacts/1900b0aE.dag/*.rsp`). The player compile passes must be derived from them (Session 01).
+- Only the **Editor** Bee response files exist (`Library/Bee/artifacts/1900b0aE.dag/*.rsp`). `Tools/check.py` derives the player passes from them. The player-only define list (DEBUG, TRACE, ENABLE_PROFILER and UNITY_ASSERTIONS only in dev players) is derived, not read from a real player build; confirm it once a real build exists (Session 10).
 - Only the **Windows standalone** playback engine is installed at `S:/Unity_Editor/Editor/Data/PlaybackEngines/`. Android Build Support is needed by Session 10. iOS builds need a Mac.
 - Unity is installed at `S:/Unity_Editor/Editor`, not the Hub default path.
 - Unity 6.5: `Object.GetInstanceID()` is a compile error.
@@ -89,7 +101,7 @@ Add new placeholders here, with the session that introduced them.
 
 ## Open questions for the designer
 
-- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4. D1 and D2 are answered at PT1. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
+- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). D1 and D2 are answered at PT1. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
 - Later decisions by session: `Docs/SESSION_PLAN.md` §4, *Later decisions*.
 - Optional: a rough SFX set before Session 13 (`Docs/SESSION_PLAN.md` §3).
 
