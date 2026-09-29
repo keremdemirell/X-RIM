@@ -24,6 +24,12 @@ namespace XRim.Rules.Settings
         /// <summary>The weapon's hit width along the path, in arena units.</summary>
         public float InkThicknessUnits;
 
+        /// <summary>
+        /// Weapon length from the hand to the tip, arena units. Adds to the arm length for the reach limit (GDD §6).
+        /// </summary>
+        [Placeholder("§6 weapon lengths are not given")]
+        public float LengthUnits;
+
         public float Mass;
 
         /// <summary>

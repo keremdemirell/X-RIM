@@ -147,6 +147,7 @@ These are not GDD values; every one is tagged `[Placeholder]`.
 - Body-move displacements, 0.4 s move duration.
 - Wall: damage 10, bounce 5, advance 50, spawn offset 60.
 - Arena width 2000, starting gap 700, path sample spacing 10.
+- Added in Session 01: arm length 240, shoulder at (0, 100) in the torso frame, weapon lengths (rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200), sharp-turn window 20.
 - 0.01 world units per arena unit.
 
 ---
@@ -231,6 +232,8 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 ---
 
 ## 10. Testing and debug tooling
+
+**Out-of-Editor check.** `python Tools/check.py` compiles every XRim assembly in the editor, player and development player passes, proves the engine-free assemblies cannot see UnityEngine, and runs the EditMode tests of engine-free modules. See `Tools/README.md`.
 
 **Tests**
 - EditMode (fast, no scene):
@@ -320,7 +323,7 @@ The code is the live register: **XRim → Reports → TBD Seams** prints this li
 | 5, 12 | Moves after losing a leg; one leg / both legs | `IMobilityPenaltyPolicy` |
 | 6 | Weapon stats, speeds, base damage | `WeaponStats` assets (placeholders; `DesignIsTbd`) |
 | 6 | Keep or cut spear rigidity | `IInkCostModel`, `RigiditySettings.Enabled` |
-| 6 | Path start; reach limit; strokes per turn | `IPathStartPolicy`, `IReachPolicy`, `IStrokePolicy` |
+| 6 | ~~Path start; reach limit; strokes per turn~~ Decided 2026-09-29 (D3–D5, see §13) | `IPathStartPolicy`, `IReachPolicy`, `IStrokePolicy` keep the decided rules |
 | 6 | Drawing during lock-out | `MatchSettings.AllowDrawingDuringLockout` |
 | 6 | Starting weapons, default loadout, shield slot required | `LoadoutSettings` |
 | 6 | Remaining-ink UI | `PlanningHud.ShowInkRemaining` |
@@ -362,6 +365,10 @@ Record these in the GDD when convenient.
 | 2026-09-29 | Landscape lock offered as an Editor menu item (landscape is "assumed", TBD) | Claude, delegated |
 | 2026-09-29 | Removed Visual Scripting, Unity Version Control (collab-proxy), Multiplayer Center packages | Claude, delegated |
 | 2026-09-29 | Placeholder numbers listed in §4 of this doc | Claude, placeholders only |
+| 2026-09-29 | §6 path start (D3): anywhere; a lead-in from the weapon tip is added and costs ink and time | Designer |
+| 2026-09-29 | §6 reach (D4): clamp the path onto the reach limit (arm + weapon length around the shoulder); the lunge does not enlarge the torso-frame limit | Designer |
+| 2026-09-29 | §6 strokes (D5): one continuous stroke per turn; redrawing replaces it | Designer |
+| 2026-09-29 | §6 rigidity formula as written (the whole Δθ counts above the threshold); a too-sharp turn cuts the path at the break | Designer |
 
 ---
 
@@ -376,8 +383,9 @@ Record these in the GDD when convenient.
   - Wallets.
   - The debug overlay and tuning panel.
   - All Editor menus and reports.
+  - Path rules (Session 01): `PathResampler`, ink cost models, ink cut-off, the D3–D5 policies and `PathBuilder` (order: stroke, lead-in, resample, reach, ink cut-off, break cut).
 - **Placeholders that throw `NotImplementedException`:** all gameplay logic.
-  - Rules: planning session, plan validation, path resampling, clash, damage, limb cap, wall, end conditions, state machine transitions.
+  - Rules: planning session, plan validation, clash, damage, limb cap, wall, end conditions, state machine transitions.
   - Simulation and physics: the simulator loop and most of the Unity physics world.
   - Authority: the `LocalTurnAuthority` loop.
   - Input and presentation: swipe classification, screen mapping, the input scheme, feel, VFX, audio and HUD.

@@ -1,10 +1,12 @@
 using XRim.Core;
-using XRim.Core.Gdd;
 
 namespace XRim.Rules.Paths
 {
-    /// <summary>Must the stroke start at the weapon's current tip, or anywhere (the arm moving there first)?</summary>
-    [GddTbd("§6", "Path start: at the weapon tip or anywhere")]
+    /// <summary>
+    /// Where a stroke starts relative to the weapon's current tip (GDD §6). Decided by the designer on 2026-09-29
+    /// (D3): anywhere, with a lead-in from the tip (<see cref="LeadInFromTipPathStartPolicy"/>).
+    /// Works on the drawn polyline, before resampling.
+    /// </summary>
     public interface IPathStartPolicy
     {
         WeaponPath ResolveStart(WeaponPath drawn, Vec2 weaponTipLocal);

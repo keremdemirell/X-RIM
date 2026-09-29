@@ -9,12 +9,9 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ## Current status
 
 - **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
-- **In progress: Session 01 (tooling and path rules)**, started 2026-09-29. Batch plan (approved):
-  1. `Tools/check.py`: editor, player and dev compile passes, warnings as failures, engine-free guard. (DONE)
-  2. Test runner (`Tools/TestRunner/`), `--filter`, `Tools/README.md`, the four proof probes (a)–(d). (DONE)
-  3. `PathResampler`, ink cost models (plain and §6 rigidity), ink cut-off, sharp-turn check; EditMode tests. (DONE)
-  4. D3/D4/D5 policies, reach limit, `PathBuilder` pipeline, `RulePolicies` defaults, weapon/arm lengths, `XRim > Setup > Fill New Tuning Fields`; tests; session wrap-up. (NEXT)
-- **Next session to start:** Session 02, `Docs/sessions/session-02-feel-spike.md` (after Session 01).
+- **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, and the batch 4 commit "Add path policies, reach limit and path builder").
+- **Waiting for:** the designer's Unity check of Session 01 (0 red Console errors; EditMode 75/75 green; run `XRim > Setup > Fill New Tuning Fields`). Unity creates `.meta` files for the new Session 01 scripts; commit them at the start of Session 02 if they are still untracked.
+- **Next session to start:** Session 02, `Docs/sessions/session-02-feel-spike.md`. PT1 follows it.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
   - Which tests run: those whose namespace names an engine-free module (`XRim.Tests.EditMode.<Module>…`). Keep test namespaces matching their folders.
@@ -30,6 +27,11 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 - **Session 00 (build planning), 2026-09-29.**
   - The 22-session build plan, this file, the session prompts and the CLAUDE.md pointers.
   - Commits: see git log ("Add session build plan…").
+- **Session 01 batch 4, 2026-09-29: path policies and pipeline** (`Rules/Paths/`).
+  - D3 `LeadInFromTipPathStartPolicy`, D4 `ClampToReachPolicy` + `ReachLimit` (arm + weapon length around the shoulder, no lunge), D5 `ReplaceStrokePolicy`; defaults wired as `RulePolicies` property initializers (with `RigidityInkCostModel`). The three interfaces no longer carry `[GddTbd]` (decided).
+  - `PathBuilder` → `BuiltPath`: stroke → lead-in → resample → reach clamp → ink cut-off → cut at a too-sharp turn. `Drawn` is kept for the next stroke; `Reachable` is for the preview. Session 03 (validation) and Session 08 (preview) call it.
+  - New tunables: `PathSettings.ArmLengthUnits`, `ShoulderOffsetUnits`; `WeaponStats.LengthUnits` (validated > 0). Editor menu `XRim > Setup > Fill New Tuning Fields` fills numbers that are still 0 in weapon/body-move assets from `GddStartingValues`.
+  - Tests: `PathPolicyTests`, `PathBuilderTests` (15). Check: EditMode 64 run here + 11 need Unity = 75.
 - **Session 01 batch 1, 2026-09-29: `Tools/check.py`.**
   - Compiles every `XRim.*.asmdef` with Unity's Roslyn (`dotnet exec csc.dll -shared`, as Bee does). Sources come from the asmdef folders; XRim references come from the tool's fresh outputs; all other flags, analyzers and source generators come from `Library/Bee/artifacts/<hash>.dag/XRim.*.rsp`. A module with no `.rsp` falls back to a same-kind base `.rsp`, with a note.
   - Passes: editor (as is), player and dev (Editor/test asmdefs skipped, define constraints evaluated, `UnityEditor*` refs and Editor-only plugins/package asmdefs dropped, engine DLLs swapped for the player variation's).
@@ -72,6 +74,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 | 2026-09-29 | **D4 (§6 reach limit): Decided, clip at the reach limit** by clamping: points beyond reach are pulled onto the reach limit and the path continues when it comes back (not cut at the first exit). | Designer | `IReachPolicy` default (Session 01) |
 | 2026-09-29 | **D4 detail: the lunge does not enlarge the torso-frame reach limit** (arm + weapon). A lunge extends reach in the arena because the torso-relative path moves with the body. | Designer | Reach limit (Session 01) |
 | 2026-09-29 | **D5 (§6 strokes): Decided, one continuous stroke per turn; redrawing replaces it.** | Designer | `IStrokePolicy` default (Session 01) |
+| 2026-09-29 | **An invalid (too-sharp) path is cut at the break**, not rejected: it executes up to the point where the sharp turn completes. | Designer | `PathBuilder` (Session 01) |
 | 2026-09-29 | §6 rigidity formula read as written: Δθ is the whole turn angle, applied to segments turning more than the threshold (cost jumps at the threshold). Keep/cut rigidity stays TBD; k stays a placeholder. | Designer | `RigidityInkCostModel` (Session 01) |
 
 Other prototype decisions (D1, D2, D6–D27 in SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
@@ -90,7 +93,7 @@ Chosen during setup (ARCHITECTURE.md §4). `XRim > Reports > Placeholder Values`
 - Wall: damage 10, bounce 5, advance 50, spawn offset 60.
 - Arena width 2000, starting gap 700, path sample spacing 10; 0.01 world units per arena unit.
 
-- Session 01: `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
+- Session 01: `PathSettings.ArmLengthUnits` 240, `ShoulderOffsetUnits` (0, 100); `WeaponStats.LengthUnits` rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200 (at roughly 2.5 mm per unit, the rapier nearly reaches across the 700 starting gap, the mace must close in). `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
 
 Add new placeholders here, with the session that introduced them.
 
@@ -116,7 +119,6 @@ Add new placeholders here, with the session that introduced them.
 
 - Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). D1 and D2 are answered at PT1. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
 - Later decisions by session: `Docs/SESSION_PLAN.md` §4, *Later decisions*.
-- (Session 01) What happens to an invalid (red, too-sharp) spear path when the turn executes: rejected completely, or cut at the break? Needed by Session 03 (validation) and Session 08 (preview). The rules report the first invalid point only.
 - Optional: a rough SFX set before Session 13 (`Docs/SESSION_PLAN.md` §3).
 
 ---

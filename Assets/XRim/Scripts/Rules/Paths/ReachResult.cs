@@ -1,17 +1,17 @@
 namespace XRim.Rules.Paths
 {
-    /// <summary>Outcome of applying the reach limit: a possibly clipped path and an optional body pull.</summary>
+    /// <summary>Outcome of applying the reach limit to a sampled path.</summary>
     public readonly struct ReachResult
     {
         public WeaponPath Path { get; }
 
-        /// <summary>How far the body is pulled forward to follow the path (0 when the policy clips instead).</summary>
-        public float BodyPullUnits { get; }
+        /// <summary>True when part of the drawn path lay beyond reach and was pulled onto the reach limit.</summary>
+        public bool WasClamped { get; }
 
-        public ReachResult(WeaponPath path, float bodyPullUnits)
+        public ReachResult(WeaponPath path, bool wasClamped)
         {
             Path = path;
-            BodyPullUnits = bodyPullUnits;
+            WasClamped = wasClamped;
         }
     }
 }

@@ -1,11 +1,15 @@
-using XRim.Core.Gdd;
-
 namespace XRim.Rules.Paths
 {
-    /// <summary>What happens when a path goes beyond arm length plus weapon length (plus lunge).</summary>
-    [GddTbd("§6", "Paths beyond reach: clip or pull the body")]
+    /// <summary>
+    /// What happens when a path goes beyond the reach limit (GDD §6). Decided by the designer on 2026-09-29 (D4):
+    /// clip at the reach limit by clamping (<see cref="ClampToReachPolicy"/>). The interface stays so the rule
+    /// lives in one swappable place.
+    /// </summary>
     public interface IReachPolicy
     {
-        ReachResult Apply(WeaponPath path, float reachUnits);
+        /// <param name="sampledPath">A path already resampled by <see cref="PathResampler"/>.</param>
+        /// <param name="limit">The weapon's reach in the torso frame.</param>
+        /// <param name="sampleSpacingUnits">Spacing to restore after points move.</param>
+        ReachResult Apply(WeaponPath sampledPath, ReachLimit limit, float sampleSpacingUnits);
     }
 }

@@ -57,6 +57,7 @@ namespace XRim.Rules.Settings
             if (Match.TurnCap <= 0) issues.Add("Match: turn cap must be positive.");
             if (Match.ExecutionHardCapSeconds <= 0f) issues.Add("Match: execution hard cap must be positive.");
             if (Paths.SampleSpacingUnits <= 0f) issues.Add("Paths: sample spacing must be positive.");
+            if (Paths.ArmLengthUnits <= 0f) issues.Add("Paths: arm length must be positive.");
             if (Damage.MaxHp <= 0f) issues.Add("Damage: max HP must be positive.");
             if (Damage.PerHitLimbCapFraction <= 0f || Damage.PerHitLimbCapFraction > 1f)
                 issues.Add("Damage: per-hit limb cap must be in (0, 1].");
@@ -72,6 +73,8 @@ namespace XRim.Rules.Settings
                 if (weapon.InkLengthUnits <= 0f || weapon.InkThicknessUnits <= 0f)
                     issues.Add($"Weapons: '{weapon.Id}' needs a positive ink length and thickness.");
                 if (weapon.SpeedUnitsPerSecond <= 0f) issues.Add($"Weapons: '{weapon.Id}' needs a positive speed.");
+                if (weapon.LengthUnits <= 0f)
+                    issues.Add($"Weapons: '{weapon.Id}' needs a positive length (run XRim > Setup > Fill New Tuning Fields).");
                 RigiditySettings rigidity = weapon.Rigidity;
                 if (rigidity != null && rigidity.Enabled)
                 {

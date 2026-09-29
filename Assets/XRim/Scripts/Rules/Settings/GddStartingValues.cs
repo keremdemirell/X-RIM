@@ -25,19 +25,19 @@ namespace XRim.Rules.Settings
             Rapier(), Sword(), Mace(), Spear(), Shield(), SeveredLimb(),
         };
 
-        /// <summary>Appendix A: ink 600×10, mass 2. Fast, low damage. Speed and damage are placeholders.</summary>
+        /// <summary>Appendix A: ink 600×10, mass 2. Fast, low damage. Length, speed and damage are placeholders.</summary>
         public static WeaponStats Rapier() => new WeaponStats
         {
             Id = WeaponIds.Rapier.Value, DisplayName = "Rapier", Kind = WeaponKind.Weapon,
-            InkLengthUnits = 600f, InkThicknessUnits = 10f, Mass = 2f,
+            InkLengthUnits = 600f, InkThicknessUnits = 10f, LengthUnits = 400f, Mass = 2f,
             SpeedUnitsPerSecond = 900f, BaseDamage = 8f,
         };
 
-        /// <summary>Appendix A: ink 200×30, mass 10. Slow, high damage. Speed and damage are placeholders.</summary>
+        /// <summary>Appendix A: ink 200×30, mass 10. Slow, high damage. Length, speed and damage are placeholders.</summary>
         public static WeaponStats Mace() => new WeaponStats
         {
             Id = WeaponIds.Mace.Value, DisplayName = "Mace", Kind = WeaponKind.Weapon,
-            InkLengthUnits = 200f, InkThicknessUnits = 30f, Mass = 10f,
+            InkLengthUnits = 200f, InkThicknessUnits = 30f, LengthUnits = 220f, Mass = 10f,
             SpeedUnitsPerSecond = 250f, BaseDamage = 20f,
         };
 
@@ -45,7 +45,7 @@ namespace XRim.Rules.Settings
         public static WeaponStats Sword() => new WeaponStats
         {
             Id = WeaponIds.Sword.Value, DisplayName = "Sword", Kind = WeaponKind.Weapon, DesignIsTbd = true,
-            InkLengthUnits = 400f, InkThicknessUnits = 15f, Mass = 5f,
+            InkLengthUnits = 400f, InkThicknessUnits = 15f, LengthUnits = 320f, Mass = 5f,
             SpeedUnitsPerSecond = 600f, BaseDamage = 12f,
         };
 
@@ -55,7 +55,7 @@ namespace XRim.Rules.Settings
             var spear = new WeaponStats
             {
                 Id = WeaponIds.Spear.Value, DisplayName = "Spear", Kind = WeaponKind.Weapon, DesignIsTbd = true,
-                InkLengthUnits = 800f, InkThicknessUnits = 8f, Mass = 4f,
+                InkLengthUnits = 800f, InkThicknessUnits = 8f, LengthUnits = 500f, Mass = 4f,
                 SpeedUnitsPerSecond = 700f, BaseDamage = 10f,
             };
             spear.Rigidity.Enabled = true;
@@ -66,7 +66,7 @@ namespace XRim.Rules.Settings
         public static WeaponStats Shield() => new WeaponStats
         {
             Id = WeaponIds.Shield.Value, DisplayName = "Shield", Kind = WeaponKind.Shield, DesignIsTbd = true,
-            InkLengthUnits = 150f, InkThicknessUnits = 40f, Mass = 8f,
+            InkLengthUnits = 150f, InkThicknessUnits = 40f, LengthUnits = 150f, Mass = 8f,
             SpeedUnitsPerSecond = 400f, BaseDamage = 3f, KnockbackImpulse = 5f,
         };
 
@@ -74,7 +74,7 @@ namespace XRim.Rules.Settings
         public static WeaponStats SeveredLimb() => new WeaponStats
         {
             Id = WeaponIds.SeveredLimb.Value, DisplayName = "Severed limb", Kind = WeaponKind.SeveredLimb, DesignIsTbd = true,
-            InkLengthUnits = 200f, InkThicknessUnits = 25f, Mass = 6f,
+            InkLengthUnits = 200f, InkThicknessUnits = 25f, LengthUnits = 200f, Mass = 6f,
             SpeedUnitsPerSecond = 300f, BaseDamage = 10f,
         };
 
