@@ -13,8 +13,8 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 - **Session 02 (feel spike) IN PROGRESS**, plan approved 2026-09-29. Batches:
   1. Engine-free path following: settings (driver, motor, root drive, ragdoll), torso frame, path cursor, weapon-aim seam, kinematic + motor drivers, `ContactAngle` rule, impact-time refiner. EditMode tests. — **done**
   2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **done**
-  3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **next**
-  4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests.
+  3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **done**
+  4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests. — **next**
   5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`).
   6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run.
 - **Next session after 02:** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`. PT1 comes first.
@@ -25,6 +25,12 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ---
 
 ## Completed work log
+
+- **Session 02 batch 3, 2026-09-30: placeholder ragdoll** (`Simulation.Unity2D/`, `Editor/`).
+  - `PlaceholderRagdollBuilder.Build(RagdollBuildSpec)` (runtime, so tests can use it): flat hierarchy under a root at the pelvis, facing +X; torso box rising from the pelvis, circle head on the neck, arms from `PathSettings.ShoulderOffsetUnits` with length `ArmLengthUnits`, legs from the pelvis; ten bodies split limbs by `UpperSegmentFraction`. Hinges with limits (no motors, `enableCollision` off); `Hand` anchors at the end of each arm; one inactive, continuous-collision held item per weapon (length × ink thickness, weapon mass). `FitHeldItem` resizes to live stats.
+  - `Ragdoll`: serialized parts, lower segments, hands, `HeldItemSlot`s and as-built reach; `MatchesReach`, `AssignOwner`, `MirrorForRightSide` (positions, anchors; limits flip in `ApplyTuning`), `ApplyTuning(body, gravityScale, limpArm)`, `UpdateServos(gain)`, `CreateRestPose` (call on the prefab or an unposed instance), `BreakJoint`.
+  - Menu `XRim/Spike/Build Placeholder Dummies` → `Assets/XRim/Prefabs/Spike/PlaceholderDummy6.prefab` and `…10.prefab`, built in a preview scene; `PlaceholderSprites` makes `Assets/XRim/Art/Placeholder/{Square,Circle,CalibrationMarker}.png` (one world unit each).
+  - `XRim.Tests.PlayMode` now references `XRim.Rules`. `PlaceholderRagdollTests` (7). PlayMode total 8, all need Unity.
 
 - **Session 02 batch 2, 2026-09-29: swing loop** (`Simulation/Execution/Swing*`).
   - `IPhysicsWorld`: `Load(pose, state, rules, simulation)`, `TouchDistanceUnits`, `PushHeldItem`, `GetHeldItemState` (Unity side still throws until batch 4). `FighterPose.LowerSegments` + `HasLowerSegments` (D2 ten bodies).

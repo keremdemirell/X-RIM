@@ -5,6 +5,7 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "XRim.Core",
+        "XRim.Rules",
         "XRim.Config",
         "XRim.Simulation",
         "XRim.Simulation.Unity2D"

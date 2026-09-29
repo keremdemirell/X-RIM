@@ -7,6 +7,7 @@ namespace XRim.Editor
     {
         public const string MenuSetup = "XRim/Setup/";
         public const string MenuReports = "XRim/Reports/";
+        public const string MenuSpike = "XRim/Spike/";
 
         public const string XRimRoot = "Assets/XRim";
         public const string DataFolder = XRimRoot + "/Data";
@@ -14,6 +15,8 @@ namespace XRim.Editor
         public const string WeaponsFolder = DataFolder + "/Weapons";
         public const string BodyMovesFolder = DataFolder + "/BodyMoves";
         public const string ScenesFolder = XRimRoot + "/Scenes";
+        public const string PlaceholderArtFolder = XRimRoot + "/Art/Placeholder";
+        public const string SpikePrefabsFolder = XRimRoot + "/Prefabs/Spike";
 
         public const string TuningProfilePath = TuningFolder + "/TuningProfile.asset";
         public const string SandboxScenePath = ScenesFolder + "/Sandbox.unity";
