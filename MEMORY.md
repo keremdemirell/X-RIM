@@ -9,7 +9,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ## Current status
 
 - **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
-- **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, and the batch 4 commit "Add path policies, reach limit and path builder").
+- **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, `f1269a7`).
 - **Waiting for:** the designer's Unity check of Session 01 (0 red Console errors; EditMode 75/75 green; run `XRim > Setup > Fill New Tuning Fields`). Unity creates `.meta` files for the new Session 01 scripts; commit them at the start of Session 02 if they are still untracked.
 - **Next session to start:** Session 02, `Docs/sessions/session-02-feel-spike.md`. PT1 follows it.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
