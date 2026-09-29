@@ -13,7 +13,7 @@ Section numbers such as §9 refer to the GDD (`Docs/X-RIM — Game Design Docume
 1. Check this plan for **decisions I must make before it starts** and record the answers in `MEMORY.md` → *Decisions made during development*. (Claude can also record them for you at the start of the session if you type them in.)
 2. Open a fresh Claude Code chat with the recommended model and paste the whole content of the session's prompt file.
 3. Claude reads the docs, checks dependencies in `MEMORY.md`, proposes a batch plan and waits for your approval.
-4. Claude does one batch at a time. After each one it runs `Tools/check` (from session 01 on), updates `MEMORY.md`, commits locally and stops. Check what it says to check in Unity, then type `continue`.
+4. Claude does one batch at a time. After each one it runs `python Tools/check.py` (from session 01 on), updates `MEMORY.md`, commits locally and stops. Check what it says to check in Unity, then type `continue`.
 5. If the chat closes mid-session, paste the same prompt into a new chat. Claude resumes from `MEMORY.md` at the next unfinished batch.
 6. At a **playtest checkpoint (PT)**, test in the Editor (or on a device) and give Claude the report described in §5 below. Do this before starting the next session. The report can go at the start of the next session's chat or into `MEMORY.md` directly.
 
@@ -73,7 +73,7 @@ Until session 17 everything is **programmatic**: Editor scripts under `XRim/…`
 
 ## 4. Decisions to make up front (prototype blockers)
 
-These TBDs block the playable prototype (sessions 02–09). Decide them in one sitting, then paste or write the answers into `MEMORY.md` → *Decisions made during development*. Anything left undecided is built with the **recommended default as a flagged seam** (a `[GddTbd]` switch you can flip in the tuning panel), never as a final answer.
+These TBDs, and two gaps the GDD does not cover (D26, D27), block the playable prototype (sessions 02–09). Decide them in one sitting, then paste or write the answers into `MEMORY.md` → *Decisions made during development*. Anything left undecided is built with the **recommended default as a flagged seam** (a `[GddTbd]` switch you can flip in the tuning panel), never as a final answer.
 
 | # | § | Decision | Recommended default | Why | Needed by |
 |---|---|---|---|---|---|
@@ -102,6 +102,8 @@ These TBDs block the playable prototype (sessions 02–09). Decide them in one s
 | D23 | 4 | HUD placement | Weapon selector along the top of the weapon zone; Ready in the far bottom corner; timer top centre | Keeps the drawing area clear | 08 |
 | D24 | 4 | Change handedness later; separate mirror toggle | Changeable in settings; no separate toggle | – | 08 (dev setting), 18 |
 | D25 | 17 | Prototype opponent | Hot-seat (cover screen between players) and a random debug bot | Both already have seams | 09 |
+| D26 | – (not in the GDD) | How many hits a weapon can land per turn, and whether it continues its path after a hit | One damaging hit per weapon per turn; the weapon stops at the hit point with an impact recoil | §9 speaks of landing "its hit"; this keeps damage readable and the limb cap meaningful | 06 |
+| D27 | 11 | How "a single head hit can never cause an instant KO" is enforced | A single hit cannot take a dummy from full HP to 0: its damage is clamped to leave 1 HP. Later hits can finish a damaged dummy. | The Decided rule does not say how | 06 |
 
 ### Later decisions, by session
 
@@ -152,12 +154,14 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 
 ## 6. Rules every session follows
 
+`Tools/check` below is shorthand for `python Tools/check.py`, run from the project root.
+
 - **Read first:** `CLAUDE.md`, `MEMORY.md`, `Docs/ARCHITECTURE.md`, this file, and the GDD sections the session lists.
 - **Git:** commit locally after each finished batch. Never push, amend or force anything, and never touch other branches. Stage only the files the batch changed, by name. Commit messages contain **no attribution**: no `Co-Authored-By`, no "Generated with Claude Code", no mention of Claude or AI.
 - **GDD tags:** Decided → build as written. Tunable → the value lives in config. TBD → never invent a final answer; build a flagged seam with a default, or ask. Parked or Rejected → do not implement.
 - **The GDD file is never edited.** Decisions and deviations go into `MEMORY.md`.
 - **No hand-written `.unity`, `.prefab` or asset YAML.** Use Editor scripts (menu items under `XRim/…`) or give short numbered manual steps.
-- **After every batch:** run `Tools/check` (from session 01 on) and fix everything it reports, update `MEMORY.md`, commit, summarize, then stop and wait for `continue`.
+- **After every batch:** run `python Tools/check.py` (from session 01 on) and fix everything it reports, update `MEMORY.md`, commit, summarize, then stop and wait for `continue`.
 - **New placeholders** are tagged `[Placeholder("reason")]` and reported to the user in the batch summary.
 
 ---
@@ -165,6 +169,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 ## 7. Sessions in detail
 
 ### Session 01: Tooling and path rules
+- **Prompt:** `Docs/sessions/session-01-tooling-and-paths.md`
 - **Model:** Opus 5.5 (the tool gates every later session, so it must be right).
 - **Module and goal:**
   - `Tools/` (new): a compile-check and test tool that runs outside the Unity Editor.
@@ -172,7 +177,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **GDD:** §4 (input fairness, sampling every N units), §6 (ink budget, rigidity, path rules), §18 (path capture).
 - **Depends on:** architecture setup (verified 2026-09-29).
 - **Definition of done:**
-  - `Tools/check` (one command from Git Bash or PowerShell) does all of the following:
+  - `python Tools/check.py` (one command from Git Bash or PowerShell) does all of the following:
     - Compiles every `XRim.*` asmdef with Unity's bundled Roslyn in three passes: editor, player and development player.
     - Rebuilds each source list from the asmdef folders, so new files are included without opening Unity.
     - Verifies that every `noEngineReferences` assembly compiles without UnityEngine and that a probe file using `UnityEngine` is rejected.
@@ -185,12 +190,13 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
     - Ink cut-off.
     - Rigidity cost and invalid sharp turns.
     - Each policy default.
-  - All tests pass under `Tools/check`, and in Unity.
+  - All tests pass under `python Tools/check.py`, and in Unity.
 - **Unity Editor steps:** open Unity once at the end; confirm 0 errors and that the EditMode test count went up.
 - **TBDs:** §6 path start, reach limit, strokes per turn and spear rigidity. Each gets a seam plus the recommended default, marked `[GddTbd]`.
 - **Decide before:** D3, D4, D5 (defaults are used if you have not).
 
 ### Session 02: Feel spike (one dummy, one weapon)
+- **Prompt:** `Docs/sessions/session-02-feel-spike.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.Simulation.Unity2D`, `XRim.Editor`, `XRim.DebugTools`. Deliberately small. The goal is to de-risk the physics before the full rules exist:
   - An Editor script builds a placeholder ragdoll prefab from primitive sprites (HingeJoint2D limbs with angle limits, a hand anchor and a held weapon).
@@ -214,6 +220,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** nothing. **PT1 follows this session.**
 
 ### Session 03: Match loop and planning rules
+- **Prompt:** `Docs/sessions/session-03-match-loop-and-planning.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:** `XRim.Rules` (Match, Planning), `XRim.Networking`, `XRim.Bots`. Everything about a turn except physics, fully headless:
   - `PlanningSession`:
@@ -242,6 +249,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** D6, D8, D9, D10, D11.
 
 ### Session 04: Turn simulation and playback
+- **Prompt:** `Docs/sessions/session-04-turn-simulation-and-playback.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.Simulation`, `XRim.Simulation.Unity2D`, `XRim.Presentation` (Playback, Dummy), `XRim.DebugTools`.
   - The real `TurnSimulator` runs two fighters with the D1 driver and D2 ragdoll:
@@ -267,6 +275,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** D22. D1 and D2 must be in `MEMORY.md`.
 
 ### Session 05: Body moves
+- **Prompt:** `Docs/sessions/session-05-body-moves.md`
 - **Model:** Opus 5.5.
 - **Module and goal:**
   - `IBodyMoveDriver` implementations for crouch, lunge, step back and jump, driving the root target. Each keeps the ragdoll balanced and makes the weapon path travel with the torso (§6 Decided: duck plus a straight line becomes a low thrust).
@@ -287,6 +296,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** D12, D13.
 
 ### Session 06: Hits, priority and damage
+- **Prompt:** `Docs/sessions/session-06-hits-and-damage.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.Rules` (Combat, Damage, Status, Events), `XRim.Simulation`.
   - Weapon-to-body contacts become `HitFacts`, with the zone taken from the part tag.
@@ -306,10 +316,11 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
   - `GddAppendixATests` is still green.
   - `Tools/check` is green.
 - **Unity Editor steps:** in the sandbox, hit each zone and watch the HP and limb-damage readout.
-- **TBDs:** §9 which hits interrupt (D15) and heavy armour (D16); §10/§11 stun effect (D17); §11 HP scale (D18).
-- **Decide before:** D15, D16, D17, D18.
+- **TBDs:** §9 which hits interrupt (D15) and heavy armour (D16); §10/§11 stun effect (D17); §11 HP scale (D18). Not in the GDD: hits per weapon per turn (D26) and how the no-instant-KO head rule is enforced (D27).
+- **Decide before:** D15, D16, D17, D18, D26, D27.
 
 ### Session 07: Clashes and shield
+- **Prompt:** `Docs/sessions/session-07-clashes-and-shield.md`
 - **Model:** Opus 5.5.
 - **Module and goal:**
   - `ClashResolver`, the two-stage model:
@@ -332,6 +343,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** D19, D20, D21. **PT2 follows this session.**
 
 ### Session 08: Touch input and planning HUD
+- **Prompt:** `Docs/sessions/session-08-touch-input-and-hud.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:** `XRim.Input`, `XRim.Presentation.UI`.
   - `TouchInputReader` (EnhancedTouch, and mouse in the Editor).
@@ -358,6 +370,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** D7, D14, D23, D24.
 
 ### Session 09: First playable
+- **Prompt:** `Docs/sessions/session-09-first-playable.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.App`, `XRim.Presentation`, `XRim.Bots`. Wires everything into a match:
   - `MatchBootstrap` composition and `ClientMatchFlow` loop: plan → lock → simulate → playback → next turn.
@@ -379,6 +392,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** D25. **PT3 follows this session.**
 
 ### Session 10: Device build
+- **Prompt:** `Docs/sessions/session-10-device-build.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - An Editor build menu for Android development builds.
@@ -402,6 +416,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the target device. **PT4 follows this session.**
 
 ### Session 11: Dismemberment and desperation
+- **Prompt:** `Docs/sessions/session-11-dismemberment.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.Rules.Limbs`, `XRim.Simulation`, `XRim.Presentation`.
   - A limb is severed when its durability reaches 0, through logic-driven `BreakJoint` (never `breakForce`).
@@ -422,6 +437,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 11 row in *Later decisions*.
 
 ### Session 12: Electric wall, arena edge and sudden death
+- **Prompt:** `Docs/sessions/session-12-wall-and-sudden-death.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - `ElectricWallRules`, one per player:
@@ -445,6 +461,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 12 row in *Later decisions*.
 
 ### Session 13: Feel and juice pass
+- **Prompt:** `Docs/sessions/session-13-feel-pass.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.Presentation` (Feel, Cameras, Vfx, Audio, Moments).
   - `FeelDirector`: hitstop scaled by damage, slow motion on sever and death, and camera punch or shake. All values live in `FeelConfig`, and none of them affects outcomes.
@@ -466,6 +483,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** nothing required. Supply the optional SFX. **PT5 follows this session.**
 
 ### Session 14: Weapon roster and loadout
+- **Prompt:** `Docs/sessions/session-14-roster-and-loadout.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - Sword and spear become playable with placeholder stats (`DesignIsTbd`).
@@ -484,6 +502,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 14 row.
 
 ### Session 15: Signature moves
+- **Prompt:** `Docs/sessions/session-15-signature-moves.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - `SignatureMoveDefinition` assets hold preset torso-relative patterns.
@@ -503,6 +522,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 15 row (the catalogue especially).
 
 ### Session 16: Bots, scenarios and balance
+- **Prompt:** `Docs/sessions/session-16-bots-and-balance.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.DebugTools`, `XRim.Bots`, `XRim.Tests`.
   - `ScenarioStore` saves and loads (board, plans) as JSON.
@@ -521,6 +541,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 16 row. **PT6 follows this session.**
 
 ### Session 17: Art integration and skins
+- **Prompt:** `Docs/sessions/session-17-art-and-skins.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - An importer menu maps your sprites onto `DummyView` and the weapon views according to `ART_SPEC.md`.
@@ -537,6 +558,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the art is delivered.
 
 ### Session 18: Meta shell, profile and economy
+- **Prompt:** `Docs/sessions/session-18-meta-and-economy.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - Main menu, settings (handedness change per D24, audio) and a first-launch handedness pick.
@@ -555,6 +577,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 18 row.
 
 ### Session 19: Online authority
+- **Prompt:** `Docs/sessions/session-19-online-authority.md`
 - **Model:** Opus 5.5.
 - **Module and goal:** `XRim.Networking`.
   - Batch 1 presents backend and hosting options and **waits for your choice**.
@@ -575,6 +598,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 19 row.
 
 ### Session 20: Matchmaking, friends and contacts
+- **Prompt:** `Docs/sessions/session-20-matchmaking-and-social.md`
 - **Model:** Opus 5.5.
 - **Module and goal:**
   - Lobby and matchmaking per your §17 decision.
@@ -592,6 +616,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 20 row. **PT7 follows this session.**
 
 ### Session 21: Tutorial and replays
+- **Prompt:** `Docs/sessions/session-21-tutorial-and-replays.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - A guided first match teaching free drawing, body moves, clashes and the shield, per your §17 decision.
@@ -608,6 +633,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 - **Decide before:** the session 21 row.
 
 ### Session 22: Release readiness
+- **Prompt:** `Docs/sessions/session-22-release-readiness.md`
 - **Model:** Sonnet 5.5.
 - **Module and goal:**
   - Real-money purchases for premium currency and cosmetics only (Unity IAP), guarded by tests that nothing combat-related is purchasable.

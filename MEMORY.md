@@ -8,13 +8,13 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 ## Current status
 
-- **Last completed:** Session 00 (build planning), batch 1 of 3.
+- **Last completed:** Session 00 (build planning), batch 2 of 3.
 - **In progress:** Session 00 (build planning). Batch plan:
   1. `Docs/SESSION_PLAN.md`, `MEMORY.md`, `CLAUDE.md` pointers (DONE).
-  2. Session prompt files 01–11.
+  2. Session prompt files 01–11; D26/D27 added to the decision table (DONE).
   3. Session prompt files 12–22.
 - **Next session to start:** Session 01, `Docs/sessions/session-01-tooling-and-paths.md` (after Session 00 finishes).
-- **Compile-check tool:** not built yet (Session 01 builds `Tools/check`).
+- **Compile-check tool:** not built yet (Session 01 builds `python Tools/check.py`).
 
 ---
 
@@ -51,7 +51,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 | 2026-09-29 | Removed the packages Visual Scripting, Unity Version Control (collab-proxy) and Multiplayer Center. | Claude, delegated | `Packages/manifest.json` |
 | 2026-09-29 | Session plan adopted: 22 sessions, feel spike at 02, first playable at 09 (Docs/SESSION_PLAN.md). | Designer asked for the plan | – |
 
-Prototype decisions D1–D25 (SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
+Prototype decisions D1–D27 (SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
 
 ---
 
@@ -89,7 +89,7 @@ Add new placeholders here, with the session that introduced them.
 
 ## Open questions for the designer
 
-- Prototype decisions D1–D25 in `Docs/SESSION_PLAN.md` §4. D1 and D2 are answered at PT1.
+- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4. D1 and D2 are answered at PT1. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
 - Later decisions by session: `Docs/SESSION_PLAN.md` §4, *Later decisions*.
 - Optional: a rough SFX set before Session 13 (`Docs/SESSION_PLAN.md` §3).
 
