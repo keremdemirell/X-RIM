@@ -9,16 +9,9 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ## Current status
 
 - **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
-- **Last completed: Session 02 (feel spike), 2026-10-01**, 6 batches + 3 fixes (commits `35617c5`, `bda68ce`, `6bce333`, `bdd001f`, `6eda8c8`, `76bc780`, `98f0a31`, `a35f92d`, `ca3efb3`, plus the closing memory commit).
+- **Last completed: Session 03 (match loop and planning rules), 2026-10-01**, 5 batches: `d5dd47c` (planning commands), `2c1a1ea` (plan validation), `63a17f4` (end conditions), `eb87585` (match state machine), `7102dc8` (authority and bots), plus the closing memory commit. Work-log entry below. Before it: Session 02 (feel spike, 2026-10-01; commits in git log).
 - **PT1 reported 2026-10-01** (see *Playtest reports*): feel 2/10 (expected: no body moves yet), no values changed, no bugs, **D1 and D2 not decided** ("too early"). Session 04 needs them: until the designer decides, build D1 (kinematic swing, hand over to physics when the rules stop the weapon) and D2 (10 bodies) as flagged seams with the spike recommendations.
-- **Session 03 (match loop and planning rules): IN PROGRESS, started 2026-10-01.** Plan approved 2026-10-01, five batches:
-  1. **Planning commands:** `PlanningSession` (all commands, timeout, public state), `PlanningAudit` (switch and Ready times), default `IPublicStatePolicy` and `IIdleTurnPolicy`, D6/D9 flags, `RulePolicies` wiring; tests in `Tests/EditMode/Rules/Planning/`.
-  2. **Plan validation:** `PlanValidator` (loadout, constraints, ink, path validity, switch and Ready timing); tests.
-  3. **End conditions:** `EndConditionEvaluator` (KO, double KO, forfeit, turn cap, D11 order), sudden-death setup seam; tests.
-  4. **Match state machine:** `MatchStateMachine` (all phases, `Tick`, `Apply`, `CompleteExecution`, idle counters); tests with `ManualClock`.
-  5. **Authority and bots:** `LocalTurnAuthority`, playback hold hook, `IWeaponTipLocator`, `RandomBotBrain` and `BotPlanSource` emit valid plans; headless bot-vs-bot tests (scripted KO, stalled match to sudden-death setup).
-  - **Done: batch 1 (`d5dd47c`), batch 2 (`2c1a1ea`), batch 3 (`63a17f4`) and batch 4 (2026-10-01). Next: batch 5 (authority and bots).**
-- **Next session after 03:** Session 04, `Docs/sessions/session-04-turn-simulation-and-playback.md` (needs D1, D2 and D22).
+- **Next session to start: Session 04**, `Docs/sessions/session-04-turn-simulation-and-playback.md` (needs D1, D2 and D22; see *Open questions* for the wiring Session 03 left for it). No playtest checkpoint is due before it.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
   - Which tests run: those whose namespace names an engine-free module (`XRim.Tests.EditMode.<Module>…`). Keep test namespaces matching their folders.
@@ -27,7 +20,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 ## Completed work log
 
-- **Session 03 (match loop and planning rules), in progress, started 2026-10-01.**
+- **Session 03 (match loop and planning rules), 2026-10-01, complete.** Fully headless and engine-free; 5 batches (hashes in *Current status*). EditMode run by `check.py`: 142 → 312 (323 with the 11 that need Unity); `GddAppendixATests` green.
   - **Batch 1, planning commands** (`Rules/Planning/`, `Rules/Settings/MatchSettings.cs`, `Rules/RulePolicies.cs`):
     - `PlanningSession` implements every command. Weapon switch: only from the loadout, erases the path, refused from `deadline − WeaponSwitchLockoutSeconds` on (boundary included: exactly 1.5 s left is already locked), public at once; selecting the weapon already held is not a switch. Body move: per `PlanningConstraints`. Path: runs `PathBuilder` (lead-in from the weapon tip, reach, ink cut-off, break cut), so over-budget strokes are cut, not refused; a stroke with no points or no movement is `InvalidPath`; a zero ink budget is `InkBudgetExceeded`; `InkLengthMultiplier` scales the budget through the new `WeaponStats.WithInkLengthMultiplier`. `UseSignature` is always `SignatureUnavailable` until Session 15. Ready: idempotent; cancel per D9 flags; while Ready every plan command is refused with the new `CommandRejection.AlreadyReady`. After the deadline every command is `NotInPlanningPhase`, and `CurrentPlan` still returns whatever was set (timeout executes it).
     - New: `PlanningAudit` (when the weapon, path and Ready last changed, for the validator), `IWeaponTipSource`, `DefaultPublicStatePolicy`, `AnyMoveIdleTurnPolicy` (D10), both wired as `RulePolicies` defaults; `PublicPlanningState` is now `IEquatable` (the authority compares it to raise `PublicStateChanged`).

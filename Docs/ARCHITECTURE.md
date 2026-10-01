@@ -174,7 +174,7 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 - **Resolving.** `EndConditionEvaluator` is the single place that checks KO, double KO (→ sudden death), forfeit and turn cap (→ sudden death).
 - **Sudden death.** HP is set to 1. The first valid hit wins; if both land, the earlier `SimTime` wins. The no-hit and same-step-tie cases go through policies.
 - **Client flow (`XRim.App.ClientMatchFlow`).** Idle → Planning → WaitingForAuthority → Playback → … → MatchOver. It only mirrors the authority. It holds the next planning phase and the match end until playback has finished.
-  - Implementation note: the authority should start the next planning timer only after the turn's playback duration, or the replay eats into planning time.
+  - The authority starts the next planning timer only after playback (Session 03): `MatchStateMachine.BeginPlanning` is what starts the timer, and `LocalTurnAuthority` holds in TurnStart until its `PlaybackHoldSettings` mode says playback is over (none, the recorded timeline duration, or the client's `NotifyPlaybackFinished` with a timeout). SuddenDeathSetup is a resting phase like TurnStart; Resolving happens inside `CompleteExecution`.
 
 ---
 
@@ -204,7 +204,7 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 `ITurnAuthority` (GDD §18 TBD, proposal: server-authoritative):
 
 - **Events:** `MatchStarted`, `PlanningStarted`, `PublicStateChanged`, `PlanningLocked`, `TurnResolved`, `MatchEnded`.
-- **Calls:** `Start`, `Tick`, `Send(side, command)`.
+- **Calls:** `Start`, `Tick`, `Send(side, command)`, `NotifyPlaybackFinished(turnIndex)`. `Send` only records; the simulator runs inside `Tick`, at most one turn per call.
 - **Implementations:**
   - `LocalTurnAuthority` runs the rules state machine and an `ITurnSimulator` in-process: the offline prototype, bots, hot-seat and tests.
   - A future `RemoteTurnAuthority` would talk to a server hosting the same core headless. Host-authoritative or lockstep would be different hosts of the same core. No transport package is chosen yet.
@@ -371,6 +371,7 @@ Record these in the GDD when convenient.
 | 2026-09-29 | §6 reach (D4): clamp the path onto the reach limit (arm + weapon length around the shoulder); the lunge does not enlarge the torso-frame limit | Designer |
 | 2026-09-29 | §6 strokes (D5): one continuous stroke per turn; redrawing replaces it | Designer |
 | 2026-09-29 | §6 rigidity formula as written (the whole Δθ counts above the threshold); a too-sharp turn cuts the path at the break | Designer |
+| 2026-10-01 | Both players forfeit in the same turn (not in the GDD): sudden death, like a double KO (`MatchSettings.BothForfeitRule`; the other option is higher HP wins) | Designer |
 
 ---
 
@@ -387,9 +388,9 @@ Record these in the GDD when convenient.
   - All Editor menus and reports.
   - Path rules (Session 01): `PathResampler`, ink cost models, ink cut-off, the D3–D5 policies and `PathBuilder` (order: stroke, lead-in, resample, reach, ink cut-off, break cut).
   - Feel spike (Session 02): kinematic and motor weapon drivers, the aim model, impact-time refinement, the contact angle, `SwingSimulator` (one swing; Session 04 folds it into `TurnSimulator`), the placeholder ragdoll (6 or 10 bodies) and `Unity2DPhysicsWorld` (load, drive, step, contacts, poses, settled), and the spike scene with its harness, contact log and diagnostics.
-- **Placeholders that throw `NotImplementedException`:** all gameplay logic.
-  - Rules: planning session, plan validation, clash, damage, limb cap, wall, end conditions, state machine transitions.
+  - Match loop and planning rules (Session 03, headless): `PlanningSession` (every command, lock-out, Ready and cancel, timeout), `PlanValidator`, `EndConditionEvaluator` (D11 order), `SuddenDeathSetup`, `MatchStateMachine` (all phases), `LoadoutValidator`, `LocalTurnAuthority` with the playback hold, `RandomBotBrain` and `BotPlanSource` (valid plans only). Placeholders inside it: the guard-stance weapon tip (`GuardStanceWeaponTipLocator`, until Session 04 reads the pose) and the sudden-death seams (Session 12).
+- **Placeholders that throw `NotImplementedException`:** the remaining gameplay logic.
+  - Rules: clash, damage, limb cap, wall.
   - Simulation: the full turn loop (`TurnSimulator`) with body moves and rules decisions.
-  - Authority: the `LocalTurnAuthority` loop.
   - Input and presentation: swipe classification, screen mapping, the input scheme, feel, VFX, audio and HUD.
   - Tooling: hot-seat and scenarios.
