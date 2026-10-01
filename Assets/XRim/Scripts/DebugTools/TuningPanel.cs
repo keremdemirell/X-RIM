@@ -1,19 +1,23 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 using XRim.Config;
+using XRim.Core;
 
 namespace XRim.DebugTools
 {
     /// <summary>
     /// Runtime tuning panel over every asset in a <see cref="TuningProfile"/>. Values are edited on the live assets:
-    /// they apply from the next match snapshot, and in the Editor they stay after leaving Play mode.
-    /// Orange = placeholder value (not from the GDD); [TBD] = an open design question.
+    /// they apply from the next match snapshot (in the feel spike, the next swing), and in the Editor they stay after
+    /// leaving Play mode. Nested settings groups fold open. Orange = placeholder value (not from the GDD);
+    /// [TBD] = an open design question.
     /// </summary>
     public sealed class TuningPanel
     {
         private const float LabelWidth = 250f;
+        private const float IndentWidth = 16f;
         private static readonly Color PlaceholderColor = new Color(1f, 0.6f, 0.2f);
 
         private readonly HashSet<string> _expanded = new HashSet<string>();
@@ -21,7 +25,7 @@ namespace XRim.DebugTools
 
         public void Draw(TuningProfile profile)
         {
-            GUILayout.Label("Edits apply from the next match. Orange = placeholder, [TBD] = open question.");
+            GUILayout.Label("Edits apply from the next match (feel spike: the next swing). Orange = placeholder, [TBD] = open question.");
             foreach (SettingsConfigBase config in profile.SettingsConfigs())
             {
                 DrawSection(config, config.SettingsObject, config.SettingsType);
@@ -36,49 +40,39 @@ namespace XRim.DebugTools
         private void DrawSection(ScriptableObject asset, object target, Type targetType)
         {
             string key = asset.GetType().Name + "/" + asset.name;
-            bool expanded = _expanded.Contains(key);
-            if (GUILayout.Button((expanded ? "▼ " : "► ") + asset.name))
-            {
-                if (expanded) _expanded.Remove(key);
-                else _expanded.Add(key);
-                expanded = !expanded;
-            }
-
-            if (!expanded) return;
+            if (!Foldout(key, asset.name, 0, GUI.skin.button)) return;
 
             bool changed = false;
             foreach (TunableField field in TunableFields.Describe(targetType))
             {
-                changed |= DrawField(key, target, field);
+                changed |= DrawField(key, target, field, 0);
             }
 
             if (changed) DebugAssets.MarkDirty(asset);
         }
 
-        private bool DrawField(string sectionKey, object target, TunableField field)
+        private bool DrawField(string parentKey, object target, TunableField field, int depth)
         {
+            object value = field.Field.GetValue(target);
+            string key = parentKey + "/" + field.Field.Name;
+            if (value != null && IsNestedSettings(field.Field.FieldType)) return DrawNested(key, value, field, depth);
+
             Color previous = GUI.contentColor;
             if (field.IsPlaceholder) GUI.contentColor = PlaceholderColor;
 
             GUILayout.BeginHorizontal();
+            GUILayout.Space(depth * IndentWidth);
             GUILayout.Label(new GUIContent(field.Label + (field.IsTbd ? " [TBD]" : string.Empty), field.Describe()),
-                GUILayout.Width(LabelWidth));
+                GUILayout.Width(LabelWidth - depth * IndentWidth));
 
-            object value = field.Field.GetValue(target);
             object edited = value;
-            string bufferKey = sectionKey + "/" + field.Field.Name;
             switch (value)
             {
                 case float number:
-                    if (TryEditText(bufferKey, number.ToString("R", CultureInfo.InvariantCulture), out string floatText) &&
-                        float.TryParse(floatText, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedFloat))
-                    {
-                        edited = parsedFloat;
-                    }
-
+                    edited = EditFloat(key, number);
                     break;
                 case int number:
-                    if (TryEditText(bufferKey, number.ToString(CultureInfo.InvariantCulture), out string intText) &&
+                    if (TryEditText(key, number.ToString(CultureInfo.InvariantCulture), out string intText) &&
                         int.TryParse(intText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt))
                     {
                         edited = parsedInt;
@@ -90,6 +84,12 @@ namespace XRim.DebugTools
                     break;
                 case Enum choice:
                     if (GUILayout.Button(choice.ToString())) edited = NextEnumValue(choice);
+                    break;
+                case Vec2 vector:
+                    edited = new Vec2(EditFloat(key + ".x", vector.X), EditFloat(key + ".y", vector.Y));
+                    break;
+                case ICollection collection:
+                    GUILayout.Label($"{collection.Count} item(s)");
                     break;
                 default:
                     GUILayout.Label(value != null ? value.ToString() : "null");
@@ -104,6 +104,44 @@ namespace XRim.DebugTools
             return true;
         }
 
+        /// <summary>A nested settings group (for example the weapon motor inside the simulation settings), edited in place.</summary>
+        private bool DrawNested(string key, object value, TunableField field, int depth)
+        {
+            if (!Foldout(key, field.Label, depth, GUI.skin.label)) return false;
+
+            bool changed = false;
+            foreach (TunableField child in TunableFields.Describe(value.GetType()))
+            {
+                changed |= DrawField(key, value, child, depth + 1);
+            }
+
+            return changed;
+        }
+
+        private bool Foldout(string key, string label, int depth, GUIStyle style)
+        {
+            bool expanded = _expanded.Contains(key);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(depth * IndentWidth);
+            if (GUILayout.Button((expanded ? "▼ " : "► ") + label, style))
+            {
+                if (expanded) _expanded.Remove(key);
+                else _expanded.Add(key);
+                expanded = !expanded;
+            }
+
+            GUILayout.EndHorizontal();
+            return expanded;
+        }
+
+        private float EditFloat(string key, float value)
+        {
+            return TryEditText(key, value.ToString("R", CultureInfo.InvariantCulture), out string text) &&
+                   float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed)
+                ? parsed
+                : value;
+        }
+
         /// <summary>Text fields keep their own buffer so partially typed numbers ("1.") are not reformatted mid-edit.</summary>
         private bool TryEditText(string key, string current, out string text)
         {
@@ -112,6 +150,10 @@ namespace XRim.DebugTools
             _textBuffers[key] = text;
             return text != current;
         }
+
+        private static bool IsNestedSettings(Type type) =>
+            type.IsClass && type != typeof(string) && !typeof(IEnumerable).IsAssignableFrom(type) &&
+            type.IsDefined(typeof(SerializableAttribute), false);
 
         private static object NextEnumValue(Enum current)
         {

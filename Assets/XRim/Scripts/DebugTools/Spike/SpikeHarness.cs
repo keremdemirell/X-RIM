@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using XRim.Config;
@@ -42,6 +43,9 @@ namespace XRim.DebugTools.Spike
         private const float HudWidth = 640f;
         private const float HudLineHeight = 18f;
         private const int HudLineCount = 7;
+        private const float ContactLogHeight = 220f;
+        private const string ReportFolderName = "Logs";
+        private const string ReportFileName = "XRimSpikeReport.txt";
 
         /// <summary>Screen corner of the Debug overlay's button (GUI coordinates); strokes never start there.</summary>
         private static readonly Rect OverlayButtonArea = new Rect(0f, 0f, 110f, 60f);
@@ -84,6 +88,10 @@ namespace XRim.DebugTools.Spike
         private bool _playing;
         private string _lastIssues = string.Empty;
         private Rect _hudRect;
+        private Rect _contactLogRect;
+        private readonly SpikeContactLog _contactLog = new SpikeContactLog();
+        private MatchState _lastResultState;
+        private string _diagnosticsMessage = string.Empty;
 
         public TuningProfile Tuning => _tuning;
 
@@ -153,6 +161,7 @@ namespace XRim.DebugTools.Spike
             if (keyboard.minusKey.wasPressedThisFrame) ChangeSpeed(-1);
             if (keyboard.equalsKey.wasPressedThisFrame) ChangeSpeed(1);
             if (keyboard.qKey.wasPressedThisFrame) Replay();
+            if (keyboard.f9Key.wasPressedThisFrame) RunDiagnostics();
             if (!_playing) return;
             if (keyboard.pKey.wasPressedThisFrame) _player.IsPaused = !_player.IsPaused;
             if (keyboard.leftArrowKey.wasPressedThisFrame) _player.StepFrames(-1);
@@ -165,7 +174,8 @@ namespace XRim.DebugTools.Spike
             if (mouse == null) return;
             Vector2 screen = mouse.position.ReadValue();
             var guiPoint = new Vector2(screen.x, Screen.height - screen.y);
-            bool startAllowed = !OverlayButtonArea.Contains(guiPoint) && !_hudRect.Contains(guiPoint) && GUIUtility.hotControl == 0;
+            bool startAllowed = !OverlayButtonArea.Contains(guiPoint) && !_hudRect.Contains(guiPoint) &&
+                                !_contactLogRect.Contains(guiPoint) && GUIUtility.hotControl == 0;
 
             // Clicking into the arena takes keyboard focus away from any tuning text field, so the hotkeys work again.
             if (startAllowed && mouse.leftButton.wasPressedThisFrame) GUIUtility.keyboardControl = 0;
@@ -210,6 +220,7 @@ namespace XRim.DebugTools.Spike
             var input = new SwingInput(_board, _state, new PerSide<WeaponPath>(path, null), rules, simulation);
             Stopwatch watch = Stopwatch.StartNew();
             _lastResult = new SwingSimulator(_world, _aim).Run(input);
+            _lastResultState = _state;
             watch.Stop();
             _lastSimulateMilliseconds = watch.Elapsed.TotalMilliseconds;
             Play();
@@ -374,6 +385,28 @@ namespace XRim.DebugTools.Spike
             GUI.Box(_hudRect, GUIContent.none);
             GUI.Label(new Rect(_hudRect.x + HudPadding, _hudRect.y + HudPadding, HudWidth - HudPadding * 2f, height - HudPadding * 2f),
                 HudText());
+
+            _contactLogRect = new Rect(_hudRect.x, _hudRect.yMax + HudMargin, HudWidth, ContactLogHeight);
+            _contactLog.Draw(_contactLogRect, _lastResult, _lastResultState, _player.CurrentTime, _playing);
+        }
+
+        /// <summary>F9: measures the PT1 evidence with the live tuning and saves the report (Logs/XRimSpikeReport.txt in the Editor).</summary>
+        private void RunDiagnostics()
+        {
+            Snapshot(out RulesSettings rules, out SimulationSettings simulation);
+            var diagnostics = new SpikeDiagnostics(_world, _sixBodies, _tenBodies, _space, _aim);
+            string report = diagnostics.Run(rules, simulation, _targetReachFraction);
+#if UNITY_EDITOR
+            string folder = Path.Combine(Application.dataPath, "..", ReportFolderName);
+#else
+            string folder = Application.persistentDataPath;
+#endif
+            Directory.CreateDirectory(folder);
+            string file = Path.GetFullPath(Path.Combine(folder, ReportFileName));
+            File.WriteAllText(file, report);
+            _diagnosticsMessage = "Diagnostics saved to " + file;
+            Debug.Log($"[XRim] {_diagnosticsMessage}\n{report}");
+            ResetBoard();
         }
 
         private string HudText()
@@ -386,9 +419,9 @@ namespace XRim.DebugTools.Spike
             return "X-RIM feel spike (Session 02)\n" +
                    "Draw: drag with the left mouse button    Swing: Space    Reset stance: R    Clear path: C\n" +
                    $"Weapon: {weapon} [1/2]    Driver: {driver} [D]    Bodies: {bodies} [B]    Target distance: {_targetDistanceUnits:0} [ [ ] ]\n" +
-                   $"Playback: {speed} [- =]    Pause [P]    Frame step [← →]    Replay [Q]\n" +
+                   $"Playback: {speed} [- =]    Pause [P]    Frame step [← →]    Replay [Q]    Diagnostics report [F9]\n" +
                    PathLine() + NewLine + SwingLine() + NewLine +
-                   (_weaponStartsInsideTarget ? "WARNING: the weapon starts inside the target. Press ] to step back." : string.Empty);
+                   (_weaponStartsInsideTarget ? "WARNING: the weapon starts inside the target. Press ] to step back." : _diagnosticsMessage);
         }
 
         private string PathLine()

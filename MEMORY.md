@@ -16,7 +16,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
   3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **done**
   4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests. — **done**
   5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`). — **done**
-  6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run. — **next**
+  6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run. — **done; waiting for the designer's F9 report to write the findings and close the session**
 - **Next session after 02:** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`. PT1 comes first.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
@@ -25,6 +25,12 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ---
 
 ## Completed work log
+
+- **Session 02 batch 6, 2026-10-01: contact log, tuning panel, diagnostics** (`DebugTools/`).
+  - `TuningPanel`: nested `[Serializable]` settings fold open and edit in place (motor, root drive, ragdoll, rigidity), `Vec2` fields edit as X/Y, lists show a count.
+  - `SpikeContactLog` (under the HUD, top right): per contact refined time (ms), reported step, A → B (weapon id or side + part), angle, relative speed, normal, path distance; rows reached during playback are marked.
+  - `SpikeDiagnostics` (F9, `Logs/XRimSpikeReport.txt` in the Editor, persistent data path on devices): standing 2 s for 6/10 bodies (settle time, drift, tilt); tunnelling of the rapier at 1/2/4/8× speed at the live rate and 60 Hz, thrust and chop; kinematic vs motor for rapier and mace (free-thrust lag, end error, settle; into the chest: hit, knockback, tilt, deflection); ms per swing (10 runs per driver × segmentation).
+  - Fixes before batch 6: the scene creator now loads assets after creating the scene (`98f0a31`); the target stands at 85% of the weapon's reach and the HUD warns about overlap (`a35f92d`, `SpikeBoard`).
 
 - **Session 02 batch 5, 2026-10-01: spike scene and harness** (`DebugTools/Spike/`, `Editor/SpikeSceneCreator.cs`).
   - Menu `XRim/Spike/Create Spike Scene` → `Assets/XRim/Scenes/Spike.unity` (camera + `SpikeHarness` wired to the profile, both prefabs and the square sprite; builds the prefabs if missing; not in the build list).
