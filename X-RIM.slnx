@@ -1,4 +1,5 @@
 ﻿<Solution>
+  <Project Path="XRim.DebugTools.csproj" />
   <Project Path="XRim.Simulation.csproj" />
   <Project Path="XRim.Config.csproj" />
   <Project Path="XRim.Presentation.csproj" />
@@ -11,7 +12,6 @@
   <Project Path="XRim.Input.csproj" />
   <Project Path="XRim.Core.csproj" />
   <Project Path="XRim.Tests.PlayMode.csproj" />
-  <Project Path="XRim.DebugTools.csproj" />
   <Project Path="XRim.App.csproj" />
   <Project Path="XRim.Bots.csproj" />
 </Solution>

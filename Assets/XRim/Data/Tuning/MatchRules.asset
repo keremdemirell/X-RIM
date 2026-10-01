@@ -17,5 +17,6 @@ MonoBehaviour:
     TurnCap: 30
     ExecutionHardCapSeconds: 1.5
     WeaponSwitchLockoutSeconds: 1.5
-    AllowReadyCancel: 0
+    AllowReadyCancel: 1
+    AllowReadyCancelDuringLockout: 0
     AllowDrawingDuringLockout: 1
