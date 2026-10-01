@@ -85,14 +85,14 @@ namespace XRim.Rules.Planning
             new PlanningAudit(DeadlineSeconds, _lastWeaponSwitchSeconds, _lastPathChangeSeconds, _readySeconds);
 
         /// <summary>True until the deadline: from the deadline on, commands are refused.</summary>
-        public bool IsOpen(double nowSeconds) => nowSeconds < DeadlineSeconds;
+        public bool IsOpen(double nowSeconds) => PlanningTiming.IsOpen(nowSeconds, DeadlineSeconds);
 
         /// <summary>
         /// True in the final <see cref="MatchSettings.WeaponSwitchLockoutSeconds"/> of planning, boundary included:
         /// at exactly 1.5 s left a switch is already refused (§6).
         /// </summary>
         public bool IsInLockoutWindow(double nowSeconds) =>
-            nowSeconds >= DeadlineSeconds - Settings.Match.WeaponSwitchLockoutSeconds;
+            PlanningTiming.IsInLockoutWindow(nowSeconds, DeadlineSeconds, Settings.Match.WeaponSwitchLockoutSeconds);
 
         public bool IsWeaponSwitchLockedOut(double nowSeconds) =>
             !Constraints.CanSwitchWeapon || IsInLockoutWindow(nowSeconds);
