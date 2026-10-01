@@ -102,6 +102,11 @@ namespace XRim.Simulation
                 issues.Add("Ragdoll: pose holding must not be negative.");
             if (body.GuardHandReachFraction < 0f || body.GuardHandReachFraction > 1f)
                 issues.Add("Ragdoll: the guard hand reach must be between 0 and 1.");
+            float maxSpringHz = (float)StepRateHz / MinStepsPerMotorPeriod;
+            if (body.WeaponArmFollowFrequencyHz <= 0f || body.WeaponArmFollowFrequencyHz > maxSpringHz)
+                issues.Add($"Ragdoll: the weapon arm follow frequency must be in (0, {maxSpringHz:0.#}] Hz at {StepRateHz} Hz.");
+            if (body.WeaponArmFollowDampingRatio < 0f || body.WeaponArmFollowMaxAccelerationUnitsPerSecondSquared <= 0f)
+                issues.Add("Ragdoll: the weapon arm follow damping must not be negative and its strength must be positive.");
         }
 
         private static void AddLimitIssue(ICollection<string> issues, string joint, float minDegrees, float maxDegrees)

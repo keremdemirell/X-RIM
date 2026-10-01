@@ -94,11 +94,12 @@ namespace XRim.Simulation.Execution
             bool holdsWeapon = weapon != null && input.StartPose.Get(side).HasHeldItem;
             var fighter = new Fighter(side, input.StartPose.Get(side).Get(BodyPart.Torso), holdsWeapon ? weapon : null);
 
-            WeaponPath path = input.Paths[side];
-            if (holdsWeapon && path != null)
+            // A side without a path still drives its weapon: an empty path holds it where it is, so a free (motor)
+            // weapon does not drop.
+            if (holdsWeapon)
             {
                 fighter.Driver = WeaponDriverFactory.Create(input.Simulation, input.Rules.Paths, _aim);
-                fighter.Driver.Begin(side, path, weapon);
+                fighter.Driver.Begin(side, input.Paths[side] ?? WeaponPath.Empty, weapon);
             }
 
             return fighter;

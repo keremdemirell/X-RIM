@@ -96,8 +96,22 @@ namespace XRim.Simulation.Settings
         [Placeholder("Session 02 spike: pose holding strength, tuned at PT1")]
         public float JointServoMaxAngularAccelerationDegreesPerSecondSquared = 36000f;
 
-        /// <summary>False = the weapon arm goes limp and is carried by the weapon, so its motors never fight the path.</summary>
+        /// <summary>False = the weapon arm's joint motors are off, so only the hand spring below moves it.</summary>
         public bool ServoWeaponArm;
+
+        /// <summary>
+        /// The weapon arm follows the weapon: a spring pulls its hand onto the blade, where the arm can reach. The weapon
+        /// feels nothing back, so the arm can never block or yank it. Higher = the arm sticks to the weapon more tightly.
+        /// </summary>
+        [Placeholder("Session 02 spike: how tightly the weapon arm follows the weapon, tuned at PT1")]
+        public float WeaponArmFollowFrequencyHz = 20f;
+
+        [Placeholder("Session 02 spike: weapon arm follow damping, tuned at PT1")]
+        public float WeaponArmFollowDampingRatio = 1f;
+
+        /// <summary>The strongest pull on the hand. Lower = a hit on the arm can knock it off the weapon for a moment.</summary>
+        [Placeholder("Session 02 spike: weapon arm follow strength, tuned at PT1")]
+        public float WeaponArmFollowMaxAccelerationUnitsPerSecondSquared = 200000f;
 
         /// <summary>
         /// The guard stance a dummy stands in before its first turn ("en garde"): the weapon points this way from the

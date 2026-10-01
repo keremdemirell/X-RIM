@@ -99,6 +99,33 @@ namespace XRim.Tests.PlayMode.Simulation
             return new WeaponPath(new[] { start, start + outward * lengthUnits });
         }
 
+        /// <summary>The fastest-moving body of both dummies, for failure messages.</summary>
+        private string FastestBody(Unity2DPhysicsWorld world)
+        {
+            var bodies = new System.Collections.Generic.List<Rigidbody2D>();
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                Ragdoll ragdoll = world.GetRagdoll(side);
+                if (ragdoll == null) continue;
+                ragdoll.GetPartBodies(bodies);
+                if (ragdoll.ActiveHeldItem != null) bodies.Add(ragdoll.ActiveHeldItem);
+            }
+
+            Rigidbody2D fastest = null;
+            float fastestSpeed = -1f;
+            foreach (Rigidbody2D body in bodies)
+            {
+                float speed = _space.ToArenaLength(body.linearVelocity.magnitude);
+                if (speed <= fastestSpeed) continue;
+                fastest = body;
+                fastestSpeed = speed;
+            }
+
+            return fastest == null
+                ? "none"
+                : $"{fastest.transform.parent.name}/{fastest.name} at {fastestSpeed:0.##} units/s, {fastest.angularVelocity:0.##} °/s";
+        }
+
         private static IEnumerator DisposeAndWait(Unity2DPhysicsWorld world)
         {
             Scene scene = world.Scene;
@@ -178,7 +205,8 @@ namespace XRim.Tests.PlayMode.Simulation
 
             BodyPose torso = world.GetPose(Side.Left, BodyPart.Torso);
             BodyPose head = world.GetPose(Side.Left, BodyPart.Head);
-            Assert.That(settledInARow, Is.GreaterThanOrEqualTo(_simulation.SettleStepsRequired), "physics settles while standing");
+            Assert.That(settledInARow, Is.GreaterThanOrEqualTo(_simulation.SettleStepsRequired),
+                $"physics settles while standing; fastest: {FastestBody(world)}");
             Assert.That(Vec2.Distance(torso.PositionUnits, TorsoAt(0f).PositionUnits), Is.LessThan(2f), "the pelvis stays put");
             Assert.That(Mathf.Abs(XMath.DeltaAngleDegrees(0f, torso.RotationDegrees)), Is.LessThan(2f), "the torso stays upright");
             Assert.That(head.PositionUnits.Y, Is.GreaterThan(torso.PositionUnits.Y + _body.TorsoHeightUnits * 0.9f), "the head stays on top");
@@ -207,7 +235,8 @@ namespace XRim.Tests.PlayMode.Simulation
             }
 
             Assert.That(arrivalStep, Is.InRange(expectedStep - 1, expectedStep + 1), "t = length / speed, ± one step");
-            Assert.That(result.EndReason, Is.EqualTo(SwingEndReason.Settled));
+            Assert.That(result.EndReason, Is.EqualTo(SwingEndReason.Settled),
+                $"physics settles after the swing; still moving after {result.StepsSimulated} steps: {FastestBody(world)}");
             yield return DisposeAndWait(world);
         }
 
@@ -280,8 +309,9 @@ namespace XRim.Tests.PlayMode.Simulation
             world.Load(board, State(), _rules, _simulation);
 
             float angle = world.GetRagdoll(Side.Left).GetBody(BodyPart.LeftLeg).GetComponent<HingeJoint2D>().jointAngle;
-            Assert.That(angle, Is.EqualTo(forwardSwingDegrees).Within(1f),
-                "if this is −30, flip Ragdoll.JointAngleGrowsCounterClockwise so the joint limits mean what RagdollSettings says");
+            float forward = Ragdoll.JointAngleGrowsCounterClockwise ? angle : -angle;
+            Assert.That(forward, Is.EqualTo(forwardSwingDegrees).Within(1f),
+                $"Unity reported jointAngle {angle}: flip Ragdoll.JointAngleGrowsCounterClockwise so joint limits mean what RagdollSettings says");
             yield return DisposeAndWait(world);
         }
     }

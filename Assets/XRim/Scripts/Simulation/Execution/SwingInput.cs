@@ -15,7 +15,7 @@ namespace XRim.Simulation.Execution
         public PoseSnapshot StartPose { get; }
         public MatchState State { get; }
 
-        /// <summary>Torso-frame paths (GDD §6). Null = that side does not attack.</summary>
+        /// <summary>Torso-frame paths (GDD §6). Null = that side does not attack; its weapon is held where it is.</summary>
         public PerSide<WeaponPath> Paths { get; }
 
         public RulesSettings Rules { get; }

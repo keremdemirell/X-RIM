@@ -162,9 +162,11 @@ namespace XRim.Tests.PlayMode.Simulation
             float upperArm = ragdoll.GetBody(BodyPart.LeftArm).mass;
             float lowerArm = ragdoll.GetLowerBody(BodyPart.LeftArm).mass;
             Assert.That(upperArm + lowerArm, Is.EqualTo(3f).Within(Tolerance));
+            // Facing -X flips "forward"; Unity measuring clockwise flips it again.
+            bool flipped = ragdoll.IsMirrored == Ragdoll.JointAngleGrowsCounterClockwise;
             HingeJoint2D knee = ragdoll.GetLowerBody(BodyPart.LeftLeg).GetComponent<HingeJoint2D>();
-            Assert.That(knee.limits.min, Is.EqualTo(-_body.KneeMaxDegrees).Within(Tolerance));
-            Assert.That(knee.limits.max, Is.EqualTo(-_body.KneeMinDegrees).Within(Tolerance));
+            Assert.That(knee.limits.min, Is.EqualTo(flipped ? -_body.KneeMaxDegrees : _body.KneeMinDegrees).Within(Tolerance));
+            Assert.That(knee.limits.max, Is.EqualTo(flipped ? -_body.KneeMinDegrees : _body.KneeMaxDegrees).Within(Tolerance));
             Assert.That(ragdoll.GetBody(BodyPart.RightArm).GetComponent<HingeJoint2D>().useMotor, Is.False, "the weapon arm is carried, not powered");
             Assert.That(ragdoll.GetBody(BodyPart.LeftArm).GetComponent<HingeJoint2D>().useMotor, Is.True);
         }

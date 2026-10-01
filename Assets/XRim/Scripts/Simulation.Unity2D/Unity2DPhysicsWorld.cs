@@ -25,6 +25,10 @@ namespace XRim.Simulation.Unity2D
     /// fallback exists (<see cref="RootDriveMode.Kinematic"/>).
     /// </para>
     /// <para>
+    /// The held weapon is not jointed to the body: its driver moves it, and the weapon arm follows it with a hand spring
+    /// (<see cref="Ragdoll.UpdateGrip"/>), so the arm can never block or yank the weapon.
+    /// </para>
+    /// <para>
     /// Contacts: after each step every body's contacts are polled; a pair of bodies from different owners that was not
     /// touching after the previous step is a new contact. Floor contacts are not reported and a dummy never collides
     /// with itself. Relative velocity is each body's motion over the step before (Box2D reports a contact one step after

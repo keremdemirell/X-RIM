@@ -16,8 +16,8 @@ namespace XRim.Simulation.Unity2D
     /// or, with ten bodies (D2), upper and lower segments of each arm and leg that belong to the same hit zone.
     /// Every body is a direct child of this object, whose origin is the pelvis (the torso frame's origin).
     /// The prefab is built facing +X; <see cref="MirrorForRightSide"/> turns an instance to face -X.
-    /// The held weapon hangs on the dominant hand by a free wrist hinge whose grip point slides along the blade to
-    /// where the arm can reach (<see cref="ArmReach"/>), so arm and weapon never fight.
+    /// The weapon arm follows the held weapon: a spring (TargetJoint2D) pulls its hand onto the blade at the point the
+    /// arm can reach (<see cref="ArmReach"/>). The weapon feels nothing back, so the arm can never block or yank it.
     /// Severing is driven by game logic (limb durability reached 0), never by HingeJoint2D.breakForce, which the GDD
     /// rejects because physics-driven breaks are hard to balance (§18).
     /// </summary>
@@ -30,11 +30,12 @@ namespace XRim.Simulation.Unity2D
         private const float LimbAxisOffsetDegrees = 90f;
 
         /// <summary>
-        /// True when Unity's HingeJoint2D.jointAngle grows as the jointed limb turns counter-clockwise relative to its
-        /// parent, which is how <see cref="RagdollSettings"/> limits are written. The PlayMode test
-        /// JointAngle_GrowsWhenALimbSwingsForward checks it.
+        /// Whether Unity's HingeJoint2D.jointAngle grows as the jointed limb turns counter-clockwise relative to its
+        /// parent. <see cref="RagdollSettings"/> limits are written that way (positive = forward for a dummy facing +X);
+        /// Unity 6.5 measures the other way (2026-10-01, PlayMode test JointAngle_GrowsWhenALimbSwingsForward), so limits
+        /// are flipped when applied.
         /// </summary>
-        private static readonly bool JointAngleGrowsCounterClockwise = true;
+        public static bool JointAngleGrowsCounterClockwise => false;
 
         [SerializeField] private RagdollSegmentation _segmentation = RagdollSegmentation.SixBodies;
         [SerializeField] private Rigidbody2D[] _upper = new Rigidbody2D[BodyParts.Count];
@@ -56,7 +57,7 @@ namespace XRim.Simulation.Unity2D
         private float _elbowMinDegrees;
         private float _elbowMaxDegrees;
         private Rigidbody2D _heldItem;
-        private HingeJoint2D _wrist;
+        private TargetJoint2D _handFollow;
         private BodyPart _heldArm;
 
         public RagdollSegmentation Segmentation => _segmentation;
@@ -65,7 +66,7 @@ namespace XRim.Simulation.Unity2D
         public IReadOnlyList<HeldItemSlot> HeldItems => _heldItems;
 
         /// <summary>The held weapon's body while it is held; null otherwise.</summary>
-        public Rigidbody2D ActiveHeldItem => _wrist != null ? _heldItem : null;
+        public Rigidbody2D ActiveHeldItem => _handFollow != null ? _heldItem : null;
 
         /// <summary>Called once by <see cref="PlaceholderRagdollBuilder"/>.</summary>
         internal void Configure(RagdollSegmentation segmentation, Rigidbody2D[] upper, Rigidbody2D[] lower, Transform[] hands,
@@ -174,9 +175,9 @@ namespace XRim.Simulation.Unity2D
         }
 
         /// <summary>
-        /// Takes a weapon in an arm's hand (GDD §12: the dominant hand): activates its body at the hand of the built
-        /// layout and hangs it on a free wrist hinge. Call on an instance still in its built layout. Returns null when
-        /// this prefab has no body for the weapon (rebuild the dummies).
+        /// Takes a weapon in an arm's hand (GDD §12: the dominant hand): activates its body at the hand of the built layout
+        /// and makes the hand follow it. Call on an instance still in its built layout, before <see cref="ApplyTuning"/>.
+        /// Returns null when this prefab has no body for the weapon (rebuild the dummies).
         /// </summary>
         public Rigidbody2D Hold(string weaponId, BodyPart arm)
         {
@@ -189,46 +190,43 @@ namespace XRim.Simulation.Unity2D
             item.transform.localRotation = Quaternion.Euler(0f, 0f, IsMirrored ? 180f : 0f);
             item.gameObject.SetActive(true);
 
-            _wrist = item.gameObject.AddComponent<HingeJoint2D>();
-            _wrist.connectedBody = lastSegment;
-            _wrist.autoConfigureConnectedAnchor = false;
-            _wrist.anchor = Vector2.zero;
-            _wrist.connectedAnchor = hand.localPosition;
-            _wrist.enableCollision = false;
-            _wrist.useLimits = false;
+            _handFollow = lastSegment.gameObject.AddComponent<TargetJoint2D>();
+            _handFollow.autoConfigureTarget = false;
+            _handFollow.anchor = hand.localPosition;
+            _handFollow.target = hand.position;
             _heldItem = item;
             _heldArm = arm;
             return item;
         }
 
-        /// <summary>Lets go of the held weapon: it falls under physics (GDD §12: the weapon drops).</summary>
+        /// <summary>Lets go of the held weapon: it falls under physics and the arm stops following it (GDD §12).</summary>
         public void DropHeldItem()
         {
             // A whole turn is simulated within one frame, so the joint is switched off now and destroyed later.
-            if (_wrist != null)
+            if (_handFollow != null)
             {
-                _wrist.enabled = false;
-                Destroy(_wrist);
+                _handFollow.enabled = false;
+                Destroy(_handFollow);
             }
 
-            _wrist = null;
+            _handFollow = null;
             if (_heldItem != null) _heldItem.bodyType = RigidbodyType2D.Dynamic;
         }
 
         /// <summary>
-        /// Moves the hand along the blade to where the arm can reach the weapon (see <see cref="ArmReach"/>). Call after
+        /// Points the hand spring at the place on the blade the arm can reach (see <see cref="ArmReach"/>). Call after
         /// posing and before every physics step.
         /// </summary>
         public void UpdateGrip()
         {
-            if (_wrist == null || _heldItem == null) return;
+            if (_handFollow == null || _heldItem == null) return;
             Rigidbody2D shoulder = _upper[(int)_heldArm];
             float blade = _heldItem.TryGetComponent(out BoxCollider2D box) ? box.size.x : 0f;
             Vector2 axis = DirectionOf(_heldItem.rotation);
             HandReach(_heldArm, out float minReach, out float maxReach);
             float along = ArmReach.HandAlongBlade(ToVec2(shoulder.position), ToVec2(_heldItem.position), ToVec2(axis), blade,
                 minReach, maxReach);
-            _wrist.anchor = new Vector2(along, 0f);
+            _handFollow.target = _heldItem.position + axis * along;
         }
 
         /// <summary>
@@ -320,6 +318,14 @@ namespace XRim.Simulation.Unity2D
             foreach (Rigidbody2D rigidbody in bodies)
             {
                 rigidbody.gravityScale = gravityScale;
+            }
+
+            if (_handFollow != null)
+            {
+                Rigidbody2D hand = LastSegment(_heldArm);
+                _handFollow.frequency = body.WeaponArmFollowFrequencyHz;
+                _handFollow.dampingRatio = body.WeaponArmFollowDampingRatio;
+                _handFollow.maxForce = hand.mass * body.WeaponArmFollowMaxAccelerationUnitsPerSecondSquared * _worldUnitsPerArenaUnit;
             }
         }
 
@@ -501,7 +507,7 @@ namespace XRim.Simulation.Unity2D
             }
 
             // Facing -X, "forward" turns clockwise, so the limits flip; they also flip if Unity measures the other way.
-            bool flip = IsMirrored != !JointAngleGrowsCounterClockwise;
+            bool flip = IsMirrored == JointAngleGrowsCounterClockwise;
             entry.Joint.limits = flip
                 ? new JointAngleLimits2D { min = -max, max = -min }
                 : new JointAngleLimits2D { min = min, max = max };
