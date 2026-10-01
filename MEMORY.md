@@ -15,8 +15,8 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
   2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **done**
   3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **done**
   4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests. — **done**
-  5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`). — **next**
-  6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run.
+  5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`). — **done**
+  6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run. — **next**
 - **Next session after 02:** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`. PT1 comes first.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
@@ -25,6 +25,12 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ---
 
 ## Completed work log
+
+- **Session 02 batch 5, 2026-10-01: spike scene and harness** (`DebugTools/Spike/`, `Editor/SpikeSceneCreator.cs`).
+  - Menu `XRim/Spike/Create Spike Scene` → `Assets/XRim/Scenes/Spike.unity` (camera + `SpikeHarness` wired to the profile, both prefabs and the square sprite; builds the prefabs if missing; not in the build list).
+  - `SpikeHarness`: attacker (left, right-handed) with rapier or mace and a weaponless target (right) at ±distance/2, pelvis one leg length up; guard stance on reset. Mouse drag draws a torso-frame stroke (`SpikePathDrawer`: raw stroke white, executed path yellow at ink thickness, via `PathBuilder`). Space simulates with `SwingSimulator` on one reused `Unity2DPhysicsWorld` (stopwatch ms), then plays the timeline with `TimelinePlayer` onto `DummyView`s; at the end the board becomes the final pose (stance persistence). Keys: R reset, C clear, 1/2 weapon (clears the path, §6), D driver and B bodies (edit the live `SimulationConfig`), [ ] target distance ±25, - = playback speed 0.05×–2×, P pause, ← → frame step, Q replay. HUD bottom left (state, ink, last swing).
+  - `SpikeVisualDummy`: prefab copy with all physics stripped (+ `DummyView`); weapon visuals resized to live stats (`PlaceholderRagdollBuilder.FitHeldItemVisual`). `DummyView` gains lower segments, `Configure`, `SetHeldItem`.
+  - `DebugOverlay` Tuning tab also finds the spike harness's profile. `TuningProfile.SimulationConfig` accessor. `DebugAssets.MarkDirty`. `XRim.DebugTools` references `Unity.InputSystem`.
 
 - **Session 02 batch 4, 2026-10-01: Unity 2D physics world** (`Simulation.Unity2D/`, `Simulation/Physics/ArmReach.cs`).
   - `Unity2DPhysicsWorld(space, RagdollPrefabSet)`: `Load` instantiates the segmentation's prefab per side into the hidden scene (mirrors Right, tags owners, holds the current weapon in the dominant hand, fits it to live stats, applies tuning, ignores self-collisions, adds a kinematic root anchor + strength-limited `RelativeJoint2D` or a kinematic torso, applies the pose), adds a static floor (top at y = 0, arena width), and indexes bodies (Left parts, Left weapon, Right parts, Right weapon, floor). `Step`: remember motion, servos, grip, pushes, `Simulate`, poll new contact pairs. Also `SetHeldItemTarget` (kinematic `MovePosition`), `PushHeldItem` (dynamic, force = mass × accel), `GetHeldItemState`, `SetRootTarget`, `GetPose`, `CapturePose`, `IsSettled`, `TouchDistanceUnits` (2 × contact offset), `BreakJoint`, `DropHeldItem`, `ApplyImpulse`, `GetRagdoll`.
@@ -90,6 +96,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
   - `XRim > Setup > Create Default Tuning Assets` created 27 assets.
   - The Sandbox scene enters Play mode with no errors.
 - Git was clean before Session 00 started.
+- **2026-10-01: Session 02 batch 4 verified in the Editor** (after the fix `6eda8c8`): PlayMode 17/17 and EditMode 153/153, two runs each, all green.
 
 ---
 
@@ -128,7 +135,7 @@ Chosen during setup (ARCHITECTURE.md §4). `XRim > Reports > Placeholder Values`
 
 - Session 01: `PathSettings.ArmLengthUnits` 240, `ShoulderOffsetUnits` (0, 100); `WeaponStats.LengthUnits` rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200 (at roughly 2.5 mm per unit, the rapier nearly reaches across the 700 starting gap, the mace must close in). `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
 
-- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo). Guard stance (batch 4): weapon at −20° from the shoulder, hand at 0.5 of arm length. Weapon arm follow spring (batch 4 fix): 20 Hz, damping 1.0, max 200000 units/s².
+- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo). Guard stance (batch 4): weapon at −20° from the shoulder, hand at 0.5 of arm length. Weapon arm follow spring (batch 4 fix): 20 Hz, damping 1.0, max 200000 units/s². Spike only (harness fields, not gameplay): target distance 450 between pelvises, step 25; camera ortho size 4.5 at height 3.
 
 Add new placeholders here, with the session that introduced them.
 
@@ -146,6 +153,7 @@ Add new placeholders here, with the session that introduced them.
   - A6 Impact time: swept blade over the last two recorded steps (Box2D reports a contact one step late), then d = path distance at that time.
   - A7 `SwingSimulator` (spike loop, folded into `TurnSimulator` in Session 04); runtime ragdoll builder in `Simulation.Unity2D`; harness in `XRim.DebugTools` (references Input System).
   - A8 Gravity per body via gravity scale, tunable in arena units.
+  - `XRim.Editor` now references `XRim.DebugTools` (the spike scene menu adds the harness). The spike scene references a DebugTools component, which is fine because it is never in the build list (ARCHITECTURE says scenes never reference DebugTools; the spike scene is the dev-only exception).
   - Fix after the first Editor run (2026-10-01): the wrist hinge (hand pinned to a sliding point on the blade) blocked axial thrusts with a one-piece arm and yanked the torso with a kinematic weapon. Replaced by a one-way hand spring (`TargetJoint2D` on the arm's last segment, target = `ArmReach` point on the blade); the weapon is driven alone. A side holding a weapon without a path now gets an empty-path driver that holds the weapon still.
 
 ---

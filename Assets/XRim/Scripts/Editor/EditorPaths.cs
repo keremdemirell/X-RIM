@@ -20,6 +20,7 @@ namespace XRim.Editor
 
         public const string TuningProfilePath = TuningFolder + "/TuningProfile.asset";
         public const string SandboxScenePath = ScenesFolder + "/Sandbox.unity";
+        public const string SpikeScenePath = ScenesFolder + "/Spike.unity";
 
         /// <summary>Creates every missing folder along an "Assets/..." path.</summary>
         public static void EnsureFolder(string path)

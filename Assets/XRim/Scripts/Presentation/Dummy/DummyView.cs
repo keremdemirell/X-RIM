@@ -12,10 +12,27 @@ namespace XRim.Presentation.Dummy
     /// </summary>
     public sealed class DummyView : MonoBehaviour
     {
-        [Tooltip("One transform per body part, in order: Head, Torso, LeftArm, RightArm, LeftLeg, RightLeg.")]
+        [Tooltip("One transform per body part, in order: Head, Torso, LeftArm, RightArm, LeftLeg, RightLeg. For split limbs, the upper segment.")]
         [SerializeField] private Transform[] _parts = new Transform[BodyParts.Count];
 
+        [Tooltip("Ten-body dummies only (D2): the lower segment of each arm and leg, in the same order. Empty otherwise.")]
+        [SerializeField] private Transform[] _lowerParts = new Transform[BodyParts.Count];
+
         [SerializeField] private Transform _heldItem;
+
+        /// <summary>Wires a dummy built in code (debug tools). Arrays are indexed by <see cref="BodyPart"/>.</summary>
+        public void Configure(Transform[] parts, Transform[] lowerParts)
+        {
+            _parts = parts;
+            _lowerParts = lowerParts;
+        }
+
+        /// <summary>The visual of the item the dummy holds now (it changes with the weapon); null for none.</summary>
+        public void SetHeldItem(Transform heldItem)
+        {
+            if (_heldItem != null && _heldItem != heldItem) _heldItem.gameObject.SetActive(false);
+            _heldItem = heldItem;
+        }
 
         public void ApplyPose(FighterPose pose, ArenaSpace space)
         {
@@ -23,6 +40,15 @@ namespace XRim.Presentation.Dummy
             for (int i = 0; i < count; i++)
             {
                 Apply(_parts[i], pose.Parts[i], space);
+            }
+
+            if (pose.HasLowerSegments && _lowerParts != null)
+            {
+                int lowerCount = Mathf.Min(_lowerParts.Length, pose.LowerSegments.Length);
+                for (int i = 0; i < lowerCount; i++)
+                {
+                    Apply(_lowerParts[i], pose.LowerSegments[i], space);
+                }
             }
 
             if (_heldItem == null) return;

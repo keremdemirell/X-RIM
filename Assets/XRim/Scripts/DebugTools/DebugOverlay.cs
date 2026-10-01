@@ -1,5 +1,7 @@
 using UnityEngine;
 using XRim.App;
+using XRim.Config;
+using XRim.DebugTools.Spike;
 
 namespace XRim.DebugTools
 {
@@ -18,14 +20,16 @@ namespace XRim.DebugTools
 
         private readonly TuningPanel _tuningPanel = new TuningPanel();
         private MatchBootstrap _bootstrap;
+        private SpikeHarness _spike;
         private bool _open;
         private int _tab;
         private Vector2 _scroll;
 
         private void Start()
         {
-            // Debug tooling may look up the scene's composition root once; gameplay code never does this.
+            // Debug tooling may look up the scene's composition root (or the spike harness) once; gameplay code never does this.
             _bootstrap = FindAnyObjectByType<MatchBootstrap>();
+            _spike = FindAnyObjectByType<SpikeHarness>();
         }
 
         private void OnGUI()
@@ -56,13 +60,15 @@ namespace XRim.DebugTools
 
         private void DrawTuning()
         {
-            if (_bootstrap == null || _bootstrap.Tuning == null)
+            TuningProfile profile = _bootstrap != null ? _bootstrap.Tuning : null;
+            if (profile == null && _spike != null) profile = _spike.Tuning;
+            if (profile == null)
             {
-                GUILayout.Label("No MatchBootstrap with a TuningProfile in this scene.");
+                GUILayout.Label("No MatchBootstrap or spike harness with a TuningProfile in this scene.");
                 return;
             }
 
-            _tuningPanel.Draw(_bootstrap.Tuning);
+            _tuningPanel.Draw(profile);
         }
 
         private static void DrawPlayback()

@@ -40,6 +40,9 @@ namespace XRim.Config
         [SerializeField] private BalanceTargetsConfig _balanceTargets;
 
         public InputConfig InputConfig => _input;
+
+        /// <summary>The live simulation asset (debug tools switch the weapon driver and segmentation on it).</summary>
+        public SimulationConfig SimulationConfig => _simulation;
         public FeelConfig Feel => _feel;
         public BalanceTargetsConfig BalanceTargets => _balanceTargets;
 

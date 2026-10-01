@@ -52,7 +52,7 @@ namespace XRim.DebugTools
                 changed |= DrawField(key, target, field);
             }
 
-            if (changed) MarkDirty(asset);
+            if (changed) DebugAssets.MarkDirty(asset);
         }
 
         private bool DrawField(string sectionKey, object target, TunableField field)
@@ -118,13 +118,6 @@ namespace XRim.DebugTools
             Array values = Enum.GetValues(current.GetType());
             int index = Array.IndexOf(values, current);
             return values.GetValue((index + 1) % values.Length);
-        }
-
-        private static void MarkDirty(ScriptableObject asset)
-        {
-#if UNITY_EDITOR
-            UnityEditor.EditorUtility.SetDirty(asset);
-#endif
         }
     }
 }

@@ -12,7 +12,8 @@
         "XRim.Config",
         "XRim.Input",
         "XRim.Presentation",
-        "XRim.App"
+        "XRim.App",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

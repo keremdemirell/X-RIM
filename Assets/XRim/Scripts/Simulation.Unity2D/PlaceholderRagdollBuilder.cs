@@ -104,7 +104,15 @@ namespace XRim.Simulation.Unity2D
                 box.offset = new Vector2(length * 0.5f, 0f);
             }
 
-            Transform visual = item.transform.Find(VisualName);
+            FitHeldItemVisual(item.transform, weapon, space);
+        }
+
+        /// <summary>Resizes only the drawing of a held item (for visual copies that have no physics).</summary>
+        public static void FitHeldItemVisual(Transform item, WeaponStats weapon, ArenaSpace space)
+        {
+            float length = space.ToWorldLength(weapon.LengthUnits);
+            float width = space.ToWorldLength(weapon.InkThicknessUnits);
+            Transform visual = item.Find(VisualName);
             if (visual != null)
             {
                 visual.localPosition = new Vector3(length * 0.5f, 0f, 0f);
