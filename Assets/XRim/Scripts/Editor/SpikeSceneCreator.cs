@@ -38,25 +38,26 @@ namespace XRim.Editor
             }
 
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
-
-            var profile = AssetDatabase.LoadAssetAtPath<TuningProfile>(EditorPaths.TuningProfilePath);
-            if (profile == null)
+            if (AssetDatabase.LoadAssetAtPath<TuningProfile>(EditorPaths.TuningProfilePath) == null)
             {
                 Debug.LogError("[XRim] No TuningProfile. Run XRim/Setup/Create Default Tuning Assets first.");
                 return;
             }
 
-            Ragdoll sixBodies = LoadDummy(RagdollSegmentation.SixBodies);
-            Ragdoll tenBodies = LoadDummy(RagdollSegmentation.TenBodies);
-            if (sixBodies == null || tenBodies == null)
+            if (LoadDummy(RagdollSegmentation.SixBodies) == null || LoadDummy(RagdollSegmentation.TenBodies) == null)
             {
                 PlaceholderDummyPrefabBuilder.BuildAll();
-                sixBodies = LoadDummy(RagdollSegmentation.SixBodies);
-                tenBodies = LoadDummy(RagdollSegmentation.TenBodies);
             }
 
             EditorPaths.EnsureFolder(EditorPaths.ScenesFolder);
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            // Load the assets only now: opening a new scene unloads assets nothing references yet, which would leave
+            // references loaded before it pointing at nothing (2026-10-01: the profile and prefabs were saved as empty).
+            var profile = AssetDatabase.LoadAssetAtPath<TuningProfile>(EditorPaths.TuningProfilePath);
+            Ragdoll sixBodies = LoadDummy(RagdollSegmentation.SixBodies);
+            Ragdoll tenBodies = LoadDummy(RagdollSegmentation.TenBodies);
+            Sprite square = PlaceholderSprites.LoadOrCreate().Square;
 
             var cameraObject = new GameObject("Main Camera") { tag = MainCameraTag };
             var camera = cameraObject.AddComponent<Camera>();
@@ -72,7 +73,7 @@ namespace XRim.Editor
             SetReference(harness, SpikeHarness.FieldNames.Camera, camera);
             SetReference(harness, SpikeHarness.FieldNames.SixBodies, sixBodies);
             SetReference(harness, SpikeHarness.FieldNames.TenBodies, tenBodies);
-            SetReference(harness, SpikeHarness.FieldNames.Square, PlaceholderSprites.LoadOrCreate().Square);
+            SetReference(harness, SpikeHarness.FieldNames.Square, square);
 
             EditorSceneManager.SaveScene(scene, EditorPaths.SpikeScenePath);
             Debug.Log($"[XRim] Created {EditorPaths.SpikeScenePath}. Press Play, drag with the left mouse button to draw a path, " +
@@ -90,6 +91,7 @@ namespace XRim.Editor
             var serialized = new SerializedObject(target);
             SerializedProperty property = serialized.FindProperty(fieldName) ??
                                           throw new InvalidOperationException($"Field '{fieldName}' not found on {target.GetType().Name}.");
+            if (value == null) throw new InvalidOperationException($"Nothing to assign to '{fieldName}' on {target.GetType().Name}.");
             property.objectReferenceValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }

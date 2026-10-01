@@ -92,9 +92,11 @@ namespace XRim.DebugTools.Spike
 
         private void Start()
         {
-            if (_tuning == null || _camera == null || _sixBodies == null || _tenBodies == null)
+            string missing = (_tuning == null ? " tuning profile" : string.Empty) + (_camera == null ? " camera" : string.Empty) +
+                             (_sixBodies == null ? " 6-body dummy" : string.Empty) + (_tenBodies == null ? " 10-body dummy" : string.Empty);
+            if (missing.Length > 0)
             {
-                Debug.LogError("[XRim] The spike harness is missing references. Run XRim/Spike/Create Spike Scene again.", this);
+                Debug.LogError($"[XRim] The spike harness is missing:{missing}. Run XRim/Spike/Create Spike Scene again.", this);
                 enabled = false;
                 return;
             }
