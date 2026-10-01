@@ -2,8 +2,12 @@ using NUnit.Framework;
 using XRim.App;
 using XRim.Core;
 using XRim.Networking;
+using XRim.Rules;
 using XRim.Rules.Match;
+using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Simulation;
+using XRim.Simulation.Execution;
 using XRim.Simulation.Recording;
 using XRim.Tests.EditMode.Networking;
 
@@ -35,6 +39,20 @@ namespace XRim.Tests.EditMode.App
                 Assert.That(flow.Phase, Is.EqualTo(ClientPhase.Planning));
                 Assert.That(flow.CurrentWindow, Is.SameAs(next));
             }
+        }
+
+        [Test]
+        public void RecordingSimulator_RemembersTheLastTurnsInput()
+        {
+            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            var simulator = new RecordingTurnSimulator(new StubTurnSimulator());
+            var input = new TurnInput(TestData.CreateInitialBoard(settings), PerSide<TurnPlan>.Create(_ => TurnPlan.Empty(WeaponIds.Rapier)),
+                settings, new SimulationSettings());
+
+            Assert.That(simulator.LastInput, Is.Null);
+            simulator.Simulate(input);
+
+            Assert.That(simulator.LastInput, Is.SameAs(input));
         }
 
         private static TurnResult CreateResult(RulesSettings settings)

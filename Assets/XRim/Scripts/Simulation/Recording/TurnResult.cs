@@ -18,12 +18,17 @@ namespace XRim.Simulation.Recording
         /// <summary>What the rules state machine needs to finish the turn.</summary>
         public ExecutionReport Report { get; }
 
-        public TurnResult(int turnIndex, TurnTimeline timeline, BoardSnapshot finalBoard, ExecutionReport report)
+        /// <summary>Whether the turn settled or hit the execution hard cap (debug tools show it).</summary>
+        public TurnEndReason EndReason { get; }
+
+        public TurnResult(int turnIndex, TurnTimeline timeline, BoardSnapshot finalBoard, ExecutionReport report,
+            TurnEndReason endReason = TurnEndReason.Settled)
         {
             TurnIndex = turnIndex;
             Timeline = Guard.NotNull(timeline, nameof(timeline));
             FinalBoard = Guard.NotNull(finalBoard, nameof(finalBoard));
             Report = Guard.NotNull(report, nameof(report));
+            EndReason = endReason;
         }
     }
 }

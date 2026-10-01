@@ -19,6 +19,9 @@ namespace XRim.Tests.EditMode.Networking
 
         public List<TurnInput> Inputs { get; } = new List<TurnInput>();
 
+        /// <summary>When set, the next turn ends in this pose (then it is cleared); otherwise the board does not move.</summary>
+        public PoseSnapshot NextPose { get; set; }
+
         /// <param name="script">Called with the turn index and the state to change.</param>
         /// <param name="timelineSeconds">Duration of the recorded timeline; 0 records no frames at all.</param>
         public ScriptedTurnSimulator(Action<int, MatchState> script = null, double timelineSeconds = 0.0)
@@ -32,6 +35,11 @@ namespace XRim.Tests.EditMode.Networking
             Inputs.Add(input);
             BoardSnapshot board = input.Board.Clone();
             _script?.Invoke(board.State.TurnIndex, board.State);
+            if (NextPose != null)
+            {
+                board = new BoardSnapshot(board.State, NextPose);
+                NextPose = null;
+            }
 
             var recorder = new TimelineRecorder();
             if (_timelineSeconds > 0.0)

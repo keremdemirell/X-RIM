@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 using XRim.Config;
 using XRim.Core;
 using XRim.Rules;
+using XRim.Rules.Arena;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Simulation.Physics;
@@ -19,6 +20,10 @@ namespace XRim.Simulation.Unity2D
     /// so a whole turn can be simulated faster than real time and nothing in the visual scene is affected.
     /// Requires Play mode (SceneManager.CreateScene is a runtime API).
     /// <para>
+    /// Every <see cref="Load"/> builds a fresh physics scene and creates the bodies in a fixed order, so the same board and
+    /// plans always build the same physics world: a turn simulated twice repeats exactly (re-simulation, replays, tests).
+    /// </para>
+    /// <para>
     /// Standing: each torso is pulled toward an invisible kinematic root anchor by a strength-limited RelativeJoint2D
     /// (upright included), and every joint holds its rest angle with a hinge-motor servo. Both are solved inside the
     /// physics solver, so standing is stable, yet a hard hit can still knock the dummy (pillar 4). A kinematic-torso
@@ -26,14 +31,18 @@ namespace XRim.Simulation.Unity2D
     /// </para>
     /// <para>
     /// The held weapon is not jointed to the body: its driver moves it, and the weapon arm follows it with a hand spring
-    /// (<see cref="Ragdoll.UpdateGrip"/>), so the arm can never block or yank the weapon.
+    /// (<see cref="Ragdoll.UpdateGrip"/>), so the arm can never block or yank the weapon. Held items report contacts even
+    /// when both are kinematic (D1), so two blades meeting is a contact for the clash rules.
+    /// </para>
+    /// <para>
+    /// Arena: a floor at y = 0 and, when the edge policy says so (D22), a solid invisible wall at each edge.
     /// </para>
     /// <para>
     /// Contacts: after each step every body's contacts are polled; a pair of bodies from different owners that was not
-    /// touching after the previous step is a new contact. Floor contacts are not reported and a dummy never collides
+    /// touching after the previous step is a new contact. Floor and edge contacts are not reported and a dummy never collides
     /// with itself. Relative velocity is each body's motion over the step before (Box2D reports a contact one step after
     /// the motion that made it), measured from positions so it is right for kinematic bodies too: the approach, not the bounce.
-    /// Order: by load-time body index, which is stable (Left parts, Left weapon, Right parts, Right weapon).
+    /// Order: by load-time body index, which is stable (Left parts, Left weapon, Right parts, Right weapon, severed limbs).
     /// </para>
     /// </summary>
     public sealed class Unity2DPhysicsWorld : IPhysicsWorld
@@ -41,11 +50,16 @@ namespace XRim.Simulation.Unity2D
         private const string SceneNamePrefix = "XRim.SimulationPhysics.";
         private const string ContainerName = "Bodies";
         private const string FloorName = "Floor";
+        private const string LeftEdgeName = "ArenaEdgeLeft";
+        private const string RightEdgeName = "ArenaEdgeRight";
         private const string RootAnchorName = "RootAnchor";
         private const int SideCount = 2;
 
-        /// <summary>The floor's thickness below the arena line y = 0; thick enough that nothing tunnels through it.</summary>
-        private const float FloorThicknessUnits = 100f;
+        /// <summary>Thickness of the floor below y = 0 and of each edge wall: thick enough that nothing tunnels through.</summary>
+        private const float BoundaryThicknessUnits = 100f;
+
+        /// <summary>Height of each edge wall above the floor: far above any dummy, jump or flying limb.</summary>
+        private const float EdgeWallHeightUnits = 4000f;
 
         /// <summary>Each collider keeps its own contact offset, so two bodies count as touching at twice that gap.</summary>
         private const int ContactOffsetsPerPair = 2;
@@ -56,10 +70,10 @@ namespace XRim.Simulation.Unity2D
         /// </summary>
         private static readonly bool NormalPointsFromColliderToOtherCollider = true;
 
-        private readonly PhysicsScene2D _physicsScene;
         private readonly RagdollPrefabSet _prefabs;
         private readonly List<ContactFacts> _pendingContacts = new List<ContactFacts>();
         private readonly Fighter[] _fighters = new Fighter[SideCount];
+        private readonly List<SeveredLimb> _severedLimbs = new List<SeveredLimb>();
         private readonly List<TrackedBody> _tracked = new List<TrackedBody>();
         private readonly Dictionary<Collider2D, int> _indexByCollider = new Dictionary<Collider2D, int>();
         private readonly List<Collider2D> _colliderBuffer = new List<Collider2D>();
@@ -68,9 +82,12 @@ namespace XRim.Simulation.Unity2D
         private HashSet<long> _touching = new HashSet<long>();
         private HashSet<long> _touchingNow = new HashSet<long>();
         private SimulationSettings _simulation = new SimulationSettings();
+        private PhysicsScene2D _physicsScene;
         private GameObject _container;
 
-        public Scene Scene { get; }
+        /// <summary>The hidden scene the bodies live in. <see cref="Load"/> replaces it with a fresh one.</summary>
+        public Scene Scene { get; private set; }
+
         public ArenaSpace Space { get; }
 
         /// <param name="space">Arena-to-world scale.</param>
@@ -79,9 +96,7 @@ namespace XRim.Simulation.Unity2D
         {
             Space = space;
             _prefabs = prefabs;
-            Scene = SceneManager.CreateScene(SceneNamePrefix + Guid.NewGuid().ToString("N"),
-                new CreateSceneParameters(LocalPhysicsMode.Physics2D));
-            _physicsScene = Scene.GetPhysicsScene2D();
+            CreateScene();
         }
 
         public float TouchDistanceUnits => Space.ToArenaLength(ContactOffsetsPerPair * Physics2D.defaultContactOffset);
@@ -89,7 +104,7 @@ namespace XRim.Simulation.Unity2D
         /// <summary>A fighter's ragdoll in the hidden scene (debug tools and tests); null before <see cref="Load"/>.</summary>
         public Ragdoll GetRagdoll(Side side) => _fighters[(int)side]?.Ragdoll;
 
-        public void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation)
+        public void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation, ArenaEdges edges)
         {
             Guard.NotNull(pose, nameof(pose));
             Guard.NotNull(state, nameof(state));
@@ -98,6 +113,8 @@ namespace XRim.Simulation.Unity2D
             if (_prefabs == null) throw new InvalidOperationException("This physics world was created without ragdoll prefabs.");
 
             Clear();
+            UnloadScene();
+            CreateScene();
             _container = new GameObject(ContainerName);
             SceneManager.MoveGameObjectToScene(_container, Scene);
 
@@ -108,7 +125,12 @@ namespace XRim.Simulation.Unity2D
                 _fighters[(int)side] = LoadFighter(side, template, pose.Get(side), state.Fighters[side], rules, simulation, gravityScale);
             }
 
-            CreateFloor(rules.Arena.WidthUnits);
+            foreach (SeveredLimbPose limb in pose.SeveredLimbs)
+            {
+                _severedLimbs.Add(LoadSeveredLimb(limb, rules.Paths, simulation.Ragdoll, gravityScale));
+            }
+
+            CreateArenaBounds(edges);
             TrackBodies();
         }
 
@@ -190,7 +212,12 @@ namespace XRim.Simulation.Unity2D
             foreach (Side side in new[] { Side.Left, Side.Right })
             {
                 Fighter fighter = _fighters[(int)side];
-                if (fighter != null) Capture(fighter.Ragdoll, snapshot.Get(side));
+                if (fighter != null) Capture(fighter, snapshot.Get(side));
+            }
+
+            foreach (SeveredLimb limb in _severedLimbs)
+            {
+                snapshot.SeveredLimbs.Add(new SeveredLimbPose(limb.Owner, limb.Part, PoseOf(limb.Body)));
             }
 
             return snapshot;
@@ -202,7 +229,7 @@ namespace XRim.Simulation.Unity2D
             foreach (TrackedBody tracked in _tracked)
             {
                 Rigidbody2D body = tracked.Body;
-                if (tracked.IsFloor || body == null || !body.gameObject.activeInHierarchy) continue;
+                if (tracked.IsArena || body == null || !body.gameObject.activeInHierarchy) continue;
                 if (body.linearVelocity.magnitude >= maxSpeedWorld) return false;
                 if (Mathf.Abs(body.angularVelocity) >= angularSpeedDegreesPerSecond) return false;
             }
@@ -213,10 +240,18 @@ namespace XRim.Simulation.Unity2D
         public void Dispose()
         {
             Clear();
-            if (Scene.IsValid() && Scene.isLoaded)
-            {
-                SceneManager.UnloadSceneAsync(Scene);
-            }
+            UnloadScene();
+        }
+
+        private void CreateScene()
+        {
+            Scene = SceneManager.CreateScene(SceneNamePrefix + Guid.NewGuid().ToString("N"), new CreateSceneParameters(LocalPhysicsMode.Physics2D));
+            _physicsScene = Scene.GetPhysicsScene2D();
+        }
+
+        private void UnloadScene()
+        {
+            if (Scene.IsValid() && Scene.isLoaded) SceneManager.UnloadSceneAsync(Scene);
         }
 
         private Fighter LoadFighter(Side side, Ragdoll template, FighterPose pose, FighterState state, RulesSettings rules,
@@ -228,30 +263,31 @@ namespace XRim.Simulation.Unity2D
             if (!ragdoll.gameObject.activeSelf) ragdoll.gameObject.SetActive(true);
             if (!ragdoll.MatchesReach(rules.Paths, Space))
                 Debug.LogWarning("[XRim] The ragdoll prefab was built with another shoulder, arm length or scale than the " +
-                                 "current settings. Run XRim/Spike/Build Placeholder Dummies.");
+                                 "current settings. Run XRim/Setup/Build Placeholder Dummies.");
             ragdoll.AssignOwner(side);
 
             WeaponStats weapon = rules.FindWeapon(state.CurrentWeapon);
             BodyPart arm = BodyParts.DominantArm(state.Handedness);
             Rigidbody2D item = null;
-            if (pose.HasHeldItem && weapon != null)
+            if (pose.HasHeldItem && weapon != null && !state.IsSevered(arm))
             {
                 item = ragdoll.Hold(weapon.Id, arm);
                 if (item == null)
                 {
-                    Debug.LogWarning($"[XRim] The ragdoll prefab has no body for '{weapon.Id}'. Run XRim/Spike/Build Placeholder Dummies.");
+                    Debug.LogWarning($"[XRim] The ragdoll prefab has no body for '{weapon.Id}'. Run XRim/Setup/Build Placeholder Dummies.");
                 }
                 else
                 {
                     PlaceholderRagdollBuilder.FitHeldItem(item, weapon, Space);
                     item.bodyType = simulation.WeaponDriver == WeaponDriverKind.Kinematic ? RigidbodyType2D.Kinematic : RigidbodyType2D.Dynamic;
+                    item.useFullKinematicContacts = true;
                 }
             }
 
             ragdoll.ApplyTuning(simulation.Ragdoll, gravityScale, item != null ? arm : (BodyPart?)null);
             ragdoll.IgnoreSelfCollisions();
 
-            var fighter = new Fighter(ragdoll, ragdoll.GetBody(BodyPart.Torso), CreateRootAnchor(side, pose.Get(BodyPart.Torso)));
+            var fighter = new Fighter(ragdoll, ragdoll.GetBody(BodyPart.Torso), CreateRootAnchor(side, pose.Get(BodyPart.Torso)), pose.Clone());
             if (simulation.RootDrive.Mode == RootDriveMode.Kinematic)
             {
                 fighter.Torso.bodyType = RigidbodyType2D.Kinematic;
@@ -263,7 +299,27 @@ namespace XRim.Simulation.Unity2D
             }
 
             ragdoll.ApplyPose(pose, Space);
+            foreach (BodyPart part in BodyParts.All)
+            {
+                if (part != BodyPart.Torso && state.IsSevered(part)) ragdoll.LeaveOff(part);
+            }
+
             return fighter;
+        }
+
+        /// <summary>Session 04 placeholder: a severed limb is a loose body of the limb's shape (Session 11 builds dismemberment).</summary>
+        private SeveredLimb LoadSeveredLimb(SeveredLimbPose limb, PathSettings paths, RagdollSettings body, float gravityScale)
+        {
+            Rigidbody2D rigidbody = PlaceholderRagdollBuilder.BuildSeveredLimb(limb.Owner, limb.Part, body, paths, Space);
+            rigidbody.transform.SetParent(_container.transform, false);
+            rigidbody.gravityScale = gravityScale;
+            Vector2 position = Space.ToWorld(limb.Pose.PositionUnits);
+            rigidbody.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, 0f, limb.Pose.RotationDegrees));
+            rigidbody.position = position;
+            rigidbody.rotation = limb.Pose.RotationDegrees;
+            rigidbody.linearVelocity = Vector2.zero;
+            rigidbody.angularVelocity = 0f;
+            return new SeveredLimb(rigidbody, limb.Owner, limb.Part);
         }
 
         private Rigidbody2D CreateRootAnchor(Side side, BodyPose torsoPose)
@@ -292,19 +348,36 @@ namespace XRim.Simulation.Unity2D
             joint.correctionScale = drive.CorrectionFraction;
         }
 
-        private void CreateFloor(float widthUnits)
+        /// <summary>The floor (its top at y = 0) and, for solid edges, a wall standing on it at each edge.</summary>
+        private void CreateArenaBounds(ArenaEdges edges)
         {
-            var floor = new GameObject(FloorName);
-            floor.transform.SetParent(_container.transform, false);
-            floor.transform.localPosition = new Vector3(0f, -Space.ToWorldLength(FloorThicknessUnits) * 0.5f, 0f);
-            var body = floor.AddComponent<Rigidbody2D>();
-            body.bodyType = RigidbodyType2D.Static;
-            var box = floor.AddComponent<BoxCollider2D>();
-            box.size = new Vector2(Space.ToWorldLength(widthUnits), Space.ToWorldLength(FloorThicknessUnits));
-            floor.AddComponent<PhysicsBodyTag>().Configure(null, BodyRole.Floor, BodyPart.Torso);
+            float wall = edges.IsSolid ? BoundaryThicknessUnits : 0f;
+            CreateStaticBox(FloorName, BodyRole.Floor, new Vec2(edges.CentreXUnits, -BoundaryThicknessUnits * 0.5f),
+                edges.WidthUnits + wall * 2f, BoundaryThicknessUnits);
+            if (!edges.IsSolid) return;
+
+            float wallCentreY = (EdgeWallHeightUnits - BoundaryThicknessUnits) * 0.5f;
+            float wallHeight = EdgeWallHeightUnits + BoundaryThicknessUnits;
+            CreateStaticBox(LeftEdgeName, BodyRole.ArenaEdge, new Vec2(edges.LeftXUnits - wall * 0.5f, wallCentreY), wall, wallHeight);
+            CreateStaticBox(RightEdgeName, BodyRole.ArenaEdge, new Vec2(edges.RightXUnits + wall * 0.5f, wallCentreY), wall, wallHeight);
         }
 
-        /// <summary>Assigns every body a stable index: Left parts, Left weapon, Right parts, Right weapon, floor.</summary>
+        private void CreateStaticBox(string name, BodyRole role, Vec2 centreUnits, float widthUnits, float heightUnits)
+        {
+            var gameObject = new GameObject(name);
+            gameObject.transform.SetParent(_container.transform, false);
+            gameObject.transform.localPosition = Space.ToWorld(centreUnits);
+            var body = gameObject.AddComponent<Rigidbody2D>();
+            body.bodyType = RigidbodyType2D.Static;
+            var box = gameObject.AddComponent<BoxCollider2D>();
+            box.size = new Vector2(Space.ToWorldLength(widthUnits), Space.ToWorldLength(heightUnits));
+            gameObject.AddComponent<PhysicsBodyTag>().Configure(null, role, BodyPart.Torso);
+        }
+
+        /// <summary>
+        /// Assigns every body a stable index: Left parts, Left weapon, Right parts, Right weapon, severed limbs, then the
+        /// arena (floor and edges).
+        /// </summary>
         private void TrackBodies()
         {
             _tracked.Clear();
@@ -319,20 +392,28 @@ namespace XRim.Simulation.Unity2D
                 if (fighter.Ragdoll.ActiveHeldItem != null) bodies.Add(fighter.Ragdoll.ActiveHeldItem);
             }
 
+            foreach (SeveredLimb limb in _severedLimbs)
+            {
+                bodies.Add(limb.Body);
+            }
+
             foreach (Rigidbody2D body in bodies)
             {
                 Track(body, false);
             }
 
-            Transform floor = _container.transform.Find(FloorName);
-            if (floor != null) Track(floor.GetComponent<Rigidbody2D>(), true);
+            foreach (string arenaName in new[] { FloorName, LeftEdgeName, RightEdgeName })
+            {
+                Transform arenaBody = _container.transform.Find(arenaName);
+                if (arenaBody != null) Track(arenaBody.GetComponent<Rigidbody2D>(), true);
+            }
         }
 
-        private void Track(Rigidbody2D body, bool isFloor)
+        private void Track(Rigidbody2D body, bool isArena)
         {
             int index = _tracked.Count;
             BodyTag tag = body.TryGetComponent(out PhysicsBodyTag bodyTag) ? bodyTag.Tag : default;
-            _tracked.Add(new TrackedBody(body, tag, isFloor));
+            _tracked.Add(new TrackedBody(body, tag, isArena));
             _colliderBuffer.Clear();
             body.GetAttachedColliders(_colliderBuffer);
             foreach (Collider2D collider in _colliderBuffer)
@@ -369,7 +450,7 @@ namespace XRim.Simulation.Unity2D
             for (int self = 0; self < _tracked.Count; self++)
             {
                 TrackedBody tracked = _tracked[self];
-                if (tracked.IsFloor || !tracked.Body.gameObject.activeInHierarchy) continue;
+                if (tracked.IsArena || !tracked.Body.gameObject.activeInHierarchy) continue;
                 tracked.Body.GetContacts(_contactBuffer);
                 foreach (ContactPoint2D contact in _contactBuffer)
                 {
@@ -381,7 +462,7 @@ namespace XRim.Simulation.Unity2D
 
                     bool selfIsCollider = colliderIndex == self;
                     int other = selfIsCollider ? otherColliderIndex : colliderIndex;
-                    if (other <= self || _tracked[other].IsFloor) continue;
+                    if (other <= self || _tracked[other].IsArena) continue;
 
                     long key = (long)self * _tracked.Count + other;
                     _touchingNow.Add(key);
@@ -425,15 +506,17 @@ namespace XRim.Simulation.Unity2D
             return new ContactFacts(a.Tag, b.Tag, Space.ToArena(point), new Vec2(normal.x, normal.y), Space.ToArena(relative));
         }
 
-        private void Capture(Ragdoll ragdoll, FighterPose pose)
+        /// <summary>Every body's pose; a part left off (severed) keeps the pose it was loaded with.</summary>
+        private void Capture(Fighter fighter, FighterPose pose)
         {
+            Ragdoll ragdoll = fighter.Ragdoll;
             pose.HasLowerSegments = ragdoll.HasLowerSegments;
             foreach (BodyPart part in BodyParts.All)
             {
                 Rigidbody2D upper = ragdoll.GetBody(part);
-                if (upper != null) pose.Set(part, PoseOf(upper));
+                if (upper != null) pose.Set(part, upper.gameObject.activeSelf ? PoseOf(upper) : fighter.LoadedPose.Get(part));
                 Rigidbody2D lower = ragdoll.GetLowerBody(part);
-                if (lower != null) pose.SetLower(part, PoseOf(lower));
+                if (lower != null) pose.SetLower(part, lower.gameObject.activeSelf ? PoseOf(lower) : fighter.LoadedPose.GetLower(part));
             }
 
             Rigidbody2D item = ragdoll.ActiveHeldItem;
@@ -466,6 +549,7 @@ namespace XRim.Simulation.Unity2D
                 _fighters[i] = null;
             }
 
+            _severedLimbs.Clear();
             _tracked.Clear();
             _indexByCollider.Clear();
             _touching.Clear();
@@ -477,15 +561,34 @@ namespace XRim.Simulation.Unity2D
             public Ragdoll Ragdoll { get; }
             public Rigidbody2D Torso { get; }
             public Rigidbody2D RootAnchor { get; }
+
+            /// <summary>The pose this fighter was loaded with (parts left off keep it).</summary>
+            public FighterPose LoadedPose { get; }
+
             public bool KinematicRoot { get; set; }
             public Vector2 PushAcceleration { get; set; }
             public float PushAngularAccelerationDegrees { get; set; }
 
-            public Fighter(Ragdoll ragdoll, Rigidbody2D torso, Rigidbody2D rootAnchor)
+            public Fighter(Ragdoll ragdoll, Rigidbody2D torso, Rigidbody2D rootAnchor, FighterPose loadedPose)
             {
                 Ragdoll = ragdoll;
                 Torso = torso;
                 RootAnchor = rootAnchor;
+                LoadedPose = loadedPose;
+            }
+        }
+
+        private readonly struct SeveredLimb
+        {
+            public Rigidbody2D Body { get; }
+            public Side Owner { get; }
+            public BodyPart Part { get; }
+
+            public SeveredLimb(Rigidbody2D body, Side owner, BodyPart part)
+            {
+                Body = body;
+                Owner = owner;
+                Part = part;
             }
         }
 
@@ -498,13 +601,15 @@ namespace XRim.Simulation.Unity2D
 
             public Rigidbody2D Body { get; }
             public BodyTag Tag { get; }
-            public bool IsFloor { get; }
 
-            public TrackedBody(Rigidbody2D body, BodyTag tag, bool isFloor)
+            /// <summary>The floor or an edge wall: static, never reported as a contact.</summary>
+            public bool IsArena { get; }
+
+            public TrackedBody(Rigidbody2D body, BodyTag tag, bool isArena)
             {
                 Body = body;
                 Tag = tag;
-                IsFloor = isFloor;
+                IsArena = isArena;
                 _lastPosition = body.position;
                 _lastRotationDegrees = body.rotation;
             }

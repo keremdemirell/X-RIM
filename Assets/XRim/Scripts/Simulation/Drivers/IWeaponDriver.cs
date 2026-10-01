@@ -18,8 +18,11 @@ namespace XRim.Simulation.Drivers
         /// <summary>Where the held item should be at a time (arena units), given the torso frame's current pose.</summary>
         BodyPose EvaluateTarget(SimTime time, BodyPose torso);
 
-        /// <summary>What the physics world should do with the held item during the step from <paramref name="stepStart"/> to <paramref name="stepEnd"/>.</summary>
-        HeldItemCommand Drive(SimTime stepStart, SimTime stepEnd, BodyPose torso, BodyState heldItem);
+        /// <summary>
+        /// What the physics world should do with the held item during the step from <paramref name="stepStart"/> to
+        /// <paramref name="stepEnd"/>. The torso frame is given at both ends, because a body move carries it during the step.
+        /// </summary>
+        HeldItemCommand Drive(SimTime stepStart, SimTime stepEnd, BodyPose torsoAtStart, BodyPose torsoAtEnd, BodyState heldItem);
 
         /// <summary>Distance travelled along the path at a time: d = v·t, clamped to the path. Used for time-to-impact.</summary>
         float DistanceAlongPathUnits(SimTime time);

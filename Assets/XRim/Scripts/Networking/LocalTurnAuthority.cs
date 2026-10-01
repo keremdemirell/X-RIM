@@ -5,6 +5,7 @@ using XRim.Rules.Match;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Simulation;
+using XRim.Simulation.Drivers;
 using XRim.Simulation.Execution;
 using XRim.Simulation.Physics;
 using XRim.Simulation.Recording;
@@ -65,8 +66,8 @@ namespace XRim.Networking
 
             options = options ?? new LocalTurnAuthorityOptions();
             _hold = options.PlaybackHold ?? new PlaybackHoldSettings();
-            _weaponTips = options.WeaponTips ?? new GuardStanceWeaponTipLocator(rules, simulation);
-            _initialPose = options.InitialPose ?? new PoseSnapshot();
+            _weaponTips = options.WeaponTips ?? new PoseWeaponTipLocator(rules, simulation);
+            _initialPose = options.InitialPose;
         }
 
         public MatchPhase Phase => Machine.Phase;
@@ -77,7 +78,8 @@ namespace XRim.Networking
         public void Start()
         {
             Machine.Start(); // throws on a second call or a broken loadout
-            _board = new BoardSnapshot(Machine.State.Clone(), _initialPose.Clone());
+            PoseSnapshot pose = _initialPose ?? StartingBoard.Create(Machine.State, Rules, SimulationSettings, new AimFromShoulderModel());
+            _board = new BoardSnapshot(Machine.State.Clone(), pose.Clone());
             RaiseMatchStarted(new MatchStartInfo(Machine.Setup, _board.Clone()));
             BeginNextPlanning();
         }
@@ -141,7 +143,7 @@ namespace XRim.Networking
 
             Machine.CompleteExecution(simulated.Report);
             _board = new BoardSnapshot(Machine.State.Clone(), simulated.FinalBoard.Pose.Clone());
-            var result = new TurnResult(simulated.TurnIndex, simulated.Timeline, _board.Clone(), simulated.Report);
+            var result = new TurnResult(simulated.TurnIndex, simulated.Timeline, _board.Clone(), simulated.Report, simulated.EndReason);
             RaiseTurnResolved(result);
 
             if (Machine.Phase == MatchPhase.MatchOver)

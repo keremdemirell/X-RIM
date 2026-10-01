@@ -19,7 +19,7 @@ namespace XRim.Simulation.Unity2D
         {
             Ragdoll prefab = segmentation == RagdollSegmentation.TenBodies ? _tenBodies : _sixBodies;
             if (prefab == null)
-                throw new InvalidOperationException($"No {segmentation} ragdoll prefab. Run XRim/Spike/Build Placeholder Dummies.");
+                throw new InvalidOperationException($"No {segmentation} ragdoll prefab. Run XRim/Setup/Build Placeholder Dummies.");
             return prefab;
         }
     }

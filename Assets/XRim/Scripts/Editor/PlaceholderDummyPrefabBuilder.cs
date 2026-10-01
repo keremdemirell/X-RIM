@@ -12,8 +12,8 @@ using XRim.Simulation.Unity2D;
 namespace XRim.Editor
 {
     /// <summary>
-    /// Menu XRim/Spike/Build Placeholder Dummies (Session 02 feel spike): builds the placeholder crash-test dummy with
-    /// six bodies and with ten bodies (D2 is decided at PT1) from the live tuning profile, and saves both as prefabs.
+    /// Menu XRim/Setup/Build Placeholder Dummies: builds the placeholder crash-test dummy with six bodies and with ten bodies
+    /// (D2 picked ten; six stays selectable) from the live tuning profile, and saves both as prefabs.
     /// Run it again after changing body sizes, the shoulder or arm length, the arena scale or a weapon's length or
     /// thickness; masses, joint limits and pose holding apply without a rebuild.
     /// </summary>
@@ -22,9 +22,9 @@ namespace XRim.Editor
         private static readonly RagdollSegmentation[] Segmentations = { RagdollSegmentation.SixBodies, RagdollSegmentation.TenBodies };
 
         public static string PrefabPath(RagdollSegmentation segmentation) =>
-            $"{EditorPaths.SpikePrefabsFolder}/PlaceholderDummy{(int)segmentation}.prefab";
+            $"{EditorPaths.DummyPrefabsFolder}/PlaceholderDummy{(int)segmentation}.prefab";
 
-        [MenuItem(EditorPaths.MenuSpike + "Build Placeholder Dummies", priority = 40)]
+        [MenuItem(EditorPaths.MenuSetup + "Build Placeholder Dummies", priority = 5)]
         public static void BuildAll()
         {
             var profile = AssetDatabase.LoadAssetAtPath<TuningProfile>(EditorPaths.TuningProfilePath);
@@ -44,7 +44,7 @@ namespace XRim.Editor
             }
 
             RagdollSprites sprites = PlaceholderSprites.LoadOrCreate();
-            EditorPaths.EnsureFolder(EditorPaths.SpikePrefabsFolder);
+            EditorPaths.EnsureFolder(EditorPaths.DummyPrefabsFolder);
 
             // Build in a preview scene so the open scene is never touched.
             Scene preview = EditorSceneManager.NewPreviewScene();

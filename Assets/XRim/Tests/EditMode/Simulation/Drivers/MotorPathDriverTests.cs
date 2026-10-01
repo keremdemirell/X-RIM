@@ -37,7 +37,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             BodyPose target = driver.EvaluateTarget(start, TorsoAtOrigin);
             var held = new BodyState(target, new Vec2(_rapier.SpeedUnitsPerSecond, 0f), 0f);
 
-            HeldItemCommand command = driver.Drive(start, end, TorsoAtOrigin, held);
+            HeldItemCommand command = driver.Drive(start, end, TorsoAtOrigin, TorsoAtOrigin, held);
 
             Assert.That(command.Kind, Is.EqualTo(HeldItemCommandKind.Push));
             Assert.That(command.AccelerationUnitsPerSecondSquared.Length, Is.LessThan(1f));
@@ -51,7 +51,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             BodyPose target = driver.EvaluateTarget(SimTime.Zero, TorsoAtOrigin);
             var held = new BodyState(new BodyPose(target.PositionUnits - new Vec2(20f, 0f), 0f), Vec2.Zero, 0f);
 
-            HeldItemCommand command = driver.Drive(SimTime.Zero, _clock.TimeAtStep(1), TorsoAtOrigin, held);
+            HeldItemCommand command = driver.Drive(SimTime.Zero, _clock.TimeAtStep(1), TorsoAtOrigin, TorsoAtOrigin, held);
 
             Assert.That(command.AccelerationUnitsPerSecondSquared.X, Is.GreaterThan(0f));
         }
@@ -63,7 +63,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             MotorPathDriver driver = Begin(motor);
             var held = new BodyState(new BodyPose(new Vec2(-500f, -500f), 0f), Vec2.Zero, 0f);
 
-            HeldItemCommand command = driver.Drive(SimTime.Zero, _clock.TimeAtStep(1), TorsoAtOrigin, held);
+            HeldItemCommand command = driver.Drive(SimTime.Zero, _clock.TimeAtStep(1), TorsoAtOrigin, TorsoAtOrigin, held);
 
             Assert.That(command.AccelerationUnitsPerSecondSquared.Length, Is.EqualTo(1000f).Within(Tolerance));
         }
@@ -86,7 +86,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             {
                 SimTime stepEnd = _clock.TimeAtStep(step + 1);
                 var held = new BodyState(new BodyPose(position, rotation), velocity, angularVelocity);
-                HeldItemCommand command = driver.Drive(_clock.TimeAtStep(step), stepEnd, TorsoAtOrigin, held);
+                HeldItemCommand command = driver.Drive(_clock.TimeAtStep(step), stepEnd, TorsoAtOrigin, TorsoAtOrigin, held);
 
                 // Semi-implicit Euler, as Box2D integrates bodies.
                 velocity += command.AccelerationUnitsPerSecondSquared * _clock.StepSeconds;

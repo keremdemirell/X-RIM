@@ -10,6 +10,8 @@ namespace XRim.Rules.Settings
     [Serializable]
     public sealed class ArenaSettings
     {
+        /// <summary>Edge to edge, centred on x = 0. What the edges do comes from <c>IArenaEdgePolicy</c>.</summary>
+        [GddTbd("§13", "The fixed arena width", Proposal = "D22: 2000 (placeholder)")]
         [Placeholder("§13/§18 fixed arena width is TBD")]
         public float WidthUnits = 2000f;
 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules;
+using XRim.Rules.Arena;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Simulation;
@@ -12,7 +13,8 @@ namespace XRim.Tests.EditMode.Simulation
     /// Scriptable stand-in for Unity physics. Tests queue the contacts a step should produce, so the execution
     /// loop's priority, interrupt and clash handling can be tested without a physics engine. Held items obey their
     /// commands exactly: a move lands on its target at the end of the step, a push is integrated like Box2D does
-    /// (semi-implicit Euler). Nothing collides; the root target becomes the torso pose.
+    /// (semi-implicit Euler). Nothing collides; the root target becomes the torso pose. Physics counts as settled from
+    /// <see cref="SettlesAtStep"/> on.
     /// </summary>
     internal sealed class FakePhysicsWorld : IPhysicsWorld
     {
@@ -31,6 +33,14 @@ namespace XRim.Tests.EditMode.Simulation
         public int StepCount { get; private set; }
         public int LoadCount { get; private set; }
         public SimulationSettings LoadedSimulation { get; private set; }
+        public PoseSnapshot LoadedPose { get; private set; }
+        public ArenaEdges LoadedEdges { get; private set; }
+
+        /// <summary>Every root target set, in order (side, pose).</summary>
+        public List<(Side Side, BodyPose Pose)> RootTargets { get; } = new List<(Side, BodyPose)>();
+
+        /// <summary>The first step count at which <see cref="IsSettled"/> is true (0 = always settled, int.MaxValue = never).</summary>
+        public int SettlesAtStep { get; set; }
         public List<(Side Side, BodyPart Part)> BrokenJoints { get; } = new List<(Side, BodyPart)>();
         public float TouchDistanceUnits { get; set; }
 
@@ -49,9 +59,12 @@ namespace XRim.Tests.EditMode.Simulation
             list.AddRange(contacts);
         }
 
-        public void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation)
+        public void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation, ArenaEdges edges)
         {
             _pose = pose.Clone();
+            LoadedPose = pose;
+            LoadedEdges = edges;
+            RootTargets.Clear();
             LoadedSimulation = simulation;
             LoadCount++;
             StepCount = 0;
@@ -77,7 +90,11 @@ namespace XRim.Tests.EditMode.Simulation
         public BodyState GetHeldItemState(Side side) =>
             new BodyState(_pose.Get(side).HeldItem, _heldVelocity[(int)side], _heldAngularVelocity[(int)side]);
 
-        public void SetRootTarget(Side side, BodyPose target) => _pose.Get(side).Set(BodyPart.Torso, target);
+        public void SetRootTarget(Side side, BodyPose target)
+        {
+            RootTargets.Add((side, target));
+            _pose.Get(side).Set(BodyPart.Torso, target);
+        }
 
         public void Step(float deltaSeconds)
         {
@@ -108,7 +125,7 @@ namespace XRim.Tests.EditMode.Simulation
 
         public PoseSnapshot CapturePose() => _pose.Clone();
 
-        public bool IsSettled(float linearSpeedUnitsPerSecond, float angularSpeedDegreesPerSecond) => true;
+        public bool IsSettled(float linearSpeedUnitsPerSecond, float angularSpeedDegreesPerSecond) => StepCount >= SettlesAtStep;
 
         public void Dispose()
         {

@@ -9,6 +9,7 @@ using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Simulation;
 using XRim.Simulation.Execution;
+using XRim.Simulation.Physics;
 using XRim.Simulation.Recording;
 using XRim.Tests.EditMode.Rules.Planning;
 
@@ -98,11 +99,41 @@ namespace XRim.Tests.EditMode.Networking
             Assert.That(window.Board.State.Fighters[Side.Left].CurrentWeapon, Is.EqualTo(WeaponIds.Rapier));
             Assert.That(window.Constraints[Side.Left].PlanningDurationSeconds, Is.EqualTo(12f));
 
-            // The placeholder guard-stance tip: shoulder + (arm × hand reach + weapon length) along the guard angle.
-            Vec2 expected = _settings.Paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(_simulation.Ragdoll.GuardAngleDegrees) *
-                            (_settings.Paths.ArmLengthUnits * _simulation.Ragdoll.GuardHandReachFraction +
-                             _settings.FindWeapon(WeaponIds.Rapier).LengthUnits);
+            // The match starts on the starting board, so the tip is where the guard stance holds the weapon.
+            Vec2 expected = GuardStance.TipLocal(_settings.FindWeapon(WeaponIds.Rapier), _simulation.Ragdoll, _settings.Paths);
             Assert.That(Vec2.Distance(window.WeaponTips[Side.Left].TipLocal(WeaponIds.Rapier), expected), Is.LessThan(1e-3f));
+        }
+
+        [Test]
+        public void WithoutAnInitialPose_TheMatchStartsOnTheStartingBoard()
+        {
+            Create(new ScriptedTurnSimulator()).Start();
+
+            PoseSnapshot pose = _windows[0].Board.Pose;
+            float half = _settings.Arena.StartingGapUnits * 0.5f;
+            Assert.That(pose.Left.Get(BodyPart.Torso).PositionUnits.X, Is.EqualTo(-half));
+            Assert.That(pose.Right.Get(BodyPart.Torso).PositionUnits.X, Is.EqualTo(half));
+            Assert.That(pose.Left.HasHeldItem, Is.True, "each dummy holds its first loadout weapon");
+        }
+
+        [Test]
+        public void NextWindowsTips_ComeFromWhereTheLastTurnLeftTheWeapon()
+        {
+            // The scripted turn leaves the left weapon pointing straight up from the shoulder.
+            var simulator = new ScriptedTurnSimulator();
+            LocalTurnAuthority authority = Create(simulator);
+            authority.Start();
+            PoseSnapshot board = _windows[0].Board.Pose;
+            BodyPose pelvis = board.Left.Get(BodyPart.Torso);
+            simulator.NextPose = board.Clone();
+            simulator.NextPose.Left.HeldItem = new BodyPose(pelvis.PositionUnits + _settings.Paths.ShoulderOffsetUnits, 90f);
+
+            ReadyBoth(authority);
+            authority.Tick();
+
+            Vec2 tip = _windows[1].WeaponTips[Side.Left].TipLocal(WeaponIds.Rapier);
+            Vec2 expected = _settings.Paths.ShoulderOffsetUnits + new Vec2(0f, _settings.FindWeapon(WeaponIds.Rapier).LengthUnits);
+            Assert.That(Vec2.Distance(tip, expected), Is.LessThan(1e-3f));
         }
 
         [Test]

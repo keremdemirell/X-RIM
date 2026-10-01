@@ -110,17 +110,37 @@ namespace XRim.Tests.PlayMode.Simulation
             Assert.That(item.collisionDetectionMode, Is.EqualTo(CollisionDetectionMode2D.Continuous));
         }
 
-        [Test]
-        public void RestPose_RightSideFacesMinusX()
+        [TestCase(RagdollSegmentation.SixBodies)]
+        [TestCase(RagdollSegmentation.TenBodies)]
+        public void GuardStance_MatchesTheBuiltLayout(RagdollSegmentation segmentation)
         {
-            Ragdoll ragdoll = Build(RagdollSegmentation.SixBodies);
+            // The engine-free stance (what a headless authority starts from) must put every body where the prefab has it.
+            Ragdoll ragdoll = Build(segmentation);
+            FighterPose pose = GuardStance.Create(new BodyPose(Vec2.Zero, 0f), Side.Left, BodyPart.RightArm, null, segmentation, _body, _paths,
+                new AimFromShoulderModel());
+
+            foreach (BodyPart part in BodyParts.All)
+            {
+                Vec2 built = _space.ToArena(ragdoll.GetBody(part).transform.localPosition);
+                Assert.That(Vec2.Distance(pose.Get(part).PositionUnits, built), Is.LessThan(Tolerance), $"{part} pivot");
+                Assert.That(pose.Get(part).RotationDegrees, Is.EqualTo(0f), $"{part} hangs straight");
+                Rigidbody2D lower = ragdoll.GetLowerBody(part);
+                if (lower == null) continue;
+                Assert.That(Vec2.Distance(pose.GetLower(part).PositionUnits, _space.ToArena(lower.transform.localPosition)), Is.LessThan(Tolerance),
+                    $"{part} lower pivot");
+            }
+        }
+
+        [Test]
+        public void GuardStance_RightSideFacesMinusX()
+        {
             var torso = new BodyPose(new Vec2(350f, 180f), 0f);
             WeaponStats rapier = GddStartingValues.Rapier();
             var aim = new AimFromShoulderModel();
 
-            FighterPose left = ragdoll.CreateRestPose(new BodyPose(new Vec2(-350f, 180f), 0f), Side.Left, _space, BodyPart.RightArm,
-                rapier, _body, aim);
-            FighterPose right = ragdoll.CreateRestPose(torso, Side.Right, _space, BodyPart.RightArm, rapier, _body, aim);
+            FighterPose left = GuardStance.Create(new BodyPose(new Vec2(-350f, 180f), 0f), Side.Left, BodyPart.RightArm, rapier,
+                RagdollSegmentation.SixBodies, _body, _paths, aim);
+            FighterPose right = GuardStance.Create(torso, Side.Right, BodyPart.RightArm, rapier, RagdollSegmentation.SixBodies, _body, _paths, aim);
 
             Assert.That(right.Get(BodyPart.Torso).PositionUnits, Is.EqualTo(torso.PositionUnits));
             Assert.That(right.Get(BodyPart.Head).PositionUnits.Y, Is.EqualTo(180f + _body.TorsoHeightUnits).Within(Tolerance));
@@ -132,14 +152,14 @@ namespace XRim.Tests.PlayMode.Simulation
 
         [TestCase(RagdollSegmentation.SixBodies)]
         [TestCase(RagdollSegmentation.TenBodies)]
-        public void RestPose_WeaponArmReachesTheBlade(RagdollSegmentation segmentation)
+        public void GuardStance_WeaponArmReachesTheBlade(RagdollSegmentation segmentation)
         {
             Ragdoll ragdoll = Build(segmentation);
             WeaponStats rapier = GddStartingValues.Rapier();
-            FighterPose pose = ragdoll.CreateRestPose(new BodyPose(Vec2.Zero, 0f), Side.Left, _space, BodyPart.RightArm, rapier, _body,
+            FighterPose pose = GuardStance.Create(new BodyPose(Vec2.Zero, 0f), Side.Left, BodyPart.RightArm, rapier, segmentation, _body, _paths,
                 new AimFromShoulderModel());
 
-            // The hand is the end of the arm's last segment; it must lie on the blade's centre line.
+            // The hand is the end of the arm's last segment, as the prefab builds it; it must lie on the blade's centre line.
             BodyPose last = segmentation == RagdollSegmentation.TenBodies ? pose.GetLower(BodyPart.RightArm) : pose.Get(BodyPart.RightArm);
             float lastLength = _space.ToArenaLength(ragdoll.GetHand(BodyPart.RightArm).localPosition.magnitude);
             Vec2 hand = last.PositionUnits + Vec2.FromAngleDegrees(last.RotationDegrees - 90f) * lastLength;

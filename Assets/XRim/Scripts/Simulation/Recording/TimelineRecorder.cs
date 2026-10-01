@@ -14,6 +14,29 @@ namespace XRim.Simulation.Recording
 
         public void RecordEvent(MatchEvent matchEvent) => _events.Add(Guard.NotNull(matchEvent, nameof(matchEvent)));
 
-        public TurnTimeline Build() => new TurnTimeline(_frames.ToArray(), _events.ToArray());
+        /// <summary>
+        /// Events come out in time order, which playback needs. The engine reports a contact one step after the motion
+        /// that made it, so an event can be recorded after one that happened later; equal times keep the recorded order.
+        /// </summary>
+        public TurnTimeline Build() => new TurnTimeline(_frames.ToArray(), SortedByTime(_events));
+
+        private static MatchEvent[] SortedByTime(List<MatchEvent> events)
+        {
+            MatchEvent[] sorted = events.ToArray();
+            for (int i = 1; i < sorted.Length; i++)
+            {
+                MatchEvent current = sorted[i];
+                int j = i - 1;
+                while (j >= 0 && sorted[j].Time > current.Time)
+                {
+                    sorted[j + 1] = sorted[j];
+                    j--;
+                }
+
+                sorted[j + 1] = current;
+            }
+
+            return sorted;
+        }
     }
 }

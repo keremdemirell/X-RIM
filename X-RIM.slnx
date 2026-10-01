@@ -11,7 +11,7 @@
   <Project Path="XRim.Editor.csproj" />
   <Project Path="XRim.Input.csproj" />
   <Project Path="XRim.Core.csproj" />
-  <Project Path="XRim.Tests.PlayMode.csproj" />
   <Project Path="XRim.App.csproj" />
+  <Project Path="XRim.Tests.PlayMode.csproj" />
   <Project Path="XRim.Bots.csproj" />
 </Solution>

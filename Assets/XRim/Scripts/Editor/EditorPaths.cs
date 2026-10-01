@@ -7,7 +7,6 @@ namespace XRim.Editor
     {
         public const string MenuSetup = "XRim/Setup/";
         public const string MenuReports = "XRim/Reports/";
-        public const string MenuSpike = "XRim/Spike/";
 
         public const string XRimRoot = "Assets/XRim";
         public const string DataFolder = XRimRoot + "/Data";
@@ -16,11 +15,10 @@ namespace XRim.Editor
         public const string BodyMovesFolder = DataFolder + "/BodyMoves";
         public const string ScenesFolder = XRimRoot + "/Scenes";
         public const string PlaceholderArtFolder = XRimRoot + "/Art/Placeholder";
-        public const string SpikePrefabsFolder = XRimRoot + "/Prefabs/Spike";
+        public const string DummyPrefabsFolder = XRimRoot + "/Prefabs/Dummies";
 
         public const string TuningProfilePath = TuningFolder + "/TuningProfile.asset";
         public const string SandboxScenePath = ScenesFolder + "/Sandbox.unity";
-        public const string SpikeScenePath = ScenesFolder + "/Spike.unity";
 
         /// <summary>Creates every missing folder along an "Assets/..." path.</summary>
         public static void EnsureFolder(string path)

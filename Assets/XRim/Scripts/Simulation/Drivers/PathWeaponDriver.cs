@@ -9,7 +9,8 @@ namespace XRim.Simulation.Drivers
     /// <summary>
     /// What every path driver shares: the tip is at the path point d = v·t (GDD §9, Decided; speed is the weapon's
     /// stat, never finger speed), the held item is oriented by an <see cref="IWeaponAimModel"/>, and the target moves
-    /// with the torso frame (§6). Subclasses only decide how the held item is brought onto the target.
+    /// with the torso frame (§6). Without a path the weapon is held where it was, in the torso frame, so it travels with a
+    /// body move. Subclasses only decide how the held item is brought onto the target.
     /// </summary>
     public abstract class PathWeaponDriver : IWeaponDriver
     {
@@ -19,7 +20,7 @@ namespace XRim.Simulation.Drivers
         private Side _side;
         private float _speedUnitsPerSecond;
         private float _weaponLengthUnits;
-        private BodyPose? _holdPose;
+        private BodyPose? _holdLocal;
 
         protected PathWeaponDriver(PathSettings paths, IWeaponAimModel aim)
         {
@@ -40,23 +41,23 @@ namespace XRim.Simulation.Drivers
             _side = side;
             _speedUnitsPerSecond = weapon.SpeedUnitsPerSecond;
             _weaponLengthUnits = weapon.LengthUnits;
-            _holdPose = null;
+            _holdLocal = null;
             IsCancelled = false;
         }
 
         public BodyPose EvaluateTarget(SimTime time, BodyPose torso)
         {
-            if (_cursor.IsEmpty) return _holdPose ?? default;
+            if (_cursor.IsEmpty) return _holdLocal.HasValue ? TorsoFrame.ToArena(_holdLocal.Value, torso, _side) : default;
             Vec2 tip = _cursor.PointAt(DistanceAlongPathUnits(time));
             BodyPose local = _aim.Aim(tip, _paths.ShoulderOffsetUnits, _paths.ArmLengthUnits, _weaponLengthUnits);
             return TorsoFrame.ToArena(local, torso, _side);
         }
 
-        public HeldItemCommand Drive(SimTime stepStart, SimTime stepEnd, BodyPose torso, BodyState heldItem)
+        public HeldItemCommand Drive(SimTime stepStart, SimTime stepEnd, BodyPose torsoAtStart, BodyPose torsoAtEnd, BodyState heldItem)
         {
             if (IsCancelled) return HeldItemCommand.Limp;
-            if (_cursor.IsEmpty && !_holdPose.HasValue) _holdPose = heldItem.Pose;
-            return DriveTowardTarget(stepStart, stepEnd, torso, heldItem);
+            if (_cursor.IsEmpty && !_holdLocal.HasValue) _holdLocal = TorsoFrame.ToLocal(heldItem.Pose, torsoAtStart, _side);
+            return DriveTowardTarget(stepStart, stepEnd, torsoAtStart, torsoAtEnd, heldItem);
         }
 
         public float DistanceAlongPathUnits(SimTime time) =>
@@ -66,6 +67,7 @@ namespace XRim.Simulation.Drivers
 
         public void Cancel() => IsCancelled = true;
 
-        protected abstract HeldItemCommand DriveTowardTarget(SimTime stepStart, SimTime stepEnd, BodyPose torso, BodyState heldItem);
+        protected abstract HeldItemCommand DriveTowardTarget(SimTime stepStart, SimTime stepEnd, BodyPose torsoAtStart, BodyPose torsoAtEnd,
+            BodyState heldItem);
     }
 }

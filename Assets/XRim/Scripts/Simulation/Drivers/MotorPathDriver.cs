@@ -19,13 +19,14 @@ namespace XRim.Simulation.Drivers
             _motor = Guard.NotNull(motor, nameof(motor));
         }
 
-        protected override HeldItemCommand DriveTowardTarget(SimTime stepStart, SimTime stepEnd, BodyPose torso, BodyState heldItem)
+        protected override HeldItemCommand DriveTowardTarget(SimTime stepStart, SimTime stepEnd, BodyPose torsoAtStart, BodyPose torsoAtEnd,
+            BodyState heldItem)
         {
             float stepSeconds = (float)(stepEnd - stepStart).Seconds;
             if (stepSeconds <= 0f) return HeldItemCommand.Limp;
 
-            BodyPose now = EvaluateTarget(stepStart, torso);
-            BodyPose next = EvaluateTarget(stepEnd, torso);
+            BodyPose now = EvaluateTarget(stepStart, torsoAtStart);
+            BodyPose next = EvaluateTarget(stepEnd, torsoAtEnd);
             Vec2 targetVelocity = (next.PositionUnits - now.PositionUnits) / stepSeconds;
             float targetAngularVelocity = XMath.DeltaAngleDegrees(now.RotationDegrees, next.RotationDegrees) / stepSeconds;
 

@@ -1,7 +1,7 @@
 using UnityEngine;
 using XRim.App;
 using XRim.Config;
-using XRim.DebugTools.Spike;
+using XRim.DebugTools.Sandbox;
 
 namespace XRim.DebugTools
 {
@@ -19,26 +19,43 @@ namespace XRim.DebugTools
         private static readonly string[] Tabs = { "Tuning", "Playback", "Cheats" };
 
         private readonly TuningPanel _tuningPanel = new TuningPanel();
+        private readonly PlaybackPanel _playbackPanel = new PlaybackPanel();
         private MatchBootstrap _bootstrap;
-        private SpikeHarness _spike;
         private bool _open;
         private int _tab;
         private Vector2 _scroll;
 
         private void Start()
         {
-            // Debug tooling may look up the scene's composition root (or the spike harness) once; gameplay code never does this.
+            // Debug tooling may look up the scene's composition root once; gameplay code never does this.
             _bootstrap = FindAnyObjectByType<MatchBootstrap>();
-            _spike = FindAnyObjectByType<SpikeHarness>();
+            if (_bootstrap != null && _bootstrap.Mode == MatchMode.Sandbox) gameObject.AddComponent<SandboxController>().Init(_bootstrap, this);
+        }
+
+        /// <summary>True when a screen point (GUI coordinates, y down) is on the Debug button or the open panel.</summary>
+        internal bool Covers(Vector2 guiPoint)
+        {
+            if (ToggleRect.Contains(guiPoint)) return true;
+            return _open && PanelRect.Contains(guiPoint);
+        }
+
+        private static Rect ToggleRect => new Rect(Margin, Margin, ToggleWidth, ToggleHeight);
+
+        private static Rect PanelRect
+        {
+            get
+            {
+                float top = Margin * 2f + ToggleHeight;
+                return new Rect(Margin, top, PanelWidth, Screen.height - top - Margin);
+            }
         }
 
         private void OnGUI()
         {
-            if (GUI.Button(new Rect(Margin, Margin, ToggleWidth, ToggleHeight), _open ? "Close" : "Debug")) _open = !_open;
+            if (GUI.Button(ToggleRect, _open ? "Close" : "Debug")) _open = !_open;
             if (!_open) return;
 
-            float top = Margin * 2f + ToggleHeight;
-            GUILayout.BeginArea(new Rect(Margin, top, PanelWidth, Screen.height - top - Margin), GUI.skin.box);
+            GUILayout.BeginArea(PanelRect, GUI.skin.box);
             _tab = GUILayout.Toolbar(_tab, Tabs);
             _scroll = GUILayout.BeginScrollView(_scroll);
             switch (_tab)
@@ -61,22 +78,16 @@ namespace XRim.DebugTools
         private void DrawTuning()
         {
             TuningProfile profile = _bootstrap != null ? _bootstrap.Tuning : null;
-            if (profile == null && _spike != null) profile = _spike.Tuning;
             if (profile == null)
             {
-                GUILayout.Label("No MatchBootstrap or spike harness with a TuningProfile in this scene.");
+                GUILayout.Label("No MatchBootstrap with a TuningProfile in this scene.");
                 return;
             }
 
             _tuningPanel.Draw(profile);
         }
 
-        private static void DrawPlayback()
-        {
-            // Placeholder: binds to the TimelinePlayer once the match loop exists.
-            GUILayout.Label("Planned: playback speed 0.05×–2×, pause, frame step, scrub, loop the last turn,\n" +
-                            "and re-simulate the last turn with the current tuning.");
-        }
+        private void DrawPlayback() => _playbackPanel.Draw(_bootstrap);
 
         private static void DrawCheats()
         {

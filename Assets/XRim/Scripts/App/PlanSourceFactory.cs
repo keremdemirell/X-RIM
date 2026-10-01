@@ -27,6 +27,8 @@ namespace XRim.App
                     return new[] { CreateBot(Side.Left, setup, rules, random), CreateBot(Side.Right, setup, rules, random) };
                 case MatchMode.HotSeat:
                     return new HotSeatCoordinator(inputScheme, layout).CreateSources();
+                case MatchMode.Sandbox:
+                    throw new ArgumentException("The sandbox's plan sources come from the debug tools (MatchBootstrap.StartMatch).", nameof(mode));
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown match mode.");
             }

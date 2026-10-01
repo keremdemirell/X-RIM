@@ -75,7 +75,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             var stepStart = new SimTime(0L);
             var stepEnd = new SimTime(4_166L);
 
-            HeldItemCommand command = driver.Drive(stepStart, stepEnd, TorsoAtOrigin, default);
+            HeldItemCommand command = driver.Drive(stepStart, stepEnd, TorsoAtOrigin, TorsoAtOrigin, default);
 
             Assert.That(command.Kind, Is.EqualTo(HeldItemCommandKind.MoveTo));
             AssertNear(command.Target.PositionUnits, driver.EvaluateTarget(stepEnd, TorsoAtOrigin).PositionUnits);
@@ -113,7 +113,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             driver.Cancel();
 
             Assert.That(driver.IsComplete(SimTime.Zero), Is.True);
-            HeldItemCommand command = driver.Drive(SimTime.Zero, new SimTime(4_166L), TorsoAtOrigin, default);
+            HeldItemCommand command = driver.Drive(SimTime.Zero, new SimTime(4_166L), TorsoAtOrigin, TorsoAtOrigin, default);
             Assert.That(command.Kind, Is.EqualTo(HeldItemCommandKind.Push));
             Assert.That(command.AccelerationUnitsPerSecondSquared, Is.EqualTo(Vec2.Zero));
         }
@@ -124,12 +124,28 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             KinematicPathDriver driver = Begin(Side.Left, WeaponPath.Empty, _rapier);
             var held = new BodyState(new BodyPose(new Vec2(120f, 80f), 30f), Vec2.Zero, 0f);
 
-            HeldItemCommand command = driver.Drive(SimTime.Zero, new SimTime(4_166L), TorsoAtOrigin, held);
+            HeldItemCommand command = driver.Drive(SimTime.Zero, new SimTime(4_166L), TorsoAtOrigin, TorsoAtOrigin, held);
 
             Assert.That(driver.IsComplete(SimTime.Zero), Is.True);
             Assert.That(command.Kind, Is.EqualTo(HeldItemCommandKind.MoveTo));
             Assert.That(command.Target.PositionUnits, Is.EqualTo(held.Pose.PositionUnits));
             Assert.That(command.Target.RotationDegrees, Is.EqualTo(held.Pose.RotationDegrees));
+        }
+
+        [TestCase(Side.Left)]
+        [TestCase(Side.Right)]
+        public void NoPath_HeldWeaponTravelsWithTheTorso(Side side)
+        {
+            KinematicPathDriver driver = Begin(side, WeaponPath.Empty, _rapier);
+            var torso = new BodyPose(new Vec2(300f, 180f), 0f);
+            var held = new BodyState(new BodyPose(new Vec2(420f, 280f), 30f), Vec2.Zero, 0f);
+            driver.Drive(SimTime.Zero, new SimTime(4_166L), torso, torso, held);
+
+            var moved = new BodyPose(new Vec2(360f, 150f), 0f);
+            BodyPose target = driver.Drive(new SimTime(4_166L), new SimTime(8_333L), torso, moved, held).Target;
+
+            AssertNear(target.PositionUnits, new Vec2(480f, 250f));
+            Assert.That(target.RotationDegrees, Is.EqualTo(30f).Within(Tolerance));
         }
     }
 }

@@ -5,7 +5,6 @@ using XRim.Config;
 using XRim.Core;
 using XRim.Rules;
 using XRim.Rules.Settings;
-using XRim.Simulation.Drivers;
 using XRim.Simulation.Physics;
 using XRim.Simulation.Settings;
 
@@ -25,9 +24,6 @@ namespace XRim.Simulation.Unity2D
     {
         /// <summary>How far the built reach may differ from the current path settings before it counts as stale.</summary>
         private const float ReachToleranceUnits = 0.5f;
-
-        /// <summary>A limb's long axis points down (-90°) in the rest pose, so its rotation is its direction plus this.</summary>
-        private const float LimbAxisOffsetDegrees = 90f;
 
         /// <summary>
         /// Whether Unity's HingeJoint2D.jointAngle grows as the jointed limb turns counter-clockwise relative to its
@@ -115,7 +111,7 @@ namespace XRim.Simulation.Unity2D
 
         /// <summary>
         /// False when the prefab was built with a different shoulder, arm length or scale than the live settings, so its
-        /// reach no longer matches the §6 reach limit. Rebuild it with XRim/Spike/Build Placeholder Dummies.
+        /// reach no longer matches the §6 reach limit. Rebuild it with XRim/Setup/Build Placeholder Dummies.
         /// </summary>
         public bool MatchesReach(PathSettings paths, ArenaSpace space)
         {
@@ -345,57 +341,15 @@ namespace XRim.Simulation.Unity2D
         }
 
         /// <summary>
-        /// The standing pose, in arena units: the built layout placed at <paramref name="torso"/> (the pelvis), facing the
-        /// opponent. With a weapon, the dominant arm holds it in the guard stance (<see cref="RagdollSettings.GuardAngleDegrees"/>),
-        /// placed by the aim model so the first step of a swing starts exactly where the weapon already is.
-        /// Call on the prefab or an instance still in its built layout.
+        /// Builds this dummy without a limb it lost in an earlier turn (the limb itself lies in the arena as a severed limb).
+        /// Call after <see cref="ApplyPose"/>.
         /// </summary>
-        public FighterPose CreateRestPose(BodyPose torso, Side side, ArenaSpace space, BodyPart dominantArm, WeaponStats heldWeapon,
-            RagdollSettings body, IWeaponAimModel aim)
+        public void LeaveOff(BodyPart part)
         {
-            Guard.NotNull(body, nameof(body));
-            Guard.NotNull(aim, nameof(aim));
-            var pose = new FighterPose { HasLowerSegments = HasLowerSegments, HasHeldItem = heldWeapon != null };
-            foreach (BodyPart part in BodyParts.All)
-            {
-                pose.Set(part, LimbPose(LocalUnits(_upper[(int)part], space), 0f, torso, side));
-                Rigidbody2D lower = GetLowerBody(part);
-                if (lower != null) pose.SetLower(part, LimbPose(LocalUnits(lower, space), 0f, torso, side));
-            }
-
-            if (heldWeapon == null || _hands[(int)dominantArm] == null) return pose;
-
-            // The guard stance in the torso frame, facing +X.
-            _elbowMinDegrees = body.ElbowMinDegrees;
-            _elbowMaxDegrees = body.ElbowMaxDegrees;
-            Vec2 shoulder = LocalUnits(_upper[(int)dominantArm], space);
-            float armLength = space.ToArenaLength(ArmLengthWorld(dominantArm));
-            float bladeLength = heldWeapon.LengthUnits;
-            Vec2 guardTip = shoulder + Vec2.FromAngleDegrees(body.GuardAngleDegrees) *
-                (armLength * body.GuardHandReachFraction + bladeLength);
-            BodyPose grip = aim.Aim(guardTip, shoulder, armLength, bladeLength);
-            Vec2 axis = Vec2.FromAngleDegrees(grip.RotationDegrees);
-            HandReach(dominantArm, out float minReachWorld, out float maxReachWorld);
-            float along = ArmReach.HandAlongBlade(shoulder, grip.PositionUnits, axis, bladeLength,
-                space.ToArenaLength(minReachWorld), space.ToArenaLength(maxReachWorld));
-            Vec2 hand = grip.PositionUnits + axis * along;
-
-            Rigidbody2D lowerArm = GetLowerBody(dominantArm);
-            if (lowerArm == null)
-            {
-                pose.Set(dominantArm, LimbPose(shoulder, LimbRotation(hand - shoulder), torso, side));
-            }
-            else
-            {
-                float upperLength = space.ToArenaLength(Vector2.Distance(lowerArm.transform.localPosition, _upper[(int)dominantArm].transform.localPosition));
-                float lowerLength = space.ToArenaLength(_hands[(int)dominantArm].localPosition.magnitude);
-                Vec2 elbow = ArmReach.Elbow(shoulder, hand, upperLength, lowerLength);
-                pose.Set(dominantArm, LimbPose(shoulder, LimbRotation(elbow - shoulder), torso, side));
-                pose.SetLower(dominantArm, LimbPose(elbow, LimbRotation(hand - elbow), torso, side));
-            }
-
-            pose.HeldItem = TorsoFrame.ToArena(grip, torso, side);
-            return pose;
+            Rigidbody2D lower = GetLowerBody(part);
+            if (lower != null) lower.gameObject.SetActive(false);
+            Rigidbody2D upper = _upper[(int)part];
+            if (upper != null) upper.gameObject.SetActive(false);
         }
 
         /// <summary>Logic-driven sever: disables the joint that attaches a limb, so it falls and stays on the floor (GDD §12).</summary>
@@ -412,13 +366,6 @@ namespace XRim.Simulation.Unity2D
         {
             Rigidbody2D lower = GetLowerBody(arm);
             return lower != null ? lower : _upper[(int)arm];
-        }
-
-        private float ArmLengthWorld(BodyPart arm)
-        {
-            Rigidbody2D lower = GetLowerBody(arm);
-            float hand = _hands[(int)arm].localPosition.magnitude;
-            return lower == null ? hand : Vector2.Distance(lower.transform.localPosition, _upper[(int)arm].transform.localPosition) + hand;
         }
 
         /// <summary>Shoulder-to-hand distances the arm can make, in world units: one length for a one-piece arm.</summary>
@@ -456,19 +403,6 @@ namespace XRim.Simulation.Unity2D
             body.rotation = pose.RotationDegrees;
             body.linearVelocity = Vector2.zero;
             body.angularVelocity = 0f;
-        }
-
-        /// <summary>A part's pose in the arena from its torso-frame position and its rotation as built facing +X.</summary>
-        private static BodyPose LimbPose(Vec2 localUnits, float localRotationDegrees, BodyPose torso, Side side) =>
-            new BodyPose(TorsoFrame.ToArena(localUnits, torso, side),
-                torso.RotationDegrees + (side == Side.Right ? -localRotationDegrees : localRotationDegrees));
-
-        private static float LimbRotation(Vec2 direction) => direction.AngleDegrees + LimbAxisOffsetDegrees;
-
-        private Vec2 LocalUnits(Rigidbody2D body, ArenaSpace space)
-        {
-            Vector2 local = body.transform.localPosition;
-            return space.ToArena(IsMirrored ? MirrorX(local) : local);
         }
 
         private void SetMass(BodyPart part, float totalMass, float upperShare)

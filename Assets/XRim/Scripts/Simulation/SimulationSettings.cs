@@ -29,13 +29,14 @@ namespace XRim.Simulation
         /// <summary>1 = record a pose every step. Higher values shrink recordings (e.g. for network transfer).</summary>
         public int RecordEveryNthStep = 1;
 
-        /// <summary>D1: kinematic path following or a motor chasing the path. Switchable live in the feel spike.</summary>
-        [Placeholder("D1: the designer picks the weapon driver at PT1")]
+        /// <summary>
+        /// D1 (designer, 2026-10-01): kinematic, so the weapon is exactly on its path and t = d / v holds. The motor
+        /// driver stays selectable for feel tests. Handing the blade to physics when the rules stop it comes with D26.
+        /// </summary>
         public WeaponDriverKind WeaponDriver = WeaponDriverKind.Kinematic;
 
-        /// <summary>D2: six or ten physics bodies per dummy. Switchable live in the feel spike.</summary>
-        [Placeholder("D2: the designer picks the ragdoll segmentation at PT1")]
-        public RagdollSegmentation Segmentation = RagdollSegmentation.SixBodies;
+        /// <summary>D2 (designer, 2026-10-01): ten bodies (elbows and knees). Six stays selectable for feel tests.</summary>
+        public RagdollSegmentation Segmentation = RagdollSegmentation.TenBodies;
 
         /// <summary>
         /// Downward pull on every body. Set per body, because Unity's 2D gravity is global and the hidden

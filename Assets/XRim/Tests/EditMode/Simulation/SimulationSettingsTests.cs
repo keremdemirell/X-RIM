@@ -21,13 +21,13 @@ namespace XRim.Tests.EditMode.Simulation
         }
 
         [Test]
-        public void Defaults_KeepBothPt1DecisionsOpen()
+        public void Defaults_FollowTheD1AndD2Decisions()
         {
             var settings = new SimulationSettings();
 
             Assert.That(settings.StepRateHz, Is.EqualTo(240), "ARCHITECTURE §6: 240 Hz so the rapier does not tunnel");
-            Assert.That(settings.WeaponDriver, Is.EqualTo(WeaponDriverKind.Kinematic));
-            Assert.That(settings.Segmentation, Is.EqualTo(RagdollSegmentation.SixBodies));
+            Assert.That(settings.WeaponDriver, Is.EqualTo(WeaponDriverKind.Kinematic), "D1, decided 2026-10-01");
+            Assert.That(settings.Segmentation, Is.EqualTo(RagdollSegmentation.TenBodies), "D2, decided 2026-10-01");
         }
 
         [Test]

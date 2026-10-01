@@ -7,8 +7,10 @@ using XRim.Config;
 using XRim.Core;
 using XRim.Rules;
 using XRim.Rules.Arena;
+using XRim.Rules.Events;
 using XRim.Rules.Match;
 using XRim.Rules.Paths;
+using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Simulation;
 using XRim.Simulation.Drivers;
@@ -21,7 +23,7 @@ using XRim.Simulation.Unity2D;
 namespace XRim.Tests.PlayMode.Simulation
 {
     /// <summary>
-    /// The Unity 2D physics world in its hidden, manually stepped scene (Session 02 feel spike). The left dummy stands
+    /// The Unity 2D physics world in its hidden, manually stepped scene, driven by the turn loop. The left dummy stands
     /// at x = 0 with its pelvis one leg length above the floor; its shoulder is at (0, 100) in its torso frame.
     /// </summary>
     public sealed class Unity2DPhysicsWorldTests
@@ -72,14 +74,16 @@ namespace XRim.Tests.PlayMode.Simulation
 
         private Unity2DPhysicsWorld CreateWorld() => new Unity2DPhysicsWorld(_space, new RagdollPrefabSet(_sixBodies, _tenBodies));
 
-        private Ragdoll Template => _simulation.Segmentation == RagdollSegmentation.TenBodies ? _tenBodies : _sixBodies;
+        private ArenaEdges Edges => new RulePolicies().ArenaEdge.EdgesFor(_rules.Arena);
 
         private BodyPose TorsoAt(float x) => new BodyPose(new Vec2(x, _body.LegLengthUnits), 0f);
 
         private PoseSnapshot Board(float rightX, bool leftHolds, bool rightHolds) => new PoseSnapshot
         {
-            Left = Template.CreateRestPose(TorsoAt(0f), Side.Left, _space, BodyPart.RightArm, leftHolds ? _rapier : null, _body, _aim),
-            Right = Template.CreateRestPose(TorsoAt(rightX), Side.Right, _space, BodyPart.RightArm, rightHolds ? _rapier : null, _body, _aim),
+            Left = GuardStance.Create(TorsoAt(0f), Side.Left, BodyPart.RightArm, leftHolds ? _rapier : null, _simulation.Segmentation, _body,
+                _rules.Paths, _aim),
+            Right = GuardStance.Create(TorsoAt(rightX), Side.Right, BodyPart.RightArm, rightHolds ? _rapier : null, _simulation.Segmentation,
+                _body, _rules.Paths, _aim),
         };
 
         private MatchState State() => new MatchState(
@@ -88,15 +92,20 @@ namespace XRim.Tests.PlayMode.Simulation
 
         private Vec2 Tip(BodyPose grip) => grip.PositionUnits + Vec2.FromAngleDegrees(grip.RotationDegrees) * _rapier.LengthUnits;
 
-        private SwingResult Swing(Unity2DPhysicsWorld world, PoseSnapshot board, WeaponPath leftPath) =>
-            new SwingSimulator(world, _aim).Run(new SwingInput(board, State(), new PerSide<WeaponPath>(leftPath, null), _rules, _simulation));
+        /// <summary>One turn in which only the left dummy has a path.</summary>
+        private TurnResult Swing(Unity2DPhysicsWorld world, PoseSnapshot board, WeaponPath leftPath) =>
+            new TurnSimulator(world, new RulePolicies()).Simulate(new TurnInput(new BoardSnapshot(State(), board),
+                new PerSide<TurnPlan>(Plan(leftPath), Plan(null)), _rules, _simulation));
 
-        /// <summary>A straight thrust from the guard tip, outward from the shoulder, in the torso frame.</summary>
+        private static TurnPlan Plan(WeaponPath path) => new TurnPlan(WeaponIds.Rapier, BodyMove.None, path ?? WeaponPath.Empty, default, true);
+
+        private static int StepsSimulated(TurnResult result) => result.Timeline.Frames[result.Timeline.Frames.Count - 1].Step;
+
+        /// <summary>A straight thrust from the guard tip toward the opponent (+X in the torso frame), level with the tip.</summary>
         private WeaponPath ThrustFromGuard(PoseSnapshot board, float lengthUnits)
         {
             Vec2 start = TorsoFrame.ToLocal(Tip(board.Left.HeldItem), TorsoAt(0f), Side.Left);
-            Vec2 outward = (start - _rules.Paths.ShoulderOffsetUnits).Normalized;
-            return new WeaponPath(new[] { start, start + outward * lengthUnits });
+            return new WeaponPath(new[] { start, start + Vec2.UnitX * lengthUnits });
         }
 
         /// <summary>The fastest-moving body of both dummies, for failure messages.</summary>
@@ -191,7 +200,7 @@ namespace XRim.Tests.PlayMode.Simulation
             _simulation.Segmentation = segmentation;
             Unity2DPhysicsWorld world = CreateWorld();
             PoseSnapshot board = Board(FarAwayX, true, false);
-            world.Load(board, State(), _rules, _simulation);
+            world.Load(board, State(), _rules, _simulation, Edges);
             var clock = new SimClock(_simulation.StepRateHz);
             int steps = clock.StepsFor(StandingSeconds);
             int settledInARow = 0;
@@ -222,7 +231,7 @@ namespace XRim.Tests.PlayMode.Simulation
             WeaponPath path = ThrustFromGuard(board, 100f);
             Vec2 end = TorsoFrame.ToArena(path.Points[1], TorsoAt(0f), Side.Left);
 
-            SwingResult result = Swing(world, board, path);
+            TurnResult result = Swing(world, board, path);
 
             var clock = new SimClock(_simulation.StepRateHz);
             int expectedStep = clock.StepsFor(path.LengthUnits / _rapier.SpeedUnitsPerSecond);
@@ -235,8 +244,8 @@ namespace XRim.Tests.PlayMode.Simulation
             }
 
             Assert.That(arrivalStep, Is.InRange(expectedStep - 1, expectedStep + 1), "t = length / speed, ± one step");
-            Assert.That(result.EndReason, Is.EqualTo(SwingEndReason.Settled),
-                $"physics settles after the swing; still moving after {result.StepsSimulated} steps: {FastestBody(world)}");
+            Assert.That(result.EndReason, Is.EqualTo(TurnEndReason.Settled),
+                $"physics settles after the swing; still moving after {StepsSimulated(result)} steps: {FastestBody(world)}");
             yield return DisposeAndWait(world);
         }
 
@@ -249,9 +258,9 @@ namespace XRim.Tests.PlayMode.Simulation
             WeaponPath path = ThrustFromGuard(board, 100f);
             Vec2 end = TorsoFrame.ToArena(path.Points[1], TorsoAt(0f), Side.Left);
 
-            SwingResult result = Swing(world, board, path);
+            TurnResult result = Swing(world, board, path);
 
-            Assert.That(Vec2.Distance(Tip(result.FinalPose.Left.HeldItem), end), Is.LessThan(10f), "the motor brings the tip to the path end");
+            Assert.That(Vec2.Distance(Tip(result.FinalBoard.Pose.Left.HeldItem), end), Is.LessThan(10f), "the motor brings the tip to the path end");
             yield return DisposeAndWait(world);
         }
 
@@ -267,11 +276,13 @@ namespace XRim.Tests.PlayMode.Simulation
             Vec2 guardTip = TorsoFrame.ToLocal(Tip(board.Left.HeldItem), TorsoAt(0f), Side.Left);
             var path = new WeaponPath(new[] { guardTip, new Vec2(450f, thrustHeight), new Vec2(620f, thrustHeight) });
 
-            SwingResult result = Swing(world, board, path);
+            TurnResult result = Swing(world, board, path);
 
-            SwingContact hit = null;
-            foreach (SwingContact contact in result.Contacts)
+            TurnContact hit = null;
+            foreach (MatchEvent matchEvent in result.Timeline.Events)
             {
+                if (!(matchEvent is ContactEvent contactEvent)) continue;
+                TurnContact contact = contactEvent.Contact;
                 if (contact.WeaponSide == Side.Left && contact.Facts.B.Owner == Side.Right && contact.Facts.B.Part == BodyPart.Torso)
                 {
                     hit = contact;
@@ -306,7 +317,7 @@ namespace XRim.Tests.PlayMode.Simulation
             BodyPose leg = board.Left.Get(BodyPart.LeftLeg);
             board.Left.Set(BodyPart.LeftLeg, new BodyPose(leg.PositionUnits, forwardSwingDegrees));
 
-            world.Load(board, State(), _rules, _simulation);
+            world.Load(board, State(), _rules, _simulation, Edges);
 
             float angle = world.GetRagdoll(Side.Left).GetBody(BodyPart.LeftLeg).GetComponent<HingeJoint2D>().jointAngle;
             float forward = Ragdoll.JointAngleGrowsCounterClockwise ? angle : -angle;

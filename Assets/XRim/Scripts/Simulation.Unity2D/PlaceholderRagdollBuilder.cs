@@ -10,8 +10,8 @@ using XRim.Simulation.Settings;
 namespace XRim.Simulation.Unity2D
 {
     /// <summary>
-    /// Builds the placeholder crash-test dummy in code from primitive shapes (Session 02 feel spike). The Editor menu
-    /// XRim/Spike/Build Placeholder Dummies saves the result as prefabs; PlayMode tests build it directly.
+    /// Builds the placeholder crash-test dummy in code from primitive shapes (placeholder art until Session 17). The Editor menu
+    /// XRim/Setup/Build Placeholder Dummies saves the result as prefabs; PlayMode tests build it directly.
     /// Layout, facing +X, with the pelvis at the origin: the torso rises from the pelvis, the head sits on the neck,
     /// both arms hang from the shoulder (<c>PathSettings.ShoulderOffsetUnits</c>) and are <c>ArmLengthUnits</c> long
     /// so the ragdoll's reach matches the §6 reach limit, and both legs hang from the pelvis. With ten bodies (D2) each
@@ -92,6 +92,40 @@ namespace XRim.Simulation.Unity2D
             return ragdoll;
         }
 
+        /// <summary>
+        /// Session 04 placeholder for a severed limb lying in the arena: one loose body of the limb's shape and mass (an arm
+        /// or leg is one piece even with ten bodies), pivoting at the end that was jointed, like the dummy's own limbs, so a
+        /// limb's pose means the same on and off the dummy. Physics only, no drawing (Session 11 builds dismemberment).
+        /// </summary>
+        public static Rigidbody2D BuildSeveredLimb(Side owner, BodyPart part, RagdollSettings body, PathSettings paths, ArenaSpace space)
+        {
+            Guard.NotNull(body, nameof(body));
+            Guard.NotNull(paths, nameof(paths));
+            var gameObject = new GameObject($"Severed{owner}{part}");
+            var rigidbody = gameObject.AddComponent<Rigidbody2D>();
+            rigidbody.useAutoMass = false;
+            if (part == BodyPart.Head)
+            {
+                float diameter = space.ToWorldLength(body.HeadDiameterUnits);
+                var circle = gameObject.AddComponent<CircleCollider2D>();
+                circle.radius = diameter * 0.5f;
+                circle.offset = new Vector2(0f, diameter * 0.5f);
+                rigidbody.mass = body.HeadMass;
+            }
+            else
+            {
+                Vector2 size = SeveredLimbSizeUnits(part, body, paths);
+                bool rises = part == BodyPart.Torso;
+                var box = gameObject.AddComponent<BoxCollider2D>();
+                box.size = new Vector2(space.ToWorldLength(size.x), space.ToWorldLength(size.y));
+                box.offset = new Vector2(0f, (rises ? 0.5f : -0.5f) * box.size.y);
+                rigidbody.mass = part.IsArm() ? body.ArmMass : part.IsLeg() ? body.LegMass : body.TorsoMass;
+            }
+
+            gameObject.AddComponent<PhysicsBodyTag>().Configure(owner, BodyRole.SeveredLimb, part);
+            return rigidbody;
+        }
+
         /// <summary>Resizes a held-item body to a weapon's current stats (live tuning of length and ink thickness).</summary>
         public static void FitHeldItem(Rigidbody2D item, WeaponStats weapon, ArenaSpace space)
         {
@@ -118,6 +152,14 @@ namespace XRim.Simulation.Unity2D
                 visual.localPosition = new Vector3(length * 0.5f, 0f, 0f);
                 visual.localScale = new Vector3(length, width, 1f);
             }
+        }
+
+        /// <summary>Width and length of a severed arm, leg or torso, in arena units.</summary>
+        private static Vector2 SeveredLimbSizeUnits(BodyPart part, RagdollSettings body, PathSettings paths)
+        {
+            if (part.IsArm()) return new Vector2(body.ArmWidthUnits, paths.ArmLengthUnits);
+            if (part.IsLeg()) return new Vector2(body.LegWidthUnits, body.LegLengthUnits);
+            return new Vector2(body.TorsoWidthUnits, body.TorsoHeightUnits);
         }
 
         private readonly struct Limb

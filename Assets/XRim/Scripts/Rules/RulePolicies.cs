@@ -39,7 +39,10 @@ namespace XRim.Rules
         public IMobilityPenaltyPolicy MobilityPenalty { get; set; }
         public IArmlessAttackMode ArmlessAttack { get; set; }
         public ILimbRetrievalPolicy LimbRetrieval { get; set; }
-        public IArenaEdgePolicy ArenaEdge { get; set; }
+
+        /// <summary>D22 (§13 stays TBD): width from <c>ArenaSettings</c>, each edge a solid invisible stop.</summary>
+        public IArenaEdgePolicy ArenaEdge { get; set; } = new SolidStopArenaEdgePolicy();
+
         public ISuddenDeathNoHitPolicy SuddenDeathNoHit { get; set; }
         public ITiePolicy SuddenDeathTie { get; set; }
         public ISignatureChargeModel SignatureCharge { get; set; }

@@ -10,7 +10,8 @@ namespace XRim.Presentation.Playback
     /// <summary>
     /// Plays a recorded turn at any speed: real time, slow motion, paused, frame-stepped or scrubbed. The turn was
     /// already resolved, so playback speed and feel effects can never change the outcome.
-    /// Events fire once, in time order, when playback passes them; scrubbing backwards does not re-fire them.
+    /// Events fire once, in time order, when playback passes them; scrubbing backwards does not re-fire them, playing a
+    /// pass again (restart, loop) does.
     /// </summary>
     public sealed class TimelinePlayer
     {
@@ -29,7 +30,14 @@ namespace XRim.Presentation.Playback
         public float PlaybackSpeed { get; set; } = RealTimeSpeed;
 
         public bool IsPaused { get; set; }
+
+        /// <summary>When on, playback starts over after reaching the end (debug: watch a turn again and again).</summary>
+        public bool Loop { get; set; }
+
         public bool IsFinished => _timeline == null || CurrentTime >= _timeline.Duration;
+
+        /// <summary>The recorded frame shown now (the last at or before <see cref="CurrentTime"/>), or -1.</summary>
+        public int CurrentFrameIndex => _timeline == null ? -1 : FrameIndexAt(CurrentTime);
 
         public void Play(TurnTimeline timeline)
         {
@@ -45,7 +53,18 @@ namespace XRim.Presentation.Playback
         public void Advance(float realDeltaSeconds)
         {
             if (_timeline == null || IsPaused) return;
+            if (Loop && IsFinished) Restart();
             Seek(CurrentTime + SimTime.FromSeconds(realDeltaSeconds * PlaybackSpeed));
+        }
+
+        /// <summary>Back to the start of the current timeline; its events fire again as playback passes them.</summary>
+        public void Restart()
+        {
+            if (_timeline == null) return;
+            _nextEventIndex = 0;
+            CurrentTime = SimTime.Zero;
+            FireEventsUpTo(CurrentTime);
+            EmitPose();
         }
 
         public void Seek(SimTime time)

@@ -1,6 +1,6 @@
 namespace XRim.Simulation.Settings
 {
-    /// <summary>How many physics bodies a dummy has. The designer decides it at PT1 (D2). Hit zones are the same either way.</summary>
+    /// <summary>How many physics bodies a dummy has. D2 (designer, 2026-10-01) picked ten. Hit zones are the same either way.</summary>
     public enum RagdollSegmentation
     {
         /// <summary>One body per BodyPart: head, torso, two arms, two legs.</summary>

@@ -10,7 +10,7 @@ namespace XRim.DebugTools
 {
     /// <summary>
     /// Runtime tuning panel over every asset in a <see cref="TuningProfile"/>. Values are edited on the live assets:
-    /// they apply from the next match snapshot (in the feel spike, the next swing), and in the Editor they stay after
+    /// they apply from the next match snapshot (in the sandbox, simulation values from the next Execute), and in the Editor they stay after
     /// leaving Play mode. Nested settings groups fold open. Orange = placeholder value (not from the GDD);
     /// [TBD] = an open design question.
     /// </summary>
@@ -25,7 +25,7 @@ namespace XRim.DebugTools
 
         public void Draw(TuningProfile profile)
         {
-            GUILayout.Label("Edits apply from the next match (feel spike: the next swing). Orange = placeholder, [TBD] = open question.");
+            GUILayout.Label("Edits apply from the next match (sandbox: simulation values from the next Execute). Orange = placeholder, [TBD] = open question.");
             foreach (SettingsConfigBase config in profile.SettingsConfigs())
             {
                 DrawSection(config, config.SettingsObject, config.SettingsType);

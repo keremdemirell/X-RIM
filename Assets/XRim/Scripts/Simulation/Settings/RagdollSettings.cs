@@ -116,12 +116,16 @@ namespace XRim.Simulation.Settings
         /// <summary>
         /// The guard stance a dummy stands in before its first turn ("en garde"): the weapon points this way from the
         /// shoulder (0 = straight at the opponent, negative = down). Later turns start from wherever the last one ended.
+        /// Low and drawn in, so two rapiers start apart at the starting gap (designer, 2026-10-01: blades apart en garde).
         /// </summary>
-        [Placeholder("Session 02 spike: guard stance, tuned at PT1")]
-        public float GuardAngleDegrees = -20f;
+        [Placeholder("Session 04: low guard so the blades start apart; the rapier tip stays above the floor")]
+        public float GuardAngleDegrees = -40f;
 
-        /// <summary>How far the weapon hand is pushed out in the guard stance, as a share of the arm's length (0..1).</summary>
-        [Placeholder("Session 02 spike: guard stance, tuned at PT1")]
-        public float GuardHandReachFraction = 0.5f;
+        /// <summary>
+        /// How far the weapon hand is pushed out in the guard stance, as a share of the arm's length (0..1). 0 keeps the
+        /// grip at the shoulder, the arm bent onto the blade.
+        /// </summary>
+        [Placeholder("Session 04: grip drawn in so the blades start apart")]
+        public float GuardHandReachFraction = 0f;
     }
 }

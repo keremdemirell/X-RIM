@@ -32,6 +32,10 @@ namespace XRim.Simulation.Drivers
         public static BodyPose ToArena(BodyPose local, BodyPose torso, Side side) =>
             new BodyPose(ToArena(local.PositionUnits, torso, side), AngleToArena(local.RotationDegrees, torso, side));
 
+        /// <summary>An arena body pose in the frame; the inverse of <see cref="ToArena(BodyPose, BodyPose, Side)"/>.</summary>
+        public static BodyPose ToLocal(BodyPose arena, BodyPose torso, Side side) =>
+            new BodyPose(ToLocal(arena.PositionUnits, torso, side), AngleToLocal(arena.RotationDegrees, torso, side));
+
         private static Vec2 Mirror(Vec2 vector, Side side) => side == Side.Right ? new Vec2(-vector.X, vector.Y) : vector;
 
         private static float MirrorAngle(float degrees, Side side) => side == Side.Right ? MirroredHalfTurnDegrees - degrees : degrees;

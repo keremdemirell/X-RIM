@@ -15,7 +15,8 @@ namespace XRim.Simulation.Drivers
         {
         }
 
-        protected override HeldItemCommand DriveTowardTarget(SimTime stepStart, SimTime stepEnd, BodyPose torso, BodyState heldItem) =>
-            HeldItemCommand.MoveTo(EvaluateTarget(stepEnd, torso));
+        protected override HeldItemCommand DriveTowardTarget(SimTime stepStart, SimTime stepEnd, BodyPose torsoAtStart, BodyPose torsoAtEnd,
+            BodyState heldItem) =>
+            HeldItemCommand.MoveTo(EvaluateTarget(stepEnd, torsoAtEnd));
     }
 }

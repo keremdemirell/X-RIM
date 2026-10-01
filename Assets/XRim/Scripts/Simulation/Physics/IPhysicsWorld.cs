@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules;
+using XRim.Rules.Arena;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 
@@ -16,10 +17,12 @@ namespace XRim.Simulation.Physics
     public interface IPhysicsWorld : IDisposable
     {
         /// <summary>
-        /// Rebuilds ragdolls, held items, walls and severed limbs from a frozen board, all at zero velocity. Each
-        /// fighter holds <c>state.Fighters[side].CurrentWeapon</c> in its dominant hand (GDD §12) when its pose has one.
+        /// Rebuilds the board from a frozen pose, all at zero velocity (GDD §3 stance persistence): both ragdolls (limbs
+        /// the state marks severed are left off), held items, the severed limbs lying in the arena, the floor and the arena
+        /// edges. Each fighter holds <c>state.Fighters[side].CurrentWeapon</c> in its dominant hand (GDD §12) when its pose
+        /// has one. Electric walls come in Session 12.
         /// </summary>
-        void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation);
+        void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation, ArenaEdges edges);
 
         /// <summary>
         /// Gap at which the engine already counts two bodies as touching (its contact offset). Time-to-impact

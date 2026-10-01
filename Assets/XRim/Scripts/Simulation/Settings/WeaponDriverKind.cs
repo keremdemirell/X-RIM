@@ -1,7 +1,7 @@
 namespace XRim.Simulation.Settings
 {
     /// <summary>
-    /// How the held weapon follows its path. A pure feel choice (pillar 1); the designer decides it at PT1 (D1).
+    /// How the held weapon follows its path. A pure feel choice (pillar 1); D1 (designer, 2026-10-01) picked kinematic.
     /// Both keep the GDD §9 speed model: the target is always the path point at d = v·t.
     /// </summary>
     public enum WeaponDriverKind
