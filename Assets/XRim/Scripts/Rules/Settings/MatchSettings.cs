@@ -1,5 +1,6 @@
 using System;
 using XRim.Core.Gdd;
+using XRim.Rules.Match;
 
 namespace XRim.Rules.Settings
 {
@@ -35,5 +36,12 @@ namespace XRim.Rules.Settings
 
         [GddTbd("§6", "Drawing during the weapon lock-out", Proposal = "Allowed")]
         public bool AllowDrawingDuringLockout = true;
+
+        /// <summary>
+        /// Not in the GDD: both players reach the forfeit limit (<see cref="RuleConstants.IdleTurnsBeforeForfeit"/>) in
+        /// the same turn. The designer picked sudden death on 2026-10-01; the other option is kept switchable.
+        /// </summary>
+        [GddTbd("§3", "Both players forfeit in the same turn (not covered by the GDD)", Proposal = "Sudden death, like a double KO")]
+        public BothForfeitRule BothForfeitRule = BothForfeitRule.SuddenDeath;
     }
 }
