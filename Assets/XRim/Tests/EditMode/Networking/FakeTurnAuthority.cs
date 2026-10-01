@@ -19,6 +19,7 @@ namespace XRim.Tests.EditMode.Networking
         public event Action<MatchOutcome> MatchEnded;
 
         public List<(Side Side, PlanningCommand Command)> Received { get; } = new List<(Side, PlanningCommand)>();
+        public List<int> PlaybackFinishedTurns { get; } = new List<int>();
 
         public void Start() => MatchStarted?.Invoke(null);
 
@@ -31,6 +32,8 @@ namespace XRim.Tests.EditMode.Networking
             Received.Add((side, command));
             return CommandResult.Ok;
         }
+
+        public void NotifyPlaybackFinished(int turnIndex) => PlaybackFinishedTurns.Add(turnIndex);
 
         public void RaisePlanningStarted(PlanningWindow window) => PlanningStarted?.Invoke(window);
 

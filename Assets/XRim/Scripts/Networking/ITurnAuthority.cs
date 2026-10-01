@@ -40,5 +40,13 @@ namespace XRim.Networking
         /// the server may still reject the command.
         /// </summary>
         CommandResult Send(Side side, PlanningCommand command);
+
+        /// <summary>
+        /// The client finished playing back the result of this turn. An authority that holds the next planning phase
+        /// until playback is done (<see cref="PlaybackHoldMode.ClientReport"/>) starts its planning timer on the next
+        /// <see cref="Tick"/> after this call, so the replay never eats planning time (ARCHITECTURE §5). Ignored when
+        /// the authority does not wait for clients, or when <paramref name="turnIndex"/> is not the turn being held.
+        /// </summary>
+        void NotifyPlaybackFinished(int turnIndex);
     }
 }

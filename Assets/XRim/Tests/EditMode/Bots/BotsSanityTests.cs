@@ -30,7 +30,7 @@ namespace XRim.Tests.EditMode.Bots
         }
 
         [Test]
-        public void BotPlanSource_SendsMoveThenReady()
+        public void BotPlanSource_SendsMoveThenPathThenReady()
         {
             RulesSettings settings = GddStartingValues.CreateRulesSettings();
             var authority = new FakeTurnAuthority();
@@ -41,9 +41,10 @@ namespace XRim.Tests.EditMode.Bots
                 authority.RaisePlanningStarted(NetworkingSanityTests.CreateWindow(settings));
             }
 
-            Assert.That(authority.Received.Count, Is.EqualTo(2));
+            Assert.That(authority.Received.Count, Is.EqualTo(3), "the mace is already held, so no weapon switch");
             Assert.That(authority.Received[0].Command, Is.InstanceOf<SetBodyMoveCommand>());
-            Assert.That(authority.Received[1].Command, Is.InstanceOf<SetReadyCommand>());
+            Assert.That(authority.Received[1].Command, Is.InstanceOf<SetPathCommand>());
+            Assert.That(authority.Received[2].Command, Is.InstanceOf<SetReadyCommand>());
             Assert.That(authority.Received.TrueForAll(r => r.Side == Side.Right), Is.True);
         }
     }

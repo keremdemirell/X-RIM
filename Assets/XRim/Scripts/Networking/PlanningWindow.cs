@@ -18,14 +18,21 @@ namespace XRim.Networking
         /// <summary>The frozen board both players plan from (GDD §3).</summary>
         public BoardSnapshot Board { get; }
 
+        /// <summary>
+        /// Where each side's weapon tip rests in its torso frame, the point a stroke's lead-in starts from (D3). Clients
+        /// need it for the ink preview (Session 08) and bots for their strokes; the authority uses the same values.
+        /// </summary>
+        public PerSide<IWeaponTipSource> WeaponTips { get; }
+
         public PlanningWindow(int turnIndex, double deadlineSeconds, PerSide<PlanningConstraints> constraints,
-            bool isSuddenDeath, BoardSnapshot board)
+            bool isSuddenDeath, BoardSnapshot board, PerSide<IWeaponTipSource> weaponTips)
         {
             TurnIndex = turnIndex;
             DeadlineSeconds = deadlineSeconds;
             Constraints = Guard.NotNull(constraints, nameof(constraints));
             IsSuddenDeath = isSuddenDeath;
             Board = Guard.NotNull(board, nameof(board));
+            WeaponTips = Guard.NotNull(weaponTips, nameof(weaponTips));
         }
     }
 }

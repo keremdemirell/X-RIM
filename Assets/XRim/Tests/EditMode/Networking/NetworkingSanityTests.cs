@@ -7,6 +7,7 @@ using XRim.Rules.Match;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Simulation;
+using XRim.Tests.EditMode.Rules.Planning;
 
 namespace XRim.Tests.EditMode.Networking
 {
@@ -44,7 +45,8 @@ namespace XRim.Tests.EditMode.Networking
         internal static PlanningWindow CreateWindow(RulesSettings settings) => new PlanningWindow(
             0, settings.Match.PlanningDurationSeconds,
             PerSide<PlanningConstraints>.Create(_ => PlanningConstraints.CreateDefault(settings.Match)),
-            false, TestData.CreateInitialBoard(settings));
+            false, TestData.CreateInitialBoard(settings),
+            PerSide<IWeaponTipSource>.Create(_ => new FixedWeaponTipSource(new Vec2(100f, 100f))));
 
         private sealed class RecordingPlanSource : IPlanSource
         {
