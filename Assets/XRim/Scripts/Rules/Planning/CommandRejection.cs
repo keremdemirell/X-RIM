@@ -12,5 +12,8 @@ namespace XRim.Rules.Planning
         SignatureUnavailable = 7,
         ReadyCancelNotAllowed = 8,
         DrawingLockedOut = 9,
+
+        /// <summary>Ready is pressed: the plan is frozen until Ready is cancelled (GDD §3).</summary>
+        AlreadyReady = 10,
     }
 }

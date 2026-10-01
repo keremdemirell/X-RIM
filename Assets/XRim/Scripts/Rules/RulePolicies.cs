@@ -17,8 +17,11 @@ namespace XRim.Rules
     /// </summary>
     public sealed class RulePolicies
     {
-        public IIdleTurnPolicy IdleTurn { get; set; }
-        public IPublicStatePolicy PublicState { get; set; }
+        /// <summary>D10 (not decided): any body move, drawn path or signature move counts as a move for the forfeit counter.</summary>
+        public IIdleTurnPolicy IdleTurn { get; set; } = new AnyMoveIdleTurnPolicy();
+
+        /// <summary>The opponent sees the weapon and Ready; a charged signature move only if allowed (§8, TBD).</summary>
+        public IPublicStatePolicy PublicState { get; set; } = new DefaultPublicStatePolicy();
         /// <summary>GDD §6: plain length, plus the bend penalty for weapons whose rigidity is enabled (keep or cut: TBD).</summary>
         public IInkCostModel InkCost { get; set; } = new RigidityInkCostModel();
 

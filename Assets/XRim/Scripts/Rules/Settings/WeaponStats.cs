@@ -56,5 +56,18 @@ namespace XRim.Rules.Settings
         public List<string> TraitIds = new List<string>();
 
         public WeaponId WeaponId => new WeaponId(Id);
+
+        /// <summary>
+        /// This weapon with its ink length scaled, for effects that change the ink budget
+        /// (<c>PlanningConstraints.InkLengthMultiplier</c>). A shallow copy that shares the rigidity and trait
+        /// data with the original, so treat it as read-only. Returns this weapon when the multiplier is 1.
+        /// </summary>
+        public WeaponStats WithInkLengthMultiplier(float multiplier)
+        {
+            if (multiplier == 1f) return this;
+            var copy = (WeaponStats)MemberwiseClone();
+            copy.InkLengthUnits = InkLengthUnits * multiplier;
+            return copy;
+        }
     }
 }

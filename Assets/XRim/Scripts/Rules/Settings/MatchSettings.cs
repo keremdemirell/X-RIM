@@ -22,8 +22,16 @@ namespace XRim.Rules.Settings
         /// <summary>GDD §6, Tunable: weapon switching is disabled in the final N seconds of planning.</summary>
         public float WeaponSwitchLockoutSeconds = 1.5f;
 
-        [GddTbd("§3", "Can a player cancel Ready to edit?")]
-        public bool AllowReadyCancel = false;
+        /// <summary>
+        /// D9 (not decided; recommended default built as a flag): Ready can be cancelled to edit again. The opponent
+        /// sees Ready (Decided), so a fake Ready is a bluff (pillar 2).
+        /// </summary>
+        [GddTbd("§3", "Can a player cancel Ready to edit?", Proposal = "Allowed until the lock-out starts")]
+        public bool AllowReadyCancel = true;
+
+        /// <summary>D9: whether Ready can still be cancelled in the final <see cref="WeaponSwitchLockoutSeconds"/>.</summary>
+        [GddTbd("§3", "Can Ready be cancelled in the final lock-out seconds?", Proposal = "No: the cancel window closes when the weapon lock-out starts")]
+        public bool AllowReadyCancelDuringLockout = false;
 
         [GddTbd("§6", "Drawing during the weapon lock-out", Proposal = "Allowed")]
         public bool AllowDrawingDuringLockout = true;

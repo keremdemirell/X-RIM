@@ -10,8 +10,15 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 - **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
 - **Last completed: Session 02 (feel spike), 2026-10-01**, 6 batches + 3 fixes (commits `35617c5`, `bda68ce`, `6bce333`, `bdd001f`, `6eda8c8`, `76bc780`, `98f0a31`, `a35f92d`, `ca3efb3`, plus the closing memory commit).
-- **Waiting for: playtest checkpoint PT1** (`Docs/SESSION_PLAN.md` §5): the designer plays the spike scene and decides **D1** (weapon driver) and **D2** (segmentation). Record the report under *Playtest reports*, changed values under *Tunable values changed*, decisions under *Decisions*; fix nothing yet, list bugs under *Known issues*.
-- **Next session to start (after PT1):** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`.
+- **PT1 reported 2026-10-01** (see *Playtest reports*): feel 2/10 (expected: no body moves yet), no values changed, no bugs, **D1 and D2 not decided** ("too early"). Session 04 needs them: until the designer decides, build D1 (kinematic swing, hand over to physics when the rules stop the weapon) and D2 (10 bodies) as flagged seams with the spike recommendations.
+- **Session 03 (match loop and planning rules): IN PROGRESS, started 2026-10-01.** Plan approved 2026-10-01, five batches:
+  1. **Planning commands:** `PlanningSession` (all commands, timeout, public state), `PlanningAudit` (switch and Ready times), default `IPublicStatePolicy` and `IIdleTurnPolicy`, D6/D9 flags, `RulePolicies` wiring; tests in `Tests/EditMode/Rules/Planning/`.
+  2. **Plan validation:** `PlanValidator` (loadout, constraints, ink, path validity, switch and Ready timing); tests.
+  3. **End conditions:** `EndConditionEvaluator` (KO, double KO, forfeit, turn cap, D11 order), sudden-death setup seam; tests.
+  4. **Match state machine:** `MatchStateMachine` (all phases, `Tick`, `Apply`, `CompleteExecution`, idle counters); tests with `ManualClock`.
+  5. **Authority and bots:** `LocalTurnAuthority`, playback hold hook, `IWeaponTipLocator`, `RandomBotBrain` and `BotPlanSource` emit valid plans; headless bot-vs-bot tests (scripted KO, stalled match to sudden-death setup).
+  - **Done: batch 1 (2026-10-01). Next: batch 2 (plan validation).**
+- **Next session after 03:** Session 04, `Docs/sessions/session-04-turn-simulation-and-playback.md` (needs D1, D2 and D22).
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
   - Which tests run: those whose namespace names an engine-free module (`XRim.Tests.EditMode.<Module>…`). Keep test namespaces matching their folders.
@@ -20,6 +27,11 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 ## Completed work log
 
+- **Session 03 (match loop and planning rules), in progress, started 2026-10-01.**
+  - **Batch 1, planning commands** (`Rules/Planning/`, `Rules/Settings/MatchSettings.cs`, `Rules/RulePolicies.cs`):
+    - `PlanningSession` implements every command. Weapon switch: only from the loadout, erases the path, refused from `deadline − WeaponSwitchLockoutSeconds` on (boundary included: exactly 1.5 s left is already locked), public at once; selecting the weapon already held is not a switch. Body move: per `PlanningConstraints`. Path: runs `PathBuilder` (lead-in from the weapon tip, reach, ink cut-off, break cut), so over-budget strokes are cut, not refused; a stroke with no points or no movement is `InvalidPath`; a zero ink budget is `InkBudgetExceeded`; `InkLengthMultiplier` scales the budget through the new `WeaponStats.WithInkLengthMultiplier`. `UseSignature` is always `SignatureUnavailable` until Session 15. Ready: idempotent; cancel per D9 flags; while Ready every plan command is refused with the new `CommandRejection.AlreadyReady`. After the deadline every command is `NotInPlanningPhase`, and `CurrentPlan` still returns whatever was set (timeout executes it).
+    - New: `PlanningAudit` (when the weapon, path and Ready last changed, for the validator), `IWeaponTipSource`, `DefaultPublicStatePolicy`, `AnyMoveIdleTurnPolicy` (D10), both wired as `RulePolicies` defaults; `PublicPlanningState` is now `IEquatable` (the authority compares it to raise `PublicStateChanged`).
+    - Tests: `Tests/EditMode/Rules/Planning/` (52): lock-out edge (just before, exactly at, inside, tunable length), erase on switch, every body-move/path/ink/Ready/cancel/timeout rule, secrecy of the public state, audit, policies. EditMode run here 142 → 194.
 - **Session 02 (feel spike), 2026-09-29 to 2026-10-01.** Details: git log and the code; key pieces:
   - Engine-free (`XRim.Simulation`): `SimulationSettings` (+ `Settings/` driver, segmentation, motor, root drive, ragdoll, gravity, `Validate`), `TorsoFrame`, `PathCursor`, `IWeaponAimModel`/`AimFromShoulderModel`, `IWeaponDriver.Drive` → `HeldItemCommand`, `KinematicPathDriver`, `MotorPathDriver`, `WeaponDriverFactory`, `ArmReach`, `ImpactTimeRefiner`, `SwingSimulator` (spike loop for Session 04), `Rules/Combat/ContactAngle`. `IPhysicsWorld` gained `Load(…, SimulationSettings)`, `TouchDistanceUnits`, `PushHeldItem`, `GetHeldItemState`; `FighterPose` gained lower segments.
   - Unity (`XRim.Simulation.Unity2D`): `PlaceholderRagdollBuilder`, `Ragdoll` (mirror, tuning, servos, hand-follow spring, guard rest pose), `RagdollPrefabSet`, full `Unity2DPhysicsWorld` (hidden scene, root anchor + `RelativeJoint2D`, floor, contact polling).
@@ -98,7 +110,11 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 | 2026-09-29 | §6 rigidity formula read as written: Δθ is the whole turn angle, applied to segments turning more than the threshold (cost jumps at the threshold). Keep/cut rigidity stays TBD; k stays a placeholder. | Designer | `RigidityInkCostModel` (Session 01) |
 | 2026-09-29 | **Weapon orientation along the path (not in the GDD): aim from the shoulder** as the default seam. The path is the tip's path; the weapon lies on the line shoulder → path point, the hand slides along it within arm reach. Every such choice must maximize feel, rush and legendary moments. | Designer | `IWeaponAimModel` (Session 02) |
 
-Other prototype decisions (D1, D2, D6–D27 in SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
+| 2026-10-01 | **Both players forfeit in the same turn (not in the GDD): sudden death setup**, treated like a double KO. Built as a flagged seam. | Designer | `EndConditionEvaluator` (Session 03) |
+| 2026-10-01 | **D6, D8, D9, D10, D11: not decided; the designer asked for the recommended defaults as flagged `[GddTbd]` seams** (D6 drawing allowed in lock-out; D8 rapier/mace/shield, no shield slot required; D9 Ready cancel allowed until the lock-out starts; D10 any body move, drawn path or signature move resets the forfeit counter; D11 double KO > single KO > forfeit > turn cap). | Designer | `MatchSettings`, `LoadoutSettings`, `IIdleTurnPolicy`, `EndConditionEvaluator` (Session 03) |
+| 2026-10-01 | **D1 and D2 not decided at PT1** ("too early"). Seams with the spike recommendations until decided. | Designer | Session 04 |
+
+Other prototype decisions (D7, D12–D27 in SESSION_PLAN.md §4) are **not decided yet**. Add a row here for each one the designer decides, with the date. Undecided items are built with the recommended default as a flagged `[GddTbd]` seam.
 
 ---
 
@@ -139,6 +155,14 @@ Add new placeholders here, with the session that introduced them.
 
 ---
 
+- **Session 03 (approved 2026-10-01):**
+  - `PlanningSession` constructor also takes the loadout, `RulePolicies` and the weapon tip in the torso frame (it runs `PathBuilder`). `PlanValidator.Validate` takes the loadout and a `PlanningAudit` (switch and Ready times).
+  - Weapon-tip seam, refined in batch 1: `IWeaponTipSource` lives in `Rules.Planning` (the session needs it and Rules cannot see boards or poses). The authority builds one per side per turn; batch 5 adds its default, derived from the Session 02 guard-stance numbers and tagged `[Placeholder]`. Session 04 replaces it with the tip read from the frozen pose. Also new in batch 1: `CommandRejection.AlreadyReady` (appended to the enum) and `PlanningAudit`.
+  - `ITurnAuthority` gains `NotifyPlaybackFinished(int turnIndex)`. `LocalTurnAuthority` playback hold modes: none (headless), timeline duration, client report (with a placeholder timeout).
+  - Assumptions built and flagged: the turn cap fires after turn 30 resolves and never re-triggers inside sudden death; sudden-death setup sets both HP to `RuleConstants.SuddenDeathHp` (otherwise a double KO re-triggers forever), while board carry-over and the first-hit and tie rules stay a flagged Session 12 seam; a locked plan that fails validation executes as an empty plan with the side's current weapon.
+
+---
+
 ## Known issues and tech debt
 
 - Unity 6.5 conventions measured in the Editor (2026-10-01): contact normals point from `ContactPoint2D.collider` to `otherCollider` (confirmed, `ThrustIntoTorso_…` green); `HingeJoint2D.jointAngle` grows **clockwise** for the jointed body relative to its parent (measured −30 for a +30 forward swing), so `Ragdoll.JointAngleGrowsCounterClockwise` is false and limits are flipped when applied.
@@ -154,7 +178,8 @@ Add new placeholders here, with the session that introduced them.
 
 ## Open questions for the designer
 
-- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). **D1 and D2 are answered at PT1** (recommendations in *Session 02 spike findings*). D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
+- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). **D1 and D2 were left open at PT1** (2026-10-01); recommendations are in *Session 02 spike findings*, and Session 04 builds them as flagged seams until decided. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
+- Session 03: D6, D8, D9, D10, D11 are flagged seams with the recommended defaults (see *Decisions*); confirm or change them at PT3.
 - Later decisions by session: `Docs/SESSION_PLAN.md` §4, *Later decisions*.
 - Optional: a rough SFX set before Session 13 (`Docs/SESSION_PLAN.md` §3).
 
@@ -165,9 +190,22 @@ Add new placeholders here, with the session that introduced them.
 | Date | Value | GDD | Now | Why |
 |---|---|---|---|---|
 | 2026-09-29 | Turn cap | 15 (Appendix A) | 30 | Designer correction; §3 and §13 already say 30 |
+| 2026-10-01 | `MatchSettings.AllowReadyCancel` (code default) | TBD (§3) | `true`, plus new `AllowReadyCancelDuringLockout` = `false` | D9 recommended default as a flagged seam: cancel allowed until the lock-out starts. **The existing `Assets/XRim/Data/Tuning/MatchRules.asset` still stores `AllowReadyCancel: 0`**; tick it in the Inspector or tuning panel (never hand-edited). |
 
 ---
 
 ## Playtest reports
 
-None yet. PT1 follows Session 02. Report format: `Docs/SESSION_PLAN.md` §5.
+Report format: `Docs/SESSION_PLAN.md` §5.
+
+```
+PT1 report, 2026-10-01
+Feel rating (1-10): 2
+What felt great: Nothing was moving on the bodies, so the sword just extended along the drawn pattern. Not
+  expected to create a legendary moment yet; the designer expects that to come in later sessions.
+What surprised me (good or bad): Mechanically nothing seems wrong.
+Values I changed in the tuning panel: none. Maybe movement could be faster, but not changed for now.
+Bugs: none.
+Decisions I made: none. D1 and D2 left open: "very beginning of the mechanics, it will improve so much more".
+```
+Claude's reading: the 2/10 is about the missing body and ragdoll reaction (the spike has a static target and no body moves), not a fault in the swing. Nothing to fix. The weapon-speed remark ("maybe movement can be faster") is a tuning note for Session 04/13, not a change.
