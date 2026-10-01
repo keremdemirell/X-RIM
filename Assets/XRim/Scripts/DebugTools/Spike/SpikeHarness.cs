@@ -29,7 +29,6 @@ namespace XRim.DebugTools.Spike
     /// </summary>
     public sealed class SpikeHarness : MonoBehaviour
     {
-        private const Handedness SpikeHandedness = Handedness.Right;
         private const int DefaultSpeedIndex = 4;
         private const float MinTargetDistanceUnits = 100f;
         private const float FloorThicknessUnits = 100f;
@@ -37,11 +36,12 @@ namespace XRim.DebugTools.Spike
         private const string SpriteShaderName = "Universal Render Pipeline/2D/Sprite-Unlit-Default";
         private const string FallbackShaderName = "Sprites/Default";
 
+        private const string NewLine = "\n";
         private const float HudMargin = 8f;
         private const float HudPadding = 6f;
         private const float HudWidth = 640f;
         private const float HudLineHeight = 18f;
-        private const int HudLineCount = 6;
+        private const int HudLineCount = 7;
 
         /// <summary>Screen corner of the Debug overlay's button (GUI coordinates); strokes never start there.</summary>
         private static readonly Rect OverlayButtonArea = new Rect(0f, 0f, 110f, 60f);
@@ -56,8 +56,9 @@ namespace XRim.DebugTools.Spike
         [SerializeField] private Ragdoll _tenBodies;
         [SerializeField] private Sprite _square;
 
-        [Tooltip("Distance between the two pelvises, arena units. Spike only: matches start at ArenaSettings.StartingGapUnits.")]
-        [SerializeField] private float _targetDistanceUnits = 450f;
+        [Tooltip("Where the target stands when the weapon changes: its chest at this share of the weapon's reach " +
+                 "(arm + weapon). Spike only; matches start at ArenaSettings.StartingGapUnits.")]
+        [SerializeField] private float _targetReachFraction = 0.85f;
 
         [SerializeField] private float _targetDistanceStepUnits = 25f;
 
@@ -76,6 +77,8 @@ namespace XRim.DebugTools.Spike
         private BuiltPath _built;
         private SwingResult _lastResult;
         private double _lastSimulateMilliseconds;
+        private float _targetDistanceUnits;
+        private bool _weaponStartsInsideTarget;
         private int _weaponIndex;
         private int _speedIndex = DefaultSpeedIndex;
         private bool _playing;
@@ -109,6 +112,7 @@ namespace XRim.DebugTools.Spike
             _drawer = new SpikePathDrawer(transform, CreateLineMaterial());
             Snapshot(out RulesSettings rules, out _);
             CreateFloor(rules.Arena.WidthUnits);
+            PlaceTargetInsideReach();
             ResetBoard();
         }
 
@@ -181,19 +185,9 @@ namespace XRim.DebugTools.Spike
             EnsureVisuals(simulation.Segmentation);
 
             WeaponStats weapon = rules.FindWeapon(CurrentWeapon);
-            Ragdoll template = Template(simulation.Segmentation);
-            BodyPart dominantArm = BodyParts.DominantArm(SpikeHandedness);
-            float pelvisHeight = simulation.Ragdoll.LegLengthUnits;
-            var attacker = new BodyPose(new Vec2(-_targetDistanceUnits * 0.5f, pelvisHeight), 0f);
-            var target = new BodyPose(new Vec2(_targetDistanceUnits * 0.5f, pelvisHeight), 0f);
-            _board = new PoseSnapshot
-            {
-                Left = template.CreateRestPose(attacker, Side.Left, _space, dominantArm, weapon, simulation.Ragdoll, _aim),
-                Right = template.CreateRestPose(target, Side.Right, _space, dominantArm, null, simulation.Ragdoll, _aim),
-            };
-            _state = new MatchState(
-                PerSide<FighterState>.Create(_ => new FighterState(SpikeHandedness, rules.Damage.MaxHp, CurrentWeapon)),
-                PerSide<ElectricWallState>.Create(_ => new ElectricWallState()));
+            _board = SpikeBoard.CreatePose(Template(simulation.Segmentation), simulation, _space, _aim, weapon, _targetDistanceUnits);
+            _state = SpikeBoard.CreateState(rules, CurrentWeapon);
+            _weaponStartsInsideTarget = SpikeBoard.WeaponStartsInsideTarget(_board, weapon, simulation.Ragdoll);
 
             _attacker.Hold(weapon, _space);
             _target.Hold(null, _space);
@@ -254,6 +248,7 @@ namespace XRim.DebugTools.Spike
             if (index == _weaponIndex) return;
             _weaponIndex = index;
             ClearPath();
+            PlaceTargetInsideReach();
             ResetBoard();
         }
 
@@ -276,6 +271,14 @@ namespace XRim.DebugTools.Spike
                 : RagdollSegmentation.SixBodies;
             DebugAssets.MarkDirty(config);
             ResetBoard();
+        }
+
+        /// <summary>Puts the target just inside the current weapon's reach, so it can be hit without starting inside it.</summary>
+        private void PlaceTargetInsideReach()
+        {
+            Snapshot(out RulesSettings rules, out SimulationSettings simulation);
+            WeaponStats weapon = rules.FindWeapon(CurrentWeapon);
+            if (weapon != null) _targetDistanceUnits = SpikeBoard.DistanceInsideReach(rules.Paths, simulation.Ragdoll, weapon, _targetReachFraction);
         }
 
         private void ChangeTargetDistance(float deltaUnits)
@@ -367,7 +370,7 @@ namespace XRim.DebugTools.Spike
         {
             if (_board == null) return;
             float height = HudPadding * 2f + HudLineHeight * HudLineCount;
-            _hudRect = new Rect(HudMargin, Screen.height - height - HudMargin, HudWidth, height);
+            _hudRect = new Rect(Screen.width - HudWidth - HudMargin, HudMargin, HudWidth, height);
             GUI.Box(_hudRect, GUIContent.none);
             GUI.Label(new Rect(_hudRect.x + HudPadding, _hudRect.y + HudPadding, HudWidth - HudPadding * 2f, height - HudPadding * 2f),
                 HudText());
@@ -384,7 +387,8 @@ namespace XRim.DebugTools.Spike
                    "Draw: drag with the left mouse button    Swing: Space    Reset stance: R    Clear path: C\n" +
                    $"Weapon: {weapon} [1/2]    Driver: {driver} [D]    Bodies: {bodies} [B]    Target distance: {_targetDistanceUnits:0} [ [ ] ]\n" +
                    $"Playback: {speed} [- =]    Pause [P]    Frame step [← →]    Replay [Q]\n" +
-                   PathLine() + "\n" + SwingLine();
+                   PathLine() + NewLine + SwingLine() + NewLine +
+                   (_weaponStartsInsideTarget ? "WARNING: the weapon starts inside the target. Press ] to step back." : string.Empty);
         }
 
         private string PathLine()
