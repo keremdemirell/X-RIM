@@ -9,15 +9,9 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ## Current status
 
 - **Session 00 (build planning):** batch 2 of 3 done. Batch 3 (session prompt files 12–22) is still open; it does not block sessions 01–11.
-- **Last completed: Session 01 (tooling and path rules), 2026-09-29**, 4 batches (commits `498fc06`, `132a19c`, `8c73050`, `f1269a7`). The designer committed the Session 01 `.meta` files and filled weapon assets (`0b31d73`).
-- **Session 02 (feel spike) IN PROGRESS**, plan approved 2026-09-29. Batches:
-  1. Engine-free path following: settings (driver, motor, root drive, ragdoll), torso frame, path cursor, weapon-aim seam, kinematic + motor drivers, `ContactAngle` rule, impact-time refiner. EditMode tests. — **done**
-  2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **done**
-  3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **done**
-  4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests. — **done**
-  5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`). — **done**
-  6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run. — **done; waiting for the designer's F9 report to write the findings and close the session**
-- **Next session after 02:** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`. PT1 comes first.
+- **Last completed: Session 02 (feel spike), 2026-10-01**, 6 batches + 3 fixes (commits `35617c5`, `bda68ce`, `6bce333`, `bdd001f`, `6eda8c8`, `76bc780`, `98f0a31`, `a35f92d`, `ca3efb3`, plus the closing memory commit).
+- **Waiting for: playtest checkpoint PT1** (`Docs/SESSION_PLAN.md` §5): the designer plays the spike scene and decides **D1** (weapon driver) and **D2** (segmentation). Record the report under *Playtest reports*, changed values under *Tunable values changed*, decisions under *Decisions*; fix nothing yet, list bugs under *Known issues*.
+- **Next session to start (after PT1):** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
   - Limits: Windows 64-bit Mono is the player proxy (Android is used automatically once installed); package reference DLLs are Editor builds; PlayMode tests, `[UnityTest]` and tests of Unity-side modules (Config, Input, Presentation, App) are listed as "needs Unity" and must be run in the Editor.
   - Which tests run: those whose namespace names an engine-free module (`XRim.Tests.EditMode.<Module>…`). Keep test namespaces matching their folders.
@@ -26,43 +20,11 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 ## Completed work log
 
-- **Session 02 batch 6, 2026-10-01: contact log, tuning panel, diagnostics** (`DebugTools/`).
-  - `TuningPanel`: nested `[Serializable]` settings fold open and edit in place (motor, root drive, ragdoll, rigidity), `Vec2` fields edit as X/Y, lists show a count.
-  - `SpikeContactLog` (under the HUD, top right): per contact refined time (ms), reported step, A → B (weapon id or side + part), angle, relative speed, normal, path distance; rows reached during playback are marked.
-  - `SpikeDiagnostics` (F9, `Logs/XRimSpikeReport.txt` in the Editor, persistent data path on devices): standing 2 s for 6/10 bodies (settle time, drift, tilt); tunnelling of the rapier at 1/2/4/8× speed at the live rate and 60 Hz, thrust and chop; kinematic vs motor for rapier and mace (free-thrust lag, end error, settle; into the chest: hit, knockback, tilt, deflection); ms per swing (10 runs per driver × segmentation).
-  - Fixes before batch 6: the scene creator now loads assets after creating the scene (`98f0a31`); the target stands at 85% of the weapon's reach and the HUD warns about overlap (`a35f92d`, `SpikeBoard`).
-
-- **Session 02 batch 5, 2026-10-01: spike scene and harness** (`DebugTools/Spike/`, `Editor/SpikeSceneCreator.cs`).
-  - Menu `XRim/Spike/Create Spike Scene` → `Assets/XRim/Scenes/Spike.unity` (camera + `SpikeHarness` wired to the profile, both prefabs and the square sprite; builds the prefabs if missing; not in the build list).
-  - `SpikeHarness`: attacker (left, right-handed) with rapier or mace and a weaponless target (right) at ±distance/2, pelvis one leg length up; guard stance on reset. Mouse drag draws a torso-frame stroke (`SpikePathDrawer`: raw stroke white, executed path yellow at ink thickness, via `PathBuilder`). Space simulates with `SwingSimulator` on one reused `Unity2DPhysicsWorld` (stopwatch ms), then plays the timeline with `TimelinePlayer` onto `DummyView`s; at the end the board becomes the final pose (stance persistence). Keys: R reset, C clear, 1/2 weapon (clears the path, §6), D driver and B bodies (edit the live `SimulationConfig`), [ ] target distance ±25, - = playback speed 0.05×–2×, P pause, ← → frame step, Q replay. HUD bottom left (state, ink, last swing).
-  - `SpikeVisualDummy`: prefab copy with all physics stripped (+ `DummyView`); weapon visuals resized to live stats (`PlaceholderRagdollBuilder.FitHeldItemVisual`). `DummyView` gains lower segments, `Configure`, `SetHeldItem`.
-  - `DebugOverlay` Tuning tab also finds the spike harness's profile. `TuningProfile.SimulationConfig` accessor. `DebugAssets.MarkDirty`. `XRim.DebugTools` references `Unity.InputSystem`.
-
-- **Session 02 batch 4, 2026-10-01: Unity 2D physics world** (`Simulation.Unity2D/`, `Simulation/Physics/ArmReach.cs`).
-  - `Unity2DPhysicsWorld(space, RagdollPrefabSet)`: `Load` instantiates the segmentation's prefab per side into the hidden scene (mirrors Right, tags owners, holds the current weapon in the dominant hand, fits it to live stats, applies tuning, ignores self-collisions, adds a kinematic root anchor + strength-limited `RelativeJoint2D` or a kinematic torso, applies the pose), adds a static floor (top at y = 0, arena width), and indexes bodies (Left parts, Left weapon, Right parts, Right weapon, floor). `Step`: remember motion, servos, grip, pushes, `Simulate`, poll new contact pairs. Also `SetHeldItemTarget` (kinematic `MovePosition`), `PushHeldItem` (dynamic, force = mass × accel), `GetHeldItemState`, `SetRootTarget`, `GetPose`, `CapturePose`, `IsSettled`, `TouchDistanceUnits` (2 × contact offset), `BreakJoint`, `DropHeldItem`, `ApplyImpulse`, `GetRagdoll`.
-  - Contacts: new pairs of different owners per step, floor excluded, normal from A to B (assumes Unity's normal points from `collider` to `otherCollider`), relative velocity from each body's motion over the previous step (works for kinematic bodies), sorted by body index.
-  - Weapon arm: the wrist hinge's grip point slides along the blade to where the arm reaches (`ArmReach.HandAlongBlade`); a one-piece arm lines up with the blade, a two-piece arm bends its elbow. Rest pose = guard stance from the aim model (`GuardAngleDegrees`, `GuardHandReachFraction`), so a swing starts without a jump.
-  - Tests: `ArmReachTests` (8, run here). PlayMode `Unity2DPhysicsWorldTests` (8): hidden scene, visual scene untouched by a loaded swing, standing settles (6 and 10 bodies), kinematic tip at t = L/v ± 1 step, motor ends at the path end, thrust into torso (contact, normal, angle, d = v·t within one step), joint-angle sign. `PlaceholderRagdollTests` +2. EditMode 153 (142 run here), PlayMode 17 (need Unity).
-
-- **Session 02 batch 3, 2026-09-30: placeholder ragdoll** (`Simulation.Unity2D/`, `Editor/`).
-  - `PlaceholderRagdollBuilder.Build(RagdollBuildSpec)` (runtime, so tests can use it): flat hierarchy under a root at the pelvis, facing +X; torso box rising from the pelvis, circle head on the neck, arms from `PathSettings.ShoulderOffsetUnits` with length `ArmLengthUnits`, legs from the pelvis; ten bodies split limbs by `UpperSegmentFraction`. Hinges with limits (no motors, `enableCollision` off); `Hand` anchors at the end of each arm; one inactive, continuous-collision held item per weapon (length × ink thickness, weapon mass). `FitHeldItem` resizes to live stats.
-  - `Ragdoll`: serialized parts, lower segments, hands, `HeldItemSlot`s and as-built reach; `MatchesReach`, `AssignOwner`, `MirrorForRightSide` (positions, anchors; limits flip in `ApplyTuning`), `ApplyTuning(body, gravityScale, limpArm)`, `UpdateServos(gain)`, `CreateRestPose` (call on the prefab or an unposed instance), `BreakJoint`.
-  - Menu `XRim/Spike/Build Placeholder Dummies` → `Assets/XRim/Prefabs/Spike/PlaceholderDummy6.prefab` and `…10.prefab`, built in a preview scene; `PlaceholderSprites` makes `Assets/XRim/Art/Placeholder/{Square,Circle,CalibrationMarker}.png` (one world unit each).
-  - `XRim.Tests.PlayMode` now references `XRim.Rules`. `PlaceholderRagdollTests` (7). PlayMode total 8, all need Unity.
-
-- **Session 02 batch 2, 2026-09-29: swing loop** (`Simulation/Execution/Swing*`).
-  - `IPhysicsWorld`: `Load(pose, state, rules, simulation)`, `TouchDistanceUnits`, `PushHeldItem`, `GetHeldItemState` (Unity side still throws until batch 4). `FighterPose.LowerSegments` + `HasLowerSegments` (D2 ten bodies).
-  - `SwingSimulator.Run(SwingInput)` → `SwingResult` (timeline, `SwingContact`s, steps, `SwingEndReason`, final pose). Roots hold the start torso pose; drivers from `WeaponDriverFactory`; weapon contacts refined over the last two steps, then d = v·t; contacts sorted stably by time within a step; ends when paths are done and settled for `SettleStepsRequired`, or at the 1.5 s cap.
-  - `FakePhysicsWorld`: exact moves, integrated pushes, `ScheduleContacts(step, …)`.
-  - Tests: `SwingSimulatorTests` (9): t = L/v ± 1 step, impact time within the step (< 20 µs), ordering, body contacts, hard cap, motor, recording, load. 134 run here + 11 need Unity.
-  - Note for PT1: with the motor driver the same scripted contact came out ~0.1 ms later than the path schedule (the blade trails its target slightly).
-
-- **Session 02 batch 1, 2026-09-29: engine-free path following** (`Simulation/{Settings,Drivers,Execution}`, `Rules/Combat/ContactAngle.cs`).
-  - `SimulationSettings` gains `WeaponDriver` (D1), `Segmentation` (D2), `GravityUnitsPerSecondSquared`, nested `WeaponMotor`, `RootDrive`, `Ragdoll` (sizes, masses, joint limits, pose-holding servo), and `Validate`.
-  - `TorsoFrame` (pelvis origin, +X toward the opponent, mirrored for Right), `PathCursor`, `IWeaponAimModel` + `AimFromShoulderModel`.
-  - `IWeaponDriver.Drive(stepStart, stepEnd, torso, heldItem)` → `HeldItemCommand` (MoveTo or Push, mass-free accelerations). `PathWeaponDriver` base (tip at d = v·t), `KinematicPathDriver`, `MotorPathDriver` (PD with target-velocity feed-forward, strength-limited), `WeaponDriverFactory`.
-  - `ContactAngle.Degrees` (§10 stage 1). `ImpactTimeRefiner` sweeps a `BladeShape` over `PoseSample`s. Core: `Vec2.FromAngleDegrees/AngleDegrees/Rotated`, `XMath.DeltaAngleDegrees/LerpAngleDegrees/TwoPi`.
-  - Tests: 61 new (125 run here + 11 need Unity).
+- **Session 02 (feel spike), 2026-09-29 to 2026-10-01.** Details: git log and the code; key pieces:
+  - Engine-free (`XRim.Simulation`): `SimulationSettings` (+ `Settings/` driver, segmentation, motor, root drive, ragdoll, gravity, `Validate`), `TorsoFrame`, `PathCursor`, `IWeaponAimModel`/`AimFromShoulderModel`, `IWeaponDriver.Drive` → `HeldItemCommand`, `KinematicPathDriver`, `MotorPathDriver`, `WeaponDriverFactory`, `ArmReach`, `ImpactTimeRefiner`, `SwingSimulator` (spike loop for Session 04), `Rules/Combat/ContactAngle`. `IPhysicsWorld` gained `Load(…, SimulationSettings)`, `TouchDistanceUnits`, `PushHeldItem`, `GetHeldItemState`; `FighterPose` gained lower segments.
+  - Unity (`XRim.Simulation.Unity2D`): `PlaceholderRagdollBuilder`, `Ragdoll` (mirror, tuning, servos, hand-follow spring, guard rest pose), `RagdollPrefabSet`, full `Unity2DPhysicsWorld` (hidden scene, root anchor + `RelativeJoint2D`, floor, contact polling).
+  - Editor: `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs, placeholder sprites), `XRim/Spike/Create Spike Scene`. DebugTools: `SpikeHarness` (draw, swing, playback, keys), `SpikeVisualDummy`, `SpikePathDrawer`, `SpikeBoard`, `SpikeContactLog`, `SpikeDiagnostics` (F9 → `Logs/XRimSpikeReport.txt`); `TuningPanel` edits nested settings and `Vec2`. `DummyView` shows lower segments.
+  - Tests: EditMode 153 (142 run by `check.py`), PlayMode 17. All green in the Editor (2026-10-01).
 
 - **Setup (architecture), 2026-09-29.**
   - 15 asmdefs, settings and Config SOs, the Unity 2D physics world shell, the timeline player, the debug overlay, the Editor menus, Docs/ARCHITECTURE.md and CLAUDE.md.
@@ -94,6 +56,19 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 
 ---
 
+## Session 02 spike findings (2026-10-01; F9 report + the designer's play)
+
+- **Standing** (approach: a dynamic torso pulled to an invisible kinematic root anchor by a strength-limited `RelativeJoint2D`, upright included, plus hinge-motor servos holding every joint; both are solved inside Box2D, so it is stable, yet a hit can still knock the dummy): 6 bodies settle in 0.054 s, 10 bodies in 0.079 s, both stay settled; pelvis drift 1.5 units; torso tilt 0°.
+- **Tunnelling at 240 Hz, rapier 10 wide:** no misses. Thrust into the chest and chop through the head registered at 1×, 2×, 4× and 8× rapier speed (up to 30 units per step). Even 60 Hz caught every one (at 60 Hz ×8 the refined distance was 6 units late: 282 vs 276). Not tested yet: blade against blade (Session 07), thin limbs side-on.
+- **Kinematic driver:** exact on its path (lag 3.7 units only while starting, end error 0), settles 0.02 s after the path, cheapest. **Ignores weapon mass:** the rapier knocked the target 70 units and tilted it 23°, more than the mace (43 units, 14°). The blade is never deflected.
+- **Motor driver:** tracks within 5 units, ends 0.7 off, same hit time as kinematic (308.3 ms). **Mass shows:** rapier 24 units of knockback, mace 42. The rapier was deflected 48 units and, ending its path inside the chest, kept pushing, so the swing never settled (hard cap). Needs D26 (stop at the hit with a recoil) to behave.
+- **Repeated contacts:** one rapier thrust produced 8 contacts with the same chest as the target reeled → D19 (only the first contact between two bodies resolves) is needed in Session 07.
+- **Cost in the Editor:** 8.3 ms (6 bodies, kinematic) to 14.8 ms (10 bodies, kinematic) per simulated swing on average, worst 18.4 ms, 192–360 steps, including loading both dummies.
+- **Recommendation D1 (the designer decides at PT1): kinematic swing, then hand the blade to physics when the rules stop it.** Kinematic keeps t = d / v exact, which priority, interrupts and the sudden-death tie-break (§9, §14) rely on, and it never stalls a turn. The moment the rules stop the weapon (D26), switch the blade to a dynamic body carrying its own speed and mass, so the mace hits harder than the rapier, as the GDD identities want. If PT1 shows that motor hits feel better, that is the weight, and this hybrid keeps it. Of the two pure options, kinematic is the safer one.
+- **Recommendation D2: 10 bodies,** unless PT1 shows tangled or noisy limbs. Just as stable (settles 0.08 s), still cheap (about 1.8× the 6-body cost in kinematic), and the elbows and knees give more physical comedy (pillar 4). Hit zones are identical either way.
+
+---
+
 ## Verification gate
 
 - **2026-09-29: setup verified clean in the Unity Editor** (reported by the designer):
@@ -102,7 +77,7 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
   - `XRim > Setup > Create Default Tuning Assets` created 27 assets.
   - The Sandbox scene enters Play mode with no errors.
 - Git was clean before Session 00 started.
-- **2026-10-01: Session 02 batch 4 verified in the Editor** (after the fix `6eda8c8`): PlayMode 17/17 and EditMode 153/153, two runs each, all green.
+- **2026-10-01: Session 02 verified in the Editor:** PlayMode 17/17 and EditMode 153/153 (two runs each), the spike scene plays with no errors, F9 report produced.
 
 ---
 
@@ -141,7 +116,7 @@ Chosen during setup (ARCHITECTURE.md §4). `XRim > Reports > Placeholder Values`
 
 - Session 01: `PathSettings.ArmLengthUnits` 240, `ShoulderOffsetUnits` (0, 100); `WeaponStats.LengthUnits` rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200 (at roughly 2.5 mm per unit, the rapier nearly reaches across the 700 starting gap, the mace must close in). `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
 
-- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo). Guard stance (batch 4): weapon at −20° from the shoulder, hand at 0.5 of arm length. Weapon arm follow spring (batch 4 fix): 20 Hz, damping 1.0, max 200000 units/s². Spike only (harness fields, not gameplay): target distance 450 between pelvises, step 25; camera ortho size 4.5 at height 3.
+- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo). Guard stance (batch 4): weapon at −20° from the shoulder, hand at 0.5 of arm length. Weapon arm follow spring (batch 4 fix): 20 Hz, damping 1.0, max 200000 units/s². Spike only (harness fields, not gameplay): target chest at 0.85 of the weapon's reach (574 rapier, 421 mace), step 25; camera ortho size 4.5 at height 3.
 
 Add new placeholders here, with the session that introduced them.
 
@@ -179,7 +154,7 @@ Add new placeholders here, with the session that introduced them.
 
 ## Open questions for the designer
 
-- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). D1 and D2 are answered at PT1. D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
+- Prototype decisions D1–D27 in `Docs/SESSION_PLAN.md` §4 (D3, D4, D5 decided 2026-09-29). **D1 and D2 are answered at PT1** (recommendations in *Session 02 spike findings*). D26 (hits per weapon per turn) and D27 (how the no-instant-KO head rule is enforced) are gaps the GDD does not cover.
 - Later decisions by session: `Docs/SESSION_PLAN.md` §4, *Later decisions*.
 - Optional: a rough SFX set before Session 13 (`Docs/SESSION_PLAN.md` §3).
 

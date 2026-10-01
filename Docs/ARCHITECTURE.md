@@ -56,9 +56,9 @@ References only point downward. Assemblies below the line set `noEngineReference
 | `XRim.Presentation` | yes | `TimelinePlayer`, `DummyView`, camera director, `FeelDirector`, audio, VFX, moment detector, `PlanningHud` | Core, Rules, Simulation, Config |
 | `XRim.App` | yes | `MatchBootstrap`, `ClientMatchFlow`, `PlanSourceFactory`, `HotSeatCoordinator`, `MatchMode` | all runtime |
 | `XRim.DebugTools` | yes | `DebugOverlay`, `TuningPanel`, gizmos, `ScenarioStore`. Compiled only when `UNITY_EDITOR \|\| DEVELOPMENT_BUILD`; installs itself at runtime, so scenes never reference it | all runtime |
-| `XRim.Editor` | Editor | Setup menus, reports, `SettingsConfigEditor` | all runtime except DebugTools |
+| `XRim.Editor` | Editor | Setup menus, reports, `SettingsConfigEditor`, the Session 02 spike menus | all runtime, and DebugTools (the spike scene menu adds the harness) |
 | `XRim.Tests.EditMode` | Editor | Sanity and GDD-conformance tests, fakes | pure modules, Config, Input, Presentation, App |
-| `XRim.Tests.PlayMode` | yes | Unity 2D physics backend tests | Core, Config, Simulation, Simulation.Unity2D |
+| `XRim.Tests.PlayMode` | yes | Unity 2D physics backend tests | Core, Rules, Config, Simulation, Simulation.Unity2D |
 
 Rules this graph enforces:
 
@@ -192,6 +192,8 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
   - Priority, interrupts and the sudden-death tie-break all compare `SimTime` in microseconds.
 - **Drivers are strategies.** `IWeaponDriver` and `IBodyMoveDriver`. Kinematic path following vs a physics motor chasing the path is a feel choice for the prototype. Paths are torso-relative (§6, Decided).
 - **A turn ends** when both paths are done and physics stays settled for `SettleStepsRequired` steps, or at the 1.5 s hard cap.
+- **Standing and the weapon arm (Session 02).** Each torso is pulled to an invisible kinematic root anchor by a strength-limited `RelativeJoint2D` (upright included), and hinge-motor servos hold every joint, so dummies stand still yet hits still knock them. The weapon is not jointed to the body: its driver moves it, and the weapon arm follows with a one-way hand spring onto the blade where the arm can reach (`ArmReach`).
+- **Contacts (Session 02).** After each step the world polls contacts and reports pairs of different owners that were not touching after the previous step, floor excluded, in load-time body order. The normal points from A to B; relative velocity comes from each body's motion over the previous step. Unity 6.5 measures `HingeJoint2D.jointAngle` clockwise, so joint limits are flipped when applied.
 - **Severing is logic-driven.** `Ragdoll.BreakJoint` disables the hinge when durability reaches 0. `breakForce` is never used (it is Rejected in the GDD).
 - **Determinism.** It is not required for server authority, but ordering is kept deterministic: seeded `IRandom`, stable sorts, no Unity time or random calls. Unity's newer low-level 2D physics module (`physicscore2d` is in the manifest) could become a second backend later without touching the rules.
 
@@ -384,9 +386,10 @@ Record these in the GDD when convenient.
   - The debug overlay and tuning panel.
   - All Editor menus and reports.
   - Path rules (Session 01): `PathResampler`, ink cost models, ink cut-off, the D3–D5 policies and `PathBuilder` (order: stroke, lead-in, resample, reach, ink cut-off, break cut).
+  - Feel spike (Session 02): kinematic and motor weapon drivers, the aim model, impact-time refinement, the contact angle, `SwingSimulator` (one swing; Session 04 folds it into `TurnSimulator`), the placeholder ragdoll (6 or 10 bodies) and `Unity2DPhysicsWorld` (load, drive, step, contacts, poses, settled), and the spike scene with its harness, contact log and diagnostics.
 - **Placeholders that throw `NotImplementedException`:** all gameplay logic.
   - Rules: planning session, plan validation, clash, damage, limb cap, wall, end conditions, state machine transitions.
-  - Simulation and physics: the simulator loop and most of the Unity physics world.
+  - Simulation: the full turn loop (`TurnSimulator`) with body moves and rules decisions.
   - Authority: the `LocalTurnAuthority` loop.
   - Input and presentation: swipe classification, screen mapping, the input scheme, feel, VFX, audio and HUD.
   - Tooling: hot-seat and scenarios.
