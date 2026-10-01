@@ -5,6 +5,7 @@ using XRim.Config;
 using XRim.Core;
 using XRim.Rules;
 using XRim.Rules.Settings;
+using XRim.Simulation.Drivers;
 using XRim.Simulation.Physics;
 using XRim.Simulation.Settings;
 using XRim.Simulation.Unity2D;
@@ -114,14 +115,39 @@ namespace XRim.Tests.PlayMode.Simulation
         {
             Ragdoll ragdoll = Build(RagdollSegmentation.SixBodies);
             var torso = new BodyPose(new Vec2(350f, 180f), 0f);
+            WeaponStats rapier = GddStartingValues.Rapier();
+            var aim = new AimFromShoulderModel();
 
-            FighterPose left = ragdoll.CreateRestPose(new BodyPose(new Vec2(-350f, 180f), 0f), Side.Left, _space, BodyPart.RightArm, true);
-            FighterPose right = ragdoll.CreateRestPose(torso, Side.Right, _space, BodyPart.RightArm, true);
+            FighterPose left = ragdoll.CreateRestPose(new BodyPose(new Vec2(-350f, 180f), 0f), Side.Left, _space, BodyPart.RightArm,
+                rapier, _body, aim);
+            FighterPose right = ragdoll.CreateRestPose(torso, Side.Right, _space, BodyPart.RightArm, rapier, _body, aim);
 
             Assert.That(right.Get(BodyPart.Torso).PositionUnits, Is.EqualTo(torso.PositionUnits));
             Assert.That(right.Get(BodyPart.Head).PositionUnits.Y, Is.EqualTo(180f + _body.TorsoHeightUnits).Within(Tolerance));
-            Assert.That(left.HeldItem.RotationDegrees, Is.EqualTo(0f).Within(Tolerance));
-            Assert.That(right.HeldItem.RotationDegrees, Is.EqualTo(180f).Within(Tolerance));
+            Assert.That(XMath.DeltaAngleDegrees(_body.GuardAngleDegrees, left.HeldItem.RotationDegrees), Is.EqualTo(0f).Within(Tolerance),
+                "en garde: the weapon points at the guard angle");
+            Assert.That(XMath.DeltaAngleDegrees(180f - _body.GuardAngleDegrees, right.HeldItem.RotationDegrees), Is.EqualTo(0f).Within(Tolerance),
+                "mirrored for the right-hand fighter");
+        }
+
+        [TestCase(RagdollSegmentation.SixBodies)]
+        [TestCase(RagdollSegmentation.TenBodies)]
+        public void RestPose_WeaponArmReachesTheBlade(RagdollSegmentation segmentation)
+        {
+            Ragdoll ragdoll = Build(segmentation);
+            WeaponStats rapier = GddStartingValues.Rapier();
+            FighterPose pose = ragdoll.CreateRestPose(new BodyPose(Vec2.Zero, 0f), Side.Left, _space, BodyPart.RightArm, rapier, _body,
+                new AimFromShoulderModel());
+
+            // The hand is the end of the arm's last segment; it must lie on the blade's centre line.
+            BodyPose last = segmentation == RagdollSegmentation.TenBodies ? pose.GetLower(BodyPart.RightArm) : pose.Get(BodyPart.RightArm);
+            float lastLength = _space.ToArenaLength(ragdoll.GetHand(BodyPart.RightArm).localPosition.magnitude);
+            Vec2 hand = last.PositionUnits + Vec2.FromAngleDegrees(last.RotationDegrees - 90f) * lastLength;
+            Vec2 axis = Vec2.FromAngleDegrees(pose.HeldItem.RotationDegrees);
+            Vec2 fromGrip = hand - pose.HeldItem.PositionUnits;
+            float offLine = Mathf.Abs(Vec2.Cross(axis, fromGrip));
+
+            Assert.That(offLine, Is.LessThan(0.5f), "the hand holds the blade, so arm and weapon do not fight");
         }
 
         [Test]

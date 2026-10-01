@@ -100,6 +100,8 @@ namespace XRim.Simulation
             AddLimitIssue(issues, "knee", body.KneeMinDegrees, body.KneeMaxDegrees);
             if (body.JointServoGainPerSecond < 0f || body.JointServoMaxAngularAccelerationDegreesPerSecondSquared < 0f)
                 issues.Add("Ragdoll: pose holding must not be negative.");
+            if (body.GuardHandReachFraction < 0f || body.GuardHandReachFraction > 1f)
+                issues.Add("Ragdoll: the guard hand reach must be between 0 and 1.");
         }
 
         private static void AddLimitIssue(ICollection<string> issues, string joint, float minDegrees, float maxDegrees)

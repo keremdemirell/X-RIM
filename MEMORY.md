@@ -14,8 +14,8 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
   1. Engine-free path following: settings (driver, motor, root drive, ragdoll), torso frame, path cursor, weapon-aim seam, kinematic + motor drivers, `ContactAngle` rule, impact-time refiner. EditMode tests. — **done**
   2. Swing loop: `IPhysicsWorld`/`FighterPose` changes, `SwingSimulator`, `FakePhysicsWorld` update. EditMode tests. — **done**
   3. Placeholder ragdoll: runtime builder, `Ragdoll` (segments, hand, held items, tuning, mirror, rest pose), menu `XRim/Spike/Build Placeholder Dummies` (6- and 10-body prefabs). — **done**
-  4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests. — **next**
-  5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`).
+  4. `Unity2DPhysicsWorld` (Load, targets, Step, contacts, poses, settled) + PlayMode tests. — **done**
+  5. Spike scene menu + `SpikeHarness` (draw, keys, execute, playback with `TimelinePlayer`/`DummyView`). — **next**
   6. Contact log, tuning panel nested fields, diagnostics report; then the findings in this file after the designer's run.
 - **Next session after 02:** Session 03, `Docs/sessions/session-03-match-loop-and-planning.md`. PT1 comes first.
 - **Compile-check tool: `python Tools/check.py`** (from the project root; about 6 s, 25 s cold). Run it after every batch; it must print `CHECK PASSED`. Options: `--pass editor|player|dev|all`, `--no-tests`, `--filter TEXT`, `--verbose`. Usage, passes, define lists and limits: `Tools/README.md`.
@@ -25,6 +25,12 @@ The GDD is never edited: decisions and deviations are recorded here. The build p
 ---
 
 ## Completed work log
+
+- **Session 02 batch 4, 2026-10-01: Unity 2D physics world** (`Simulation.Unity2D/`, `Simulation/Physics/ArmReach.cs`).
+  - `Unity2DPhysicsWorld(space, RagdollPrefabSet)`: `Load` instantiates the segmentation's prefab per side into the hidden scene (mirrors Right, tags owners, holds the current weapon in the dominant hand, fits it to live stats, applies tuning, ignores self-collisions, adds a kinematic root anchor + strength-limited `RelativeJoint2D` or a kinematic torso, applies the pose), adds a static floor (top at y = 0, arena width), and indexes bodies (Left parts, Left weapon, Right parts, Right weapon, floor). `Step`: remember motion, servos, grip, pushes, `Simulate`, poll new contact pairs. Also `SetHeldItemTarget` (kinematic `MovePosition`), `PushHeldItem` (dynamic, force = mass × accel), `GetHeldItemState`, `SetRootTarget`, `GetPose`, `CapturePose`, `IsSettled`, `TouchDistanceUnits` (2 × contact offset), `BreakJoint`, `DropHeldItem`, `ApplyImpulse`, `GetRagdoll`.
+  - Contacts: new pairs of different owners per step, floor excluded, normal from A to B (assumes Unity's normal points from `collider` to `otherCollider`), relative velocity from each body's motion over the previous step (works for kinematic bodies), sorted by body index.
+  - Weapon arm: the wrist hinge's grip point slides along the blade to where the arm reaches (`ArmReach.HandAlongBlade`); a one-piece arm lines up with the blade, a two-piece arm bends its elbow. Rest pose = guard stance from the aim model (`GuardAngleDegrees`, `GuardHandReachFraction`), so a swing starts without a jump.
+  - Tests: `ArmReachTests` (8, run here). PlayMode `Unity2DPhysicsWorldTests` (8): hidden scene, visual scene untouched by a loaded swing, standing settles (6 and 10 bodies), kinematic tip at t = L/v ± 1 step, motor ends at the path end, thrust into torso (contact, normal, angle, d = v·t within one step), joint-angle sign. `PlaceholderRagdollTests` +2. EditMode 153 (142 run here), PlayMode 17 (need Unity).
 
 - **Session 02 batch 3, 2026-09-30: placeholder ragdoll** (`Simulation.Unity2D/`, `Editor/`).
   - `PlaceholderRagdollBuilder.Build(RagdollBuildSpec)` (runtime, so tests can use it): flat hierarchy under a root at the pelvis, facing +X; torso box rising from the pelvis, circle head on the neck, arms from `PathSettings.ShoulderOffsetUnits` with length `ArmLengthUnits`, legs from the pelvis; ten bodies split limbs by `UpperSegmentFraction`. Hinges with limits (no motors, `enableCollision` off); `Hand` anchors at the end of each arm; one inactive, continuous-collision held item per weapon (length × ink thickness, weapon mass). `FitHeldItem` resizes to live stats.
@@ -122,7 +128,7 @@ Chosen during setup (ARCHITECTURE.md §4). `XRim > Reports > Placeholder Values`
 
 - Session 01: `PathSettings.ArmLengthUnits` 240, `ShoulderOffsetUnits` (0, 100); `WeaponStats.LengthUnits` rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200 (at roughly 2.5 mm per unit, the rapier nearly reaches across the 700 starting gap, the mace must close in). `RigiditySettings.BreakWindowUnits` = 20 (arc length over which a "very sharp turn" is measured, about two samples). `BendCostK` is documented as per degree.
 
-- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo).
+- Session 02 (`SimulationSettings`, approved 2026-09-29): gravity 3924 units/s² (9.81 m/s² at ~2.5 mm/unit). Motor 12 Hz, damping 1.0 (linear and angular), max 60000 units/s² and 60000 °/s². Root drive (powered) max 20000 units/s² and 20000 °/s², correction 0.3. Ragdoll: head Ø50, torso 60×120 (pivot at the pelvis), arm width 24, leg 28×180, upper segment 0.5; masses torso 10, head 2, arm 2, leg 4; limits neck ±30, shoulder −120…220, elbow 0…140, hip −30…90, knee −130…0; servo 20 °/s per °, max 36000 °/s²; weapon arm limp (no servo). Guard stance (batch 4): weapon at −20° from the shoulder, hand at 0.5 of arm length.
 
 Add new placeholders here, with the session that introduced them.
 
@@ -144,6 +150,8 @@ Add new placeholders here, with the session that introduced them.
 ---
 
 ## Known issues and tech debt
+
+- Session 02: two Unity conventions are assumed until the PlayMode tests confirm them: contact normals point from `ContactPoint2D.collider` to `otherCollider` (`Unity2DPhysicsWorld.NormalPointsFromColliderToOtherCollider`, test `ThrustIntoTorso_…`), and `HingeJoint2D.jointAngle` grows counter-clockwise (`Ragdoll.JointAngleGrowsCounterClockwise`, test `JointAngle_GrowsWhenALimbSwingsForward`). Each is a one-line flip if wrong.
 
 - Only the **Editor** Bee response files exist (`Library/Bee/artifacts/1900b0aE.dag/*.rsp`). `Tools/check.py` derives the player passes from them. The player-only define list (DEBUG, TRACE, ENABLE_PROFILER and UNITY_ASSERTIONS only in dev players) is derived, not read from a real player build; confirm it once a real build exists (Session 10).
 - Only the **Windows standalone** playback engine is installed at `S:/Unity_Editor/Editor/Data/PlaybackEngines/`. Android Build Support is needed by Session 10. iOS builds need a Mac.
