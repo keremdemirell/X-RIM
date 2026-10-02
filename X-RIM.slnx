@@ -1,6 +1,6 @@
 ﻿<Solution>
-  <Project Path="XRim.DebugTools.csproj" />
   <Project Path="XRim.Simulation.csproj" />
+  <Project Path="XRim.DebugTools.csproj" />
   <Project Path="XRim.Config.csproj" />
   <Project Path="XRim.Presentation.csproj" />
   <Project Path="XRim.Rules.csproj" />
