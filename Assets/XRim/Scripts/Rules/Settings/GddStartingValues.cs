@@ -78,13 +78,31 @@ namespace XRim.Rules.Settings
             SpeedUnitsPerSecond = 300f, BaseDamage = 10f,
         };
 
-        /// <summary>GDD §5: the four stance swipes. Every distance and duration is a placeholder.</summary>
+        /// <summary>
+        /// GDD §5: the neutral move and the four stance swipes. Every number is a placeholder (Session 05). The crouch sinks
+        /// 70 so a crouched head (top at 280) passes under a swing aimed at a standing head (centre 325); the jump's 80 over
+        /// 0.4 s is what a real hop does under the simulation's gravity; the lunge and step lower the hips a little so the
+        /// spread feet stay on the floor.
+        /// </summary>
         public static List<BodyMoveStats> CreateBodyMoves() => new List<BodyMoveStats>
         {
-            new BodyMoveStats { Move = BodyMove.Crouch, DisplacementUnits = new Vec2(0f, -40f) },
-            new BodyMoveStats { Move = BodyMove.Lunge, DisplacementUnits = new Vec2(120f, 0f) },
-            new BodyMoveStats { Move = BodyMove.StepBack, DisplacementUnits = new Vec2(-100f, 0f) },
-            new BodyMoveStats { Move = BodyMove.Jump, DisplacementUnits = new Vec2(0f, 80f) },
+            new BodyMoveStats { Move = BodyMove.None, DurationSeconds = 0.3f },
+            new BodyMoveStats
+            {
+                Move = BodyMove.Crouch, DisplacementUnits = new Vec2(0f, -70f), DurationSeconds = 0.25f, LeanDegrees = 10f,
+                StrideUnits = 40f,
+            },
+            new BodyMoveStats
+            {
+                Move = BodyMove.Lunge, DisplacementUnits = new Vec2(120f, -20f), DurationSeconds = 0.35f, LeanDegrees = 12f,
+                StrideUnits = 140f,
+            },
+            new BodyMoveStats
+            {
+                Move = BodyMove.StepBack, DisplacementUnits = new Vec2(-100f, -10f), DurationSeconds = 0.3f, LeanDegrees = -8f,
+                StrideUnits = 60f, LeanInPlaceDegrees = -25f,
+            },
+            new BodyMoveStats { Move = BodyMove.Jump, DisplacementUnits = new Vec2(0f, 80f), DurationSeconds = 0.4f, FootLiftUnits = 100f },
         };
     }
 }

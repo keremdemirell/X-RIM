@@ -3,8 +3,8 @@
   <Project Path="XRim.DebugTools.csproj" />
   <Project Path="XRim.Config.csproj" />
   <Project Path="XRim.Presentation.csproj" />
-  <Project Path="XRim.Rules.csproj" />
   <Project Path="XRim.Tests.EditMode.csproj" />
+  <Project Path="XRim.Rules.csproj" />
   <Project Path="XRim.Networking.csproj" />
   <Project Path="XRim.Simulation.Unity2D.csproj" />
   <Project Path="XRim.Economy.csproj" />

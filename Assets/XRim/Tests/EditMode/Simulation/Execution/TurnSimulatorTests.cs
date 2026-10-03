@@ -389,6 +389,171 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             Assert.That(_world.RootTargets[_world.RootTargets.Count - 1].Pose.PositionUnits.X, Is.EqualTo(limit));
         }
 
+        // --- Session 05: the game's body moves (GDD §5) -----------------------------------------------
+
+        /// <summary>The left dummy stands on its legs: pelvis one leg length above the floor, weapon at shoulder height.</summary>
+        private void StandLeftDummyUp()
+        {
+            _pose.Left.Set(BodyPart.Torso, new BodyPose(new Vec2(0f, StandingHeight), 0f));
+            _pose.Left.HeldItem = new BodyPose(new Vec2(0f, StandingHeight + ShoulderHeight), 0f);
+        }
+
+        private float StandingHeight => _simulation.Ragdoll.LegLengthUnits;
+
+        private TurnResult RunWithMoves(BodyMove left, BodyMove right, WeaponPath leftPath = null) =>
+            Simulator().Simulate(new TurnInput(new BoardSnapshot(_state, _pose),
+                new PerSide<TurnPlan>(Plan(leftPath, left), Plan(null, right)), _rules, _simulation));
+
+        private BodyPose LastRootTarget(Side side)
+        {
+            for (int i = _world.RootTargets.Count - 1; i >= 0; i--)
+            {
+                if (_world.RootTargets[i].Side == side) return _world.RootTargets[i].Pose;
+            }
+
+            throw new AssertionException($"no root target for {side}");
+        }
+
+        private LimbAngles LastLimbTarget(Side side, BodyPart limb)
+        {
+            for (int i = _world.LimbTargets.Count - 1; i >= 0; i--)
+            {
+                if (_world.LimbTargets[i].Side == side && _world.LimbTargets[i].Limb == limb) return _world.LimbTargets[i].Target;
+            }
+
+            throw new AssertionException($"no target for {side} {limb}");
+        }
+
+        [Test]
+        public void EveryStep_PosesBothLegsOfBothDummies_AndNoArm()
+        {
+            TurnResult result = Run(StraightThrust);
+
+            Assert.That(_world.LimbTargets.Count, Is.EqualTo(StepsSimulated(result) * 4), "two legs, two dummies, every step");
+            Assert.That(_world.LimbTargets.TrueForAll(target => target.Limb.IsLeg()), Is.True);
+        }
+
+        [Test]
+        public void SeveredLeg_IsNotPosed()
+        {
+            _state.Fighters[Side.Left].MarkSevered(BodyPart.LeftLeg);
+
+            Run(StraightThrust);
+
+            Assert.That(_world.LimbTargets.Exists(target => target.Side == Side.Left && target.Limb == BodyPart.LeftLeg), Is.False);
+            Assert.That(_world.LimbTargets.Exists(target => target.Side == Side.Left && target.Limb == BodyPart.RightLeg), Is.True);
+        }
+
+        [Test]
+        public void Crouch_SinksTheRoot_BendsTheKnees_AndTheTurnWaitsForIt()
+        {
+            StandLeftDummyUp();
+            BodyMoveStats crouch = _rules.FindBodyMove(BodyMove.Crouch);
+
+            TurnResult result = RunWithMoves(BodyMove.Crouch, BodyMove.None);
+
+            Assert.That(LastRootTarget(Side.Left).PositionUnits.Y, Is.EqualTo(StandingHeight + crouch.DisplacementUnits.Y).Within(1e-3f));
+            Assert.That(LastLimbTarget(Side.Left, BodyPart.RightLeg).LowerDegrees, Is.LessThan(0f), "the front knee bends");
+            Assert.That(LastLimbTarget(Side.Left, BodyPart.LeftLeg).LowerDegrees, Is.LessThan(0f), "the back knee bends");
+            Assert.That(StepsSimulated(result), Is.GreaterThanOrEqualTo(_clock.StepsFor(crouch.DurationSeconds)), "the turn waits for the move");
+        }
+
+        [Test]
+        public void Lunge_CarriesThePathForward_AtTheAngleItWasDrawn()
+        {
+            StandLeftDummyUp();
+            BodyMoveStats lunge = _rules.FindBodyMove(BodyMove.Lunge);
+
+            TurnResult result = RunWithMoves(BodyMove.Lunge, BodyMove.None, StraightThrust);
+
+            BodyPose root = LastRootTarget(Side.Left);
+            Assert.That(root.PositionUnits.X, Is.EqualTo(lunge.DisplacementUnits.X).Within(1e-3f), "the lunge stepped forward");
+            Assert.That(root.RotationDegrees, Is.EqualTo(-lunge.LeanDegrees).Within(1e-3f), "and leans in");
+            Vec2 expected = root.PositionUnits + StraightThrust.Points[1];
+            Assert.That(Vec2.Distance(Tip(result.FinalBoard.Pose.Left.HeldItem), expected), Is.LessThan(0.5f),
+                "the thrust ends as drawn, carried by the body (§6) and still level");
+        }
+
+        [Test]
+        public void PathTiltsWithTorsoLean_LetsTheLungeDipTheThrust()
+        {
+            StandLeftDummyUp();
+            _rules.Paths.PathTiltsWithTorsoLean = true;
+
+            TurnResult result = RunWithMoves(BodyMove.Lunge, BodyMove.None, StraightThrust);
+
+            Vec2 expected = TorsoFrame.ToArena(StraightThrust.Points[1], LastRootTarget(Side.Left), Side.Left);
+            Assert.That(Vec2.Distance(Tip(result.FinalBoard.Pose.Left.HeldItem), expected), Is.LessThan(0.5f));
+            Assert.That(expected.Y, Is.LessThan(LastRootTarget(Side.Left).PositionUnits.Y + ShoulderHeight), "the lean dips it");
+        }
+
+        [Test]
+        public void WeaponSpeedBonus_D13_SpeedsThePathUpForTheTurn()
+        {
+            StandLeftDummyUp();
+            BodyMoveStats lunge = _rules.FindBodyMove(BodyMove.Lunge);
+            lunge.DisplacementUnits = new Vec2(0f, 0f);
+            lunge.LeanDegrees = 0f;
+            lunge.StrideUnits = 0f;
+            lunge.DurationSeconds = 0f;
+            lunge.WeaponSpeedBonusFraction = 0.5f;
+
+            TurnResult result = RunWithMoves(BodyMove.Lunge, BodyMove.None, StraightThrust);
+
+            Vec2 end = new Vec2(0f, StandingHeight) + StraightThrust.Points[1];
+            int expectedStep = _clock.StepsFor(StraightThrust.LengthUnits / (_rapier.SpeedUnitsPerSecond * 1.5f));
+            TimelineFrame arrival = null;
+            foreach (TimelineFrame frame in result.Timeline.Frames)
+            {
+                if (Vec2.Distance(Tip(frame.Pose.Left.HeldItem), end) >= 0.5f) continue;
+                arrival = frame;
+                break;
+            }
+
+            Assert.That(arrival, Is.Not.Null, "the tip reaches the end of the path");
+            Assert.That(arrival.Step, Is.InRange(expectedStep - 1, expectedStep + 1), "t = length / (speed × 1.5)");
+        }
+
+        [Test]
+        public void ChosenBodyMoves_AreEventsAtTheStart_WithTheBackwardFact()
+        {
+            TurnResult result = RunWithMoves(BodyMove.Crouch, BodyMove.StepBack);
+
+            var started = new List<BodyMoveStartedEvent>();
+            foreach (MatchEvent matchEvent in result.Timeline.Events)
+            {
+                if (matchEvent is BodyMoveStartedEvent moveEvent) started.Add(moveEvent);
+            }
+
+            Assert.That(started.Count, Is.EqualTo(2));
+            Assert.That(started[0].Time, Is.EqualTo(SimTime.Zero));
+            Assert.That((started[0].Side, started[0].Move, started[0].IsBackward), Is.EqualTo((Side.Left, BodyMove.Crouch, false)));
+            Assert.That((started[1].Side, started[1].Move, started[1].IsBackward), Is.EqualTo((Side.Right, BodyMove.StepBack, true)),
+                "§13: the backward swipe is the player's input");
+        }
+
+        [Test]
+        public void NoBodyMove_IsNoEvent()
+        {
+            TurnResult result = Run(StraightThrust);
+
+            foreach (MatchEvent matchEvent in result.Timeline.Events)
+            {
+                Assert.That(matchEvent, Is.Not.InstanceOf<BodyMoveStartedEvent>());
+            }
+        }
+
+        [Test]
+        public void ContactHandler_SeesEachSidesBodyMove_ForTheD13DamageBonus()
+        {
+            _world.ScheduleContacts(5, Bodies(Side.Left, BodyPart.Torso, Side.Right, BodyPart.LeftArm));
+
+            RunWithMoves(BodyMove.Lunge, BodyMove.None);
+
+            Assert.That(_handler.LastContext.BodyMoves.Left, Is.SameAs(_rules.FindBodyMove(BodyMove.Lunge)));
+            Assert.That(_handler.LastContext.BodyMoves.Right.Move, Is.EqualTo(BodyMove.None));
+        }
+
         [Test]
         public void MotorDriver_FollowsThePathToItsEnd()
         {
@@ -445,10 +610,13 @@ namespace XRim.Tests.EditMode.Simulation.Execution
                 _world = world;
             }
 
+            public TurnContactContext LastContext { get; private set; }
+
             public void Handle(TurnContact contact, TurnContactContext context)
             {
                 Contacts.Add(contact);
                 StepsSeenAtHandling.Add(_world.StepCount);
+                LastContext = context;
             }
         }
 
@@ -483,16 +651,17 @@ namespace XRim.Tests.EditMode.Simulation.Execution
                     _factory = factory;
                 }
 
-                public void Begin(Side side, BodyMoveStats move, BodyPose startRoot)
+                public void Begin(BodyMoveStats move, BodyMoveStart start)
                 {
-                    _start = startRoot;
-                    _factory.StartRoots.Add(startRoot);
+                    _start = start.Root;
+                    _factory.StartRoots.Add(start.Root);
                 }
 
-                public BodyPose EvaluateRoot(SimTime time)
+                public BodyMoveFrame Evaluate(SimTime time)
                 {
                     double fraction = Math.Min(1.0, time.Seconds / _factory._seconds);
-                    return new BodyPose(_start.PositionUnits + new Vec2((float)(_factory._slideUnits * fraction), 0f), _start.RotationDegrees);
+                    var root = new BodyPose(_start.PositionUnits + new Vec2((float)(_factory._slideUnits * fraction), 0f), _start.RotationDegrees);
+                    return new BodyMoveFrame(root, root.PositionUnits, root.PositionUnits);
                 }
 
                 public bool IsComplete(SimTime time) => time.Seconds >= _factory._seconds;

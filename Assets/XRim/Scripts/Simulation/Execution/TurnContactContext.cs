@@ -19,10 +19,18 @@ namespace XRim.Simulation.Execution
 
         public RulesSettings Rules { get; }
 
-        public TurnContactContext(MatchState state, RulesSettings rules, TimelineRecorder recorder)
+        /// <summary>
+        /// Each side's planned body move this turn (the neutral move's data for no move); null when the tuning has no data for
+        /// the move. The damage rules
+        /// (Session 06) apply its <see cref="BodyMoveStats.DamageBonusFraction"/> (D13, TBD §5; 0 by default).
+        /// </summary>
+        public PerSide<BodyMoveStats> BodyMoves { get; }
+
+        public TurnContactContext(MatchState state, RulesSettings rules, PerSide<BodyMoveStats> bodyMoves, TimelineRecorder recorder)
         {
             State = Guard.NotNull(state, nameof(state));
             Rules = Guard.NotNull(rules, nameof(rules));
+            BodyMoves = Guard.NotNull(bodyMoves, nameof(bodyMoves));
             _recorder = Guard.NotNull(recorder, nameof(recorder));
         }
 

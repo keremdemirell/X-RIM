@@ -39,6 +39,9 @@ namespace XRim.Tests.EditMode.Simulation
         /// <summary>Every root target set, in order (side, pose).</summary>
         public List<(Side Side, BodyPose Pose)> RootTargets { get; } = new List<(Side, BodyPose)>();
 
+        /// <summary>Every limb joint target set since the last load, in order.</summary>
+        public List<(Side Side, BodyPart Limb, LimbAngles Target)> LimbTargets { get; } = new List<(Side, BodyPart, LimbAngles)>();
+
         /// <summary>The first step count at which <see cref="IsSettled"/> is true (0 = always settled, int.MaxValue = never).</summary>
         public int SettlesAtStep { get; set; }
         public List<(Side Side, BodyPart Part)> BrokenJoints { get; } = new List<(Side, BodyPart)>();
@@ -65,6 +68,7 @@ namespace XRim.Tests.EditMode.Simulation
             LoadedPose = pose;
             LoadedEdges = edges;
             RootTargets.Clear();
+            LimbTargets.Clear();
             LoadedSimulation = simulation;
             LoadCount++;
             StepCount = 0;
@@ -95,6 +99,8 @@ namespace XRim.Tests.EditMode.Simulation
             RootTargets.Add((side, target));
             _pose.Get(side).Set(BodyPart.Torso, target);
         }
+
+        public void SetLimbTarget(Side side, BodyPart limb, LimbAngles target) => LimbTargets.Add((side, limb, target));
 
         public void Step(float deltaSeconds)
         {

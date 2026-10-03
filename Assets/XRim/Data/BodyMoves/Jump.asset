@@ -18,6 +18,11 @@ MonoBehaviour:
       X: 0
       Y: 80
     DurationSeconds: 0.4
+    LeanDegrees: 0
+    StrideUnits: 0
+    FootLiftUnits: 100
     IsLeanInPlace: 0
+    LeanInPlaceDegrees: 0
     WeaponSpeedBonusFraction: 0
     DamageBonusFraction: 0
+    StandsUpFromLowStance: 0

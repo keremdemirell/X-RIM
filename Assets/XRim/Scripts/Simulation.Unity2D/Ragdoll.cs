@@ -49,6 +49,10 @@ namespace XRim.Simulation.Unity2D
 
         private readonly List<JointEntry> _joints = new List<JointEntry>();
         private readonly List<Collider2D> _colliderBuffer = new List<Collider2D>();
+
+        /// <summary>Each joint's servo target, as Unity measures the joint angle; parallel to <see cref="_joints"/>.</summary>
+        private float[] _jointTargets = Array.Empty<float>();
+
         private bool _jointsFound;
         private float _elbowMinDegrees;
         private float _elbowMaxDegrees;
@@ -326,17 +330,37 @@ namespace XRim.Simulation.Unity2D
         }
 
         /// <summary>
-        /// Pose holding, once per physics step: each powered joint's motor turns back toward its rest angle at
-        /// <paramref name="gainPerSecond"/> degrees per second per degree of bend, within its torque limit.
+        /// The angles a limb's joint motors turn toward (a body move bends the legs, GDD §5), in the <see cref="LimbAngles"/>
+        /// convention: the shoulder or hip takes the upper angle, the elbow or knee the lower one. A new instance holds every
+        /// limb at its rest pose.
+        /// </summary>
+        public void SetLimbTarget(BodyPart limb, LimbAngles target)
+        {
+            List<JointEntry> joints = Joints();
+            for (int i = 0; i < joints.Count; i++)
+            {
+                JointEntry entry = joints[i];
+                if (entry.Part != limb) continue;
+                float degrees = entry.Kind == JointKind.Elbow || entry.Kind == JointKind.Knee ? target.LowerDegrees : target.UpperDegrees;
+                _jointTargets[i] = AnglesFlip ? -degrees : degrees;
+            }
+        }
+
+        /// <summary>
+        /// Pose holding, once per physics step: each powered joint's motor turns toward its target angle (the rest angle unless
+        /// <see cref="SetLimbTarget"/> said otherwise) at <paramref name="gainPerSecond"/> degrees per second per degree of
+        /// error, within its torque limit.
         /// </summary>
         public void UpdateServos(float gainPerSecond)
         {
-            foreach (JointEntry entry in Joints())
+            List<JointEntry> joints = Joints();
+            for (int i = 0; i < joints.Count; i++)
             {
-                if (!entry.Joint.useMotor) continue;
-                JointMotor2D motor = entry.Joint.motor;
-                motor.motorSpeed = -gainPerSecond * entry.Joint.jointAngle;
-                entry.Joint.motor = motor;
+                HingeJoint2D joint = joints[i].Joint;
+                if (!joint.useMotor) continue;
+                JointMotor2D motor = joint.motor;
+                motor.motorSpeed = -gainPerSecond * (joint.jointAngle - _jointTargets[i]);
+                joint.motor = motor;
             }
         }
 
@@ -440,13 +464,17 @@ namespace XRim.Simulation.Unity2D
                     break;
             }
 
-            // Facing -X, "forward" turns clockwise, so the limits flip; they also flip if Unity measures the other way.
-            bool flip = IsMirrored == JointAngleGrowsCounterClockwise;
-            entry.Joint.limits = flip
+            entry.Joint.limits = AnglesFlip
                 ? new JointAngleLimits2D { min = -max, max = -min }
                 : new JointAngleLimits2D { min = min, max = max };
             entry.Joint.useLimits = true;
         }
+
+        /// <summary>
+        /// Whether a <see cref="RagdollSettings"/> angle (positive = toward the opponent) is negated as Unity measures it: facing
+        /// -X, "forward" turns clockwise; it also flips because Unity measures the other way.
+        /// </summary>
+        private bool AnglesFlip => IsMirrored == JointAngleGrowsCounterClockwise;
 
         private List<JointEntry> Joints()
         {
@@ -459,6 +487,7 @@ namespace XRim.Simulation.Unity2D
                 if (part.IsArm() || part.IsLeg()) AddJoint(GetLowerBody(part), part, part.IsArm() ? JointKind.Elbow : JointKind.Knee);
             }
 
+            _jointTargets = new float[_joints.Count];
             _jointsFound = true;
             return _joints;
         }

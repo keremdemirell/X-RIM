@@ -16,8 +16,13 @@ MonoBehaviour:
     Move: 3
     DisplacementUnits:
       X: -100
-      Y: 0
-    DurationSeconds: 0.4
+      Y: -10
+    DurationSeconds: 0.3
+    LeanDegrees: -8
+    StrideUnits: 60
+    FootLiftUnits: 0
     IsLeanInPlace: 0
+    LeanInPlaceDegrees: -25
     WeaponSpeedBonusFraction: 0
     DamageBonusFraction: 0
+    StandsUpFromLowStance: 0

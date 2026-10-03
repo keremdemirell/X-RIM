@@ -178,6 +178,20 @@ namespace XRim.App
             return simulation;
         }
 
+        /// <summary>Sandbox: each turn plays its body moves with the body-move tuning as it is now (GDD §5 distances, D12, D13).</summary>
+        private List<BodyMoveStats> LiveBodyMoves()
+        {
+            var issues = new List<string>();
+            RulesSettings rules = _tuning.BuildRulesSettings(issues);
+            rules.Validate(issues);
+            foreach (string issue in issues)
+            {
+                Debug.LogWarning($"[XRim] Sandbox turn: {issue}", _tuning);
+            }
+
+            return rules.BodyMoves;
+        }
+
         private void Update()
         {
             if (!_started) return;
@@ -234,7 +248,11 @@ namespace XRim.App
             RagdollPrefabs = new RagdollPrefabSet(_sixBodies, _tenBodies);
             _world = new Unity2DPhysicsWorld(Space, RagdollPrefabs);
             _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies));
-            if (_mode == MatchMode.Sandbox) _simulator.SimulationSettingsOverride = LiveSimulationSettings;
+            if (_mode == MatchMode.Sandbox)
+            {
+                _simulator.SimulationSettingsOverride = LiveSimulationSettings;
+                _simulator.BodyMovesOverride = LiveBodyMoves;
+            }
             var options = new LocalTurnAuthorityOptions { PlaybackHold = new PlaybackHoldSettings { Mode = PlaybackHoldMode.ClientReport } };
             _authority = new LocalTurnAuthority(_setup, RulesSettings, SimulationSettings, Policies, _simulator, _clock, options);
             _flow = new ClientMatchFlow(_authority);

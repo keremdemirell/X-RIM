@@ -34,6 +34,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 5bc127ba329b9694593982099ed98fef, type: 2}
   - {fileID: 11400000, guid: 0e0e5086c5dce024c8d8b9573971ad9c, type: 2}
   - {fileID: 11400000, guid: 2d30d704766c9064f9b9967cd2134b72, type: 2}
+  - {fileID: 11400000, guid: cc0c690d2f8fc1149ba6aa5dff112158, type: 2}
   _signatureMoves: []
   _simulation: {fileID: 11400000, guid: 12e5dcac9253dae4fb23942c7430ff34, type: 2}
   _economy: {fileID: 11400000, guid: 7ac58b0022897674b84856101450203d, type: 2}

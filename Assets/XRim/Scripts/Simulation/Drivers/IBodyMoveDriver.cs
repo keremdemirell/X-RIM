@@ -1,15 +1,18 @@
 using XRim.Core;
 using XRim.Rules.Settings;
-using XRim.Simulation.Physics;
 
 namespace XRim.Simulation.Drivers
 {
-    /// <summary>Plays a body move alongside the weapon path, starting when execution starts (GDD §5, Decided).</summary>
+    /// <summary>
+    /// Plays a body move alongside the weapon path, starting when execution starts (GDD §5, Decided). Each step it says
+    /// where the root (pelvis) and both soles should be; the simulation drives the torso there and bends the legs to match.
+    /// </summary>
     public interface IBodyMoveDriver
     {
-        void Begin(Side side, BodyMoveStats move, BodyPose startRoot);
+        /// <param name="move">The move's data; null when the tuning profile has none (the move then holds the pose).</param>
+        void Begin(BodyMoveStats move, BodyMoveStart start);
 
-        BodyPose EvaluateRoot(SimTime time);
+        BodyMoveFrame Evaluate(SimTime time);
 
         bool IsComplete(SimTime time);
     }

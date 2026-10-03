@@ -18,6 +18,13 @@ namespace XRim.Core
 
         public static float Lerp(float a, float b, float t) => a + (b - a) * t;
 
+        /// <summary>Eases 0 → 1 with zero slope at both ends (3t² − 2t³); t is clamped to [0, 1].</summary>
+        public static float SmoothStep01(float t)
+        {
+            float clamped = Clamp01(t);
+            return clamped * clamped * (3f - 2f * clamped);
+        }
+
         /// <summary>The shortest signed turn from one angle to another, in [-180, 180).</summary>
         public static float DeltaAngleDegrees(float fromDegrees, float toDegrees)
         {

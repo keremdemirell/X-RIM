@@ -69,5 +69,17 @@ namespace XRim.Rules.Settings
             copy.InkLengthUnits = InkLengthUnits * multiplier;
             return copy;
         }
+
+        /// <summary>
+        /// This weapon travelling its path faster or slower for one turn (a body move's speed bonus, D13 TBD §5). The same
+        /// read-only shallow copy as <see cref="WithInkLengthMultiplier"/>; returns this weapon when the multiplier is 1.
+        /// </summary>
+        public WeaponStats WithSpeedMultiplier(float multiplier)
+        {
+            if (multiplier == 1f) return this;
+            var copy = (WeaponStats)MemberwiseClone();
+            copy.SpeedUnitsPerSecond = SpeedUnitsPerSecond * multiplier;
+            return copy;
+        }
     }
 }

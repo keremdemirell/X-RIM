@@ -25,5 +25,14 @@ namespace XRim.Rules.Settings
         /// <summary>Where the weapon arm's shoulder sits in the torso frame the path is drawn in (+X toward the opponent).</summary>
         [Placeholder("§6/§18 body proportions are not given")]
         public Vec2 ShoulderOffsetUnits = new Vec2(0f, 100f);
+
+        /// <summary>
+        /// GDD §6 (Decided): the path is drawn relative to the torso and travels with it during a body move. False: it moves
+        /// with the pelvis and keeps the angle it was drawn at, so a lunge carries a level thrust forward level. True: it also
+        /// tilts when a move leans the torso, so a lunge's lean dips a long thrust.
+        /// </summary>
+        [GddTbd("§6", "Does the path also tilt when a body move leans the torso? (not covered by the GDD)",
+            Proposal = "Session 05 default: no, it keeps its drawn angle")]
+        public bool PathTiltsWithTorsoLean;
     }
 }

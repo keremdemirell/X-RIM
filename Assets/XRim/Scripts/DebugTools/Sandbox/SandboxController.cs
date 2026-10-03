@@ -13,14 +13,15 @@ using XRim.Rules.Settings;
 using XRim.Simulation;
 using XRim.Simulation.Drivers;
 using XRim.Simulation.Physics;
+using XRim.Simulation.Recording;
 using XRim.Simulation.Unity2D;
 
 namespace XRim.DebugTools.Sandbox
 {
     /// <summary>
     /// The debug sandbox (MatchBootstrap in <see cref="MatchMode.Sandbox"/>): plan both sides with the mouse before touch
-    /// input exists (Session 08). Pick a side, drag a path in its torso frame, pick its weapon, press Execute, watch the
-    /// playback, then plan the next turn from the frozen board. Everything goes through two <see cref="SandboxPlanSource"/>s
+    /// input exists (Session 08). Pick a side, drag a path in its torso frame, pick its weapon and body move (GDD §5), press
+    /// Execute, watch the playback, then plan the next turn from the frozen board. Everything goes through two <see cref="SandboxPlanSource"/>s
     /// as real planning commands, so the rules apply exactly as in a match. The planning timer is frozen.
     /// </summary>
     internal sealed class SandboxController : MonoBehaviour
@@ -30,7 +31,11 @@ namespace XRim.DebugTools.Sandbox
 
         private const float HudMargin = 8f;
         private const float HudWidth = 560f;
-        private const float HudHeight = 250f;
+        private const float HudHeight = 330f;
+        private const float MoveButtonWidth = 72f;
+
+        /// <summary>The body moves in the order the HUD offers them.</summary>
+        private static readonly BodyMove[] Moves = { BodyMove.None, BodyMove.Crouch, BodyMove.Lunge, BodyMove.StepBack, BodyMove.Jump };
         private const string ReportFolderName = "Logs";
         private const string ReportFileName = "XRimFeelReport.txt";
         private const string SpriteShaderName = "Universal Render Pipeline/2D/Sprite-Unlit-Default";
@@ -103,6 +108,15 @@ namespace XRim.DebugTools.Sandbox
             if (keyboard.digit1Key.wasPressedThisFrame && loadout.Count > 0) _sources[_activeSide].SelectWeapon(loadout[0]);
             if (keyboard.digit2Key.wasPressedThisFrame && loadout.Count > 1) _sources[_activeSide].SelectWeapon(loadout[1]);
             if (keyboard.digit3Key.wasPressedThisFrame && loadout.Count > 2) _sources[_activeSide].SelectWeapon(loadout[2]);
+
+            // Body moves as the swipes will be (§5): down, up, toward or away from the opponent; N clears it.
+            SandboxPlanSource active = _sources[_activeSide];
+            bool facesRight = _activeSide.FacingSign() > 0;
+            if (keyboard.downArrowKey.wasPressedThisFrame) active.SetBodyMove(BodyMove.Crouch);
+            if (keyboard.upArrowKey.wasPressedThisFrame) active.SetBodyMove(BodyMove.Jump);
+            if (keyboard.rightArrowKey.wasPressedThisFrame) active.SetBodyMove(facesRight ? BodyMove.Lunge : BodyMove.StepBack);
+            if (keyboard.leftArrowKey.wasPressedThisFrame) active.SetBodyMove(facesRight ? BodyMove.StepBack : BodyMove.Lunge);
+            if (keyboard.nKey.wasPressedThisFrame) active.SetBodyMove(BodyMove.None);
         }
 
         private void HandleMouse()
@@ -212,8 +226,39 @@ namespace XRim.DebugTools.Sandbox
                     ? _pathBuilder.Build(WeaponPath.Empty, new WeaponPath(stroke), source.Window.WeaponTips[side].TipLocal(source.Weapon), weapon,
                         _bootstrap.RulesSettings.Paths)
                     : null;
-                _drawers[side].Show(stroke, _built[side]?.Path, weapon != null ? weapon.InkThicknessUnits : 0f, Root(side), _bootstrap.Space);
+                _drawers[side].Show(stroke, _built[side]?.Path, weapon != null ? weapon.InkThicknessUnits : 0f, Root(side), MoveFrame(source),
+                    _bootstrap.Space);
             }
+        }
+
+        /// <summary>
+        /// Where the side's path frame will be once its body move is at full extent (a hop: at its top), as the simulation plays
+        /// it; null without a body move.
+        /// </summary>
+        private BodyPose? MoveFrame(SandboxPlanSource source)
+        {
+            BodyMoveStats stats = source.BodyMove != BodyMove.None ? LiveBodyMove(source.BodyMove) : null;
+            if (stats == null) return null;
+
+            Side side = source.Side;
+            BoardSnapshot board = source.Window.Board;
+            var start = BodyMoveStart.Of(side, board.Pose.Get(side), board.State.Fighters[side].Handedness, _bootstrap.SimulationSettings.Ragdoll);
+            var driver = new StanceBodyMoveDriver();
+            driver.Begin(stats, start);
+            bool isHop = stats.DisplacementUnits.Y > 0f && !stats.IsLeanInPlace;
+            BodyPose root = driver.Evaluate(SimTime.FromSeconds(isHop ? stats.DurationSeconds * 0.5 : stats.DurationSeconds)).Root;
+            return _bootstrap.RulesSettings.Paths.PathTiltsWithTorsoLean ? root : new BodyPose(root.PositionUnits, start.Root.RotationDegrees);
+        }
+
+        /// <summary>A body move's data as the tuning panel has it now: the sandbox plays body moves with the live tuning.</summary>
+        private BodyMoveStats LiveBodyMove(BodyMove move)
+        {
+            foreach (SettingsConfigBase config in _bootstrap.Tuning.SettingsConfigs())
+            {
+                if (config is BodyMoveDefinition definition && definition.Settings.Move == move) return definition.Settings;
+            }
+
+            return _bootstrap.RulesSettings.FindBodyMove(move);
         }
 
         private WeaponStats Weapon(SandboxPlanSource source)
@@ -265,8 +310,9 @@ namespace XRim.DebugTools.Sandbox
             if (GUILayout.Button("Clear path (C)")) _sources[_activeSide].ClearPath();
             if (GUILayout.Button("Execute (Space)")) Execute();
             GUILayout.EndHorizontal();
-            GUILayout.Label("Drag in the arena to draw the active side's path. Weapons: 1/2/3. Feel report: F9. " +
-                            "Simulation tuning applies from the next Execute; rules tuning from the next match.");
+            GUILayout.Label("Drag in the arena to draw the active side's path. Weapons: 1/2/3. Body move: ↓ crouch, ↑ jump, " +
+                            "→/← lunge or step back (toward or away from the opponent), N none. Feel report: F9. " +
+                            "Simulation and body-move tuning apply from the next Execute; other rules tuning from the next match.");
             if (_diagnosticsMessage.Length > 0) GUILayout.Label(_diagnosticsMessage);
         }
 
@@ -282,7 +328,29 @@ namespace XRim.DebugTools.Sandbox
             }
 
             GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("   move:", GUILayout.Width(44f));
+            foreach (BodyMove move in Moves)
+            {
+                string name = MoveName(move);
+                if (GUILayout.Button(move == source.BodyMove ? $"[{name}]" : name, GUILayout.Width(MoveButtonWidth))) source.SetBodyMove(move);
+            }
+
+            GUILayout.EndHorizontal();
             GUILayout.Label("   " + PathLine(_built[side]) + (source.LastRejection.Length > 0 ? "   " + source.LastRejection : string.Empty));
+        }
+
+        /// <summary>The HUD name of a move; the backward move says which D12 option it plays.</summary>
+        private string MoveName(BodyMove move)
+        {
+            switch (move)
+            {
+                case BodyMove.None: return "none";
+                case BodyMove.StepBack:
+                    BodyMoveStats stats = LiveBodyMove(move);
+                    return stats != null && stats.IsLeanInPlace ? "lean" : "back";
+                default: return move.ToString().ToLowerInvariant();
+            }
         }
 
         private static string PathLine(BuiltPath built)

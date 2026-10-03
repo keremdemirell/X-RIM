@@ -28,6 +28,41 @@ namespace XRim.Tests.EditMode.Rules
         }
 
         [Test]
+        public void Validation_RejectsADoubledBodyMoveAndANegativeDuration()
+        {
+            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            settings.BodyMoves.Add(new BodyMoveStats { Move = BodyMove.Jump, DurationSeconds = -0.1f });
+            var issues = new List<string>();
+            settings.Validate(issues);
+            Assert.That(issues, Has.Some.Contains("'Jump' is listed twice"));
+            Assert.That(issues, Has.Some.Contains("'Jump' duration must not be negative"));
+        }
+
+        [Test]
+        public void WithBodyMoves_SwapsOnlyTheBodyMoves_AndLeavesTheOriginalAlone()
+        {
+            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            List<BodyMoveStats> original = settings.BodyMoves;
+            List<BodyMoveStats> other = GddStartingValues.CreateBodyMoves();
+
+            RulesSettings copy = settings.WithBodyMoves(other);
+
+            Assert.That(copy.BodyMoves, Is.SameAs(other));
+            Assert.That(copy.Paths, Is.SameAs(settings.Paths));
+            Assert.That(settings.BodyMoves, Is.SameAs(original));
+        }
+
+        [Test]
+        public void OnlyTheBackwardSwipe_IsBackward()
+        {
+            Assert.That(BodyMove.StepBack.IsBackward(), Is.True, "§13: the backward swipe triggers the wall, a lean in place included");
+            foreach (BodyMove move in new[] { BodyMove.None, BodyMove.Crouch, BodyMove.Lunge, BodyMove.Jump })
+            {
+                Assert.That(move.IsBackward(), Is.False, move.ToString());
+            }
+        }
+
+        [Test]
         public void OnlyArmsAndLegs_CanBeSevered()
         {
             Assert.That(BodyPart.Head.IsSeverable(), Is.False);

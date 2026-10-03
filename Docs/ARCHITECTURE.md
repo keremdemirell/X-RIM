@@ -47,7 +47,7 @@ References only point downward. Assemblies below the line set `noEngineReference
 | `XRim.Core` | no | `Vec2`, `XMath`, `Side`, `PerSide<T>`, `SimTime` (integer µs), `IClock`/`ManualClock`, `IRandom`/`XorShiftRandom`, `Guard`, `[GddTbd]`, `[Placeholder]` | – |
 | `XRim.Rules` | no | Match state machine, planning session, paths and ink, clash, damage, limbs, status effects, electric wall, sudden death, domain events, `RulePolicies` (every TBD seam), `*Settings` + `GddStartingValues` | Core |
 | `XRim.Economy` | no | `EarnedAmount` and `PremiumAmount` as separate types, `Wallet` with no conversion API, `GameplayUnlock` (earned price only), cosmetics, reward and farming seams | Core, Rules (reads `MatchSummary` only) |
-| `XRim.Simulation` | no | `IPhysicsWorld` port, `SimClock`, `TurnSimulator` (+ `ITurnContactHandler` seam), weapon and body drivers, `TimelineRecorder`, `TurnResult`, `BoardSnapshot`, `PoseSnapshot`, `GuardStance`, `StartingBoard` | Core, Rules |
+| `XRim.Simulation` | no | `IPhysicsWorld` port, `SimClock`, `TurnSimulator` (+ `ITurnContactHandler` seam), weapon drivers, body-move drivers (`StanceBodyMoveDriver`, `NeutralBodyMoveDriver`), `LegPoser`, `TimelineRecorder`, `TurnResult`, `BoardSnapshot`, `PoseSnapshot`, `GuardStance`, `StartingBoard` | Core, Rules |
 | `XRim.Networking` | no | `ITurnAuthority`, `LocalTurnAuthority`, `IPlanSource`, `PlanSourceBinder`, `PlanningWindow` | Core, Rules, Simulation |
 | `XRim.Bots` | no | `IBotBrain`, `RandomBotBrain` (debug), `BotPlanSource` | Core, Rules, Simulation, Networking |
 | `XRim.Config` | yes | Every ScriptableObject, `TuningProfile`, `ArenaSpace`, `TunableFields` | Core, Rules, Simulation, Economy |
@@ -145,7 +145,7 @@ These are not GDD values; every one is tagged `[Placeholder]`.
 - Base damage: rapier 8, sword 12, spear 10, mace 20, shield 3, limb 10.
 - Clash weights 1.0 (mass) / 0.005 (speed), so the mace still crushes the rapier. Glancing mass band 20%.
 - Sword, spear, shield and limb ink and mass.
-- Body-move displacements, 0.4 s move duration.
+- Body-move displacements, 0.4 s move duration (reshaped in Session 05: see `MEMORY.md` → *Placeholder values*).
 - Wall: damage 10, bounce 5, advance 50, spawn offset 60.
 - Arena width 2000, starting gap 700, path sample spacing 10.
 - Added in Session 01: arm length 240, shoulder at (0, 100) in the torso frame, weapon lengths (rapier 400, sword 320, spear 500, mace 220, shield 150, severed limb 200), sharp-turn window 20.
@@ -183,21 +183,26 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 
 ## 6. Execution simulation
 
-- **Physics is isolated behind `IPhysicsWorld`**, the only door to a physics engine. Operations: load a frozen board, set weapon and root targets, `Step`, drain contacts, break a joint, drop the held item, impulse, capture pose, is-settled.
+- **Physics is isolated behind `IPhysicsWorld`**, the only door to a physics engine. Operations: load a frozen board, set weapon and root targets, set limb joint targets (body moves bend the legs), `Step`, drain contacts, break a joint, drop the held item, impulse, capture pose, is-settled.
 - **`Unity2DPhysicsWorld`** creates a hidden scene with `LocalPhysicsMode.Physics2D` and steps it only through `PhysicsScene2D.Simulate`.
   - Global `Physics2D.simulationMode = Script`, so nothing auto-steps.
   - Cosmetic debris in the visual scene is stepped by playback, so slow motion slows it too.
   - Ragdolls are Rigidbody2D joined by HingeJoint2D (§18).
   - It requires Play mode.
-- **The turn loop (`TurnSimulator`, Session 04).** Load the frozen board at zero velocity, then each fixed step: body-move drivers set root targets (`IBodyMoveDriverFactory`; Session 05 adds the moves), weapon drivers move the weapons in the torso frame, the world steps, the pose is recorded, and the step's new contacts are refined, ordered and handed to `ITurnContactHandler`, the seam where Sessions 06–07 put the hit, clash and block rules (today `RecordContactsHandler` records each as a `ContactEvent`). The result is a `TurnResult`: timeline, end board (stance persistence, §3), execution report and end reason.
+- **The turn loop (`TurnSimulator`, Session 04).** Load the frozen board at zero velocity, then each fixed step: body-move drivers set root targets and bend the legs (`IBodyMoveDriverFactory`, `LegPoser`; see *Body moves*), weapon drivers move the weapons in the path frame, the world steps, the pose is recorded, and the step's new contacts are refined, ordered and handed to `ITurnContactHandler`, the seam where Sessions 06–07 put the hit, clash and block rules (today `RecordContactsHandler` records each as a `ContactEvent`). The result is a `TurnResult`: timeline, end board (stance persistence, §3), execution report and end reason.
 - **Turn-start root.** A dummy's root at turn start is its frozen pelvis position, upright (`TurnStartRoot`); without a body move it holds that spot and straightens up. Paths are drawn in this upright frame, which travels with the root during the turn.
+- **Body moves (Session 05, GDD §5).** A move starts with execution and runs alongside the weapon path. Each is pure data (`BodyMoveStats`: displacement, duration, lean, stride, foot lift, the D12/D13 flags), played by one data-driven `StanceBodyMoveDriver`; no move is `NeutralBodyMoveDriver`. A driver returns a `BodyMoveFrame` per step: the root target and where each foot goes.
+  - X is a step toward or away from the opponent that carries over (§3). Y is measured from standing height (pelvis one leg length above the floor): below it a low stance that is held (the crouch is a stance: no move keeps it, designer 2026-10-02), above it a hop that lands standing by the end of the duration. Leans are positive toward the opponent. D12's lean in place keeps the pelvis and tilts the torso.
+  - The path frame travels with the root and keeps the angle the path was drawn at; `PathSettings.PathTiltsWithTorsoLean` (flagged) lets a lean tilt it. D13's speed bonus scales the weapon's path speed for the turn; its damage bonus is exposed on `TurnContactContext.BodyMoves` for the damage rules.
+  - Legs: `LegPoser` turns each foot target into hip and knee angles (knee toward the opponent, the lowest corner of the leg's flat end on the target, clamped to the joint limits; a one-piece leg swings instead), sent with `IPhysicsWorld.SetLimbTarget` to the joint servos every step. The front leg is the dominant side's.
+  - Facts: each chosen move is a `BodyMoveStartedEvent` at t = 0 (the player's input, so §13's wall reads "a backward swipe was chosen" from it or from `TurnPlan.BodyMove.IsBackward()`). Leg-loss limits come from `RulePolicies.MobilityPenalty` (no penalty until Session 11), applied when each turn's planning limits are built.
 - **Fixed step.** `SimulationSettings.StepRateHz` defaults to 240, because a thin, fast rapier would tunnel at the default 50 Hz. Time is the integer step index converted to `SimTime`; never `Time.deltaTime`.
 - **Time to impact.** Weapons travel their paths at constant weapon speed, so a contact inside a step is refined from path progress, matching the GDD's t = d / v (§9).
   - Contacts in a step are processed in time order, then by a stable id independent of the engine (owner, role, part of each body: `TurnContactOrder`). Timeline events are stored in time order.
   - Priority, interrupts and the sudden-death tie-break all compare `SimTime` in microseconds.
-- **Drivers are strategies.** `IWeaponDriver` and `IBodyMoveDriver`. D1 (2026-10-01): kinematic path following; the motor driver stays selectable; handing the blade to physics when the rules stop it comes with D26 (Session 06). Paths are torso-relative (§6, Decided). Drivers get the torso frame at both ends of each step.
+- **Drivers are strategies.** `IWeaponDriver` and `IBodyMoveDriver`. D1 (2026-10-01): kinematic path following; the motor driver stays selectable; handing the blade to physics when the rules stop it comes with D26 (Session 06). Paths are torso-relative (§6, Decided). Weapon drivers get the path frame at both ends of each step.
 - **A turn ends** when both paths are done and physics stays settled for `SettleStepsRequired` steps, or at the 1.5 s hard cap.
-- **Standing and the weapon arm (Session 02).** Each torso is pulled to an invisible kinematic root anchor by a strength-limited `RelativeJoint2D` (upright included), and hinge-motor servos hold every joint, so dummies stand still yet hits still knock them. The weapon is not jointed to the body: its driver moves it, and the weapon arm follows with a one-way hand spring onto the blade where the arm can reach (`ArmReach`).
+- **Standing and the weapon arm (Session 02).** Each torso is pulled to an invisible kinematic root anchor by a strength-limited `RelativeJoint2D` (upright included), and hinge-motor servos hold every joint at its target (the rest pose, or the bent legs a body move asks for), so dummies stand still yet hits still knock them. The weapon is not jointed to the body: its driver moves it, and the weapon arm follows with a one-way hand spring onto the blade where the arm can reach (`ArmReach`).
 - **Contacts (Session 02).** After each step the world polls contacts and reports pairs of different owners that were not touching after the previous step, floor and edges excluded, in load-time body order. The normal points from A to B; relative velocity comes from each body's motion over the previous step. Held items use full kinematic contacts, so two kinematic blades meeting is a contact. Unity 6.5 measures `HingeJoint2D.jointAngle` clockwise, so joint limits are flipped when applied.
 - **Arena edges (D22, §13 TBD).** `IArenaEdgePolicy` describes the edges (`ArenaEdges`) and `IPhysicsWorld.Load` builds them; the default is a solid invisible wall at ±`ArenaSettings.WidthUnits`/2. Root targets are kept half a torso width inside solid edges.
 - **Loading.** Every `Load` builds a fresh hidden physics scene, so a turn simulated twice from the same inputs repeats exactly. Ten bodies per dummy by default (D2). Severed limbs on the board are rebuilt as loose placeholder bodies (Session 11 builds dismemberment).
@@ -266,7 +271,7 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 **Debug tooling** (Editor and development builds only):
 - An in-game **Debug** button. Its **Tuning** tab edits every asset in the profile live; placeholders are orange and TBD fields say [TBD]. In the Editor, edits persist after Play mode.
 - The **Playback** tab: speed 0.05×–2×, pause, frame step, scrub, loop, replay, re-simulate the last turn with the current tuning (display only), and the turn's raw contact list.
-- The **sandbox** (MatchBootstrap in `Sandbox` mode): plan both sides with the mouse through `SandboxPlanSource`s (real `PlanningCommand`s), with path and ink preview, weapon pick and Execute; simulation tuning applies from the next turn. **F9** saves the feel report (`FeelDiagnostics`: standing, tunnelling, kinematic vs motor, cost per turn) to `Logs/XRimFeelReport.txt`.
+- The **sandbox** (MatchBootstrap in `Sandbox` mode): plan both sides with the mouse through `SandboxPlanSource`s (real `PlanningCommand`s), with path and ink preview, weapon pick, body moves (↓ crouch, ↑ jump, →/← lunge or step back toward or away from the opponent, N none, or the HUD buttons; a faint copy shows the path at the move's full extent) and Execute; simulation and body-move tuning apply from the next turn. **F9** saves the feel report (`FeelDiagnostics`: standing, tunnelling, kinematic vs motor, cost per turn) to `Logs/XRimFeelReport.txt`.
 - The **Cheats** tab (planned): freeze timer, infinite ink, force stun or sever. Cheats act through seams (clock, settings), never through rule code.
 - `GameplayGizmos` (planned): path and ink, rigidity-invalid segments in red, hit zones, contact normals and clash angles, time-to-impact labels.
 - `ScenarioStore` (planned): save and load a board plus both plans.
@@ -278,6 +283,7 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
   - **Create Sandbox Scene.** Generated; running it again rebuilds it (camera, arena root, MatchBootstrap in Sandbox mode).
   - **Fill New Tuning Fields.**
   - **Build Placeholder Dummies.** The 6- and 10-body ragdoll prefabs, from the live tuning.
+  - **Reset Body Moves To Starting Values.** Asks, then overwrites every body-move asset (adding missing ones) from `GddStartingValues`; undoable.
 - **XRim → Reports:** **TBD Seams** and **Placeholder Values**, both read from the code attributes.
 
 ---
@@ -331,9 +337,11 @@ The code is the live register: **XRim → Reports → TBD Seams** prints this li
 | 4 | Placement of weapon selector, signature buttons, Ready | `PlanningHud` (UI Toolkit layout) |
 | 4 | Change handedness later; separate mirror toggle | `IHandednessLayoutPolicy` |
 | 4–5 | Overall feel of the dual-zone scheme | `IInputScheme` → `DualZoneInputScheme` |
-| 5 | Lean vs real step back; lunge speed/damage bonus | `BodyMoveStats.IsLeanInPlace`, `WeaponSpeedBonusFraction`, `DamageBonusFraction` |
+| 5 | Lean vs real step back (D12); lunge speed/damage bonus (D13) | `BodyMoveStats.IsLeanInPlace` (default: real step), `WeaponSpeedBonusFraction`, `DamageBonusFraction` (default: 0, reach only) |
 | 5 | Diagonal or combined swipes | `ISwipeClassifier` |
-| 5, 12 | Moves after losing a leg; one leg / both legs | `IMobilityPenaltyPolicy` |
+| 5, 12 | Moves after losing a leg; one leg / both legs | `IMobilityPenaltyPolicy` (default `NoMobilityPenaltyPolicy`) |
+| 5 | Does a crouch last into later turns (not in the GDD) | `BodyMoveStats.StandsUpFromLowStance` on the neutral move (default: a stance, stays low) |
+| 6 | Does the path tilt with a body move's lean (not in the GDD) | `PathSettings.PathTiltsWithTorsoLean` (default: no) |
 | 6 | Weapon stats, speeds, base damage | `WeaponStats` assets (placeholders; `DesignIsTbd`) |
 | 6 | Keep or cut spear rigidity | `IInkCostModel`, `RigiditySettings.Enabled` |
 | 6 | ~~Path start; reach limit; strokes per turn~~ Decided 2026-09-29 (D3–D5, see §13) | `IPathStartPolicy`, `IReachPolicy`, `IStrokePolicy` keep the decided rules |
@@ -388,6 +396,9 @@ Record these in the GDD when convenient.
 | 2026-10-01 | D22 (§13 TBD): arena width 2000 (placeholder), each edge a solid invisible stop, as the flagged `IArenaEdgePolicy` default | Designer |
 | 2026-10-01 | Blades start apart en garde (placeholder guard: −40°, grip at the shoulder) | Designer |
 | 2026-10-01 | No body move: the dummy holds its frozen spot and straightens up; paths are drawn upright | Claude, approved with the plan |
+| 2026-10-02 | D12 and D13 on their recommended defaults as flagged seams: a real step back; the lunge adds reach only | Designer |
+| 2026-10-02 | A crouch is a stance: it holds through the turn and stays until another body move (flagged) | Designer |
+| 2026-10-02 | The path does not tilt with a body move's lean (flagged; to confirm) | Claude |
 
 ---
 
@@ -404,10 +415,11 @@ Record these in the GDD when convenient.
   - All Editor menus and reports.
   - Path rules (Session 01): `PathResampler`, ink cost models, ink cut-off, the D3–D5 policies and `PathBuilder` (order: stroke, lead-in, resample, reach, ink cut-off, break cut).
   - Feel spike (Session 02): kinematic and motor weapon drivers, the aim model, impact-time refinement, the contact angle and the placeholder ragdoll (6 or 10 bodies). Its swing loop, scene and harness were retired in Session 04.
+  - Body moves (Session 05): crouch, lunge, step back (both D12 options) and jump from data, legs posed by `LegPoser`, the path travelling with the body, the backward fact for the wall, the mobility seam, sandbox pickers.
   - Turn simulation and playback (Session 04): `TurnSimulator` (two fighters, contacts to the `ITurnContactHandler` seam, settle or hard cap), `Unity2DPhysicsWorld` complete for two fighters (edges, severed-limb placeholders, fresh scene per load), stance persistence (`StartingBoard`, `GuardStance`, `PoseWeaponTipLocator`), `MatchBootstrap` running the local loop, `TurnPlayback`, the Playback tab, the sandbox and the feel report.
   - Match loop and planning rules (Session 03, headless): `PlanningSession` (every command, lock-out, Ready and cancel, timeout), `PlanValidator`, `EndConditionEvaluator` (D11 order), `SuddenDeathSetup`, `MatchStateMachine` (all phases), `LoadoutValidator`, `LocalTurnAuthority` with the playback hold, `RandomBotBrain` and `BotPlanSource` (valid plans only). Placeholders inside it: the guard-stance weapon tip (`GuardStanceWeaponTipLocator`, until Session 04 reads the pose) and the sudden-death seams (Session 12).
 - **Placeholders that throw `NotImplementedException`:** the remaining gameplay logic.
   - Rules: clash, damage, limb cap, wall.
-  - Simulation: body moves (Session 05) and the rules' contact decisions (Sessions 06–07).
+  - Simulation: the rules' contact decisions (Sessions 06–07).
   - Input and presentation: swipe classification, screen mapping, the input scheme, feel, VFX, audio and HUD.
   - Tooling: hot-seat and scenarios.

@@ -30,7 +30,7 @@ namespace XRim.Simulation.Physics
             IWeaponAimModel aim)
         {
             FighterState fighter = state.Fighters[side];
-            var pelvis = new BodyPose(new Vec2(xUnits, simulation.Ragdoll.LegLengthUnits), TurnStartRoot.UprightDegrees);
+            var pelvis = new BodyPose(new Vec2(xUnits, LegGeometry.StandingPelvisHeightUnits(simulation.Ragdoll)), TurnStartRoot.UprightDegrees);
             return GuardStance.Create(pelvis, side, BodyParts.DominantArm(fighter.Handedness), rules.FindWeapon(fighter.CurrentWeapon),
                 simulation.Segmentation, simulation.Ragdoll, rules.Paths, aim);
         }

@@ -25,9 +25,9 @@ namespace XRim.Simulation.Unity2D
     /// </para>
     /// <para>
     /// Standing: each torso is pulled toward an invisible kinematic root anchor by a strength-limited RelativeJoint2D
-    /// (upright included), and every joint holds its rest angle with a hinge-motor servo. Both are solved inside the
-    /// physics solver, so standing is stable, yet a hard hit can still knock the dummy (pillar 4). A kinematic-torso
-    /// fallback exists (<see cref="RootDriveMode.Kinematic"/>).
+    /// (upright included), and every joint holds its target angle with a hinge-motor servo: the rest pose, or the bent legs
+    /// a body move asks for (<see cref="SetLimbTarget"/>). Both are solved inside the physics solver, so standing is stable,
+    /// yet a hard hit can still knock the dummy (pillar 4). A kinematic-torso fallback exists (<see cref="RootDriveMode.Kinematic"/>).
     /// </para>
     /// <para>
     /// The held weapon is not jointed to the body: its driver moves it, and the weapon arm follows it with a hand spring
@@ -168,6 +168,8 @@ namespace XRim.Simulation.Unity2D
             driven.MovePosition(Space.ToWorld(target.PositionUnits));
             driven.MoveRotation(target.RotationDegrees);
         }
+
+        public void SetLimbTarget(Side side, BodyPart limb, LimbAngles target) => _fighters[(int)side]?.Ragdoll.SetLimbTarget(limb, target);
 
         public void Step(float deltaSeconds)
         {
@@ -352,7 +354,7 @@ namespace XRim.Simulation.Unity2D
         private void CreateArenaBounds(ArenaEdges edges)
         {
             float wall = edges.IsSolid ? BoundaryThicknessUnits : 0f;
-            CreateStaticBox(FloorName, BodyRole.Floor, new Vec2(edges.CentreXUnits, -BoundaryThicknessUnits * 0.5f),
+            CreateStaticBox(FloorName, BodyRole.Floor, new Vec2(edges.CentreXUnits, LegGeometry.FloorYUnits - BoundaryThicknessUnits * 0.5f),
                 edges.WidthUnits + wall * 2f, BoundaryThicknessUnits);
             if (!edges.IsSolid) return;
 

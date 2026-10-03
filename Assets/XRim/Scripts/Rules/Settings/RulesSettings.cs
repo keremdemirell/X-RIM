@@ -46,6 +46,17 @@ namespace XRim.Rules.Settings
         }
 
         /// <summary>
+        /// These settings with another body-move list (debug: the sandbox tries body-move tuning from the next turn). A shallow
+        /// copy that shares everything else with this snapshot, so treat it as read-only.
+        /// </summary>
+        public RulesSettings WithBodyMoves(List<BodyMoveStats> bodyMoves)
+        {
+            var copy = (RulesSettings)MemberwiseClone();
+            copy.BodyMoves = bodyMoves ?? throw new ArgumentNullException(nameof(bodyMoves));
+            return copy;
+        }
+
+        /// <summary>
         /// Appends a message for every value that breaks a GDD rule or cannot work. Placeholders are
         /// not errors. Called by the Config SOs (OnValidate) and by tests.
         /// </summary>
@@ -84,6 +95,15 @@ namespace XRim.Rules.Settings
                     if (rigidity.BreakWindowUnits < 0f)
                         issues.Add($"Weapons: '{weapon.Id}' rigidity break window must not be negative.");
                 }
+            }
+
+            var seenMoves = new HashSet<BodyMove>();
+            foreach (BodyMoveStats move in BodyMoves)
+            {
+                if (!seenMoves.Add(move.Move)) issues.Add($"Body moves: '{move.Move}' is listed twice.");
+                if (move.DurationSeconds < 0f) issues.Add($"Body moves: '{move.Move}' duration must not be negative.");
+                if (move.StrideUnits < 0f || move.FootLiftUnits < 0f)
+                    issues.Add($"Body moves: '{move.Move}' stride and foot lift must not be negative.");
             }
 
             WeaponStats rapier = FindWeapon(WeaponIds.Rapier);

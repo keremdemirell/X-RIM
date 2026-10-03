@@ -11,7 +11,8 @@ namespace XRim.DebugTools.Sandbox
     /// <summary>
     /// Shows one side's plan in the sandbox, in the arena root's space so it lines up with the dummies: the raw stroke thin
     /// and white, and the path that will execute (lead-in from the weapon tip, resampled, reach-clamped, ink-limited, GDD §6)
-    /// at the weapon's hit width. Paths are stored in the side's torso frame (§6, Decided), positions only (§4).
+    /// at the weapon's hit width. Paths are stored in the side's torso frame (§6, Decided), positions only (§4). With a body
+    /// move, a faint copy shows where the path will be once the move is at full extent (the path travels with the body).
     /// </summary>
     internal sealed class SandboxPathDrawer
     {
@@ -21,9 +22,11 @@ namespace XRim.DebugTools.Sandbox
 
         private static readonly Color StrokeColor = new Color(1f, 1f, 1f, 0.6f);
         private static readonly Color PathColor = new Color(1f, 0.85f, 0.1f, 0.9f);
+        private static readonly Color GhostColor = new Color(1f, 0.85f, 0.1f, 0.3f);
 
         private readonly LineRenderer _strokeLine;
         private readonly LineRenderer _pathLine;
+        private readonly LineRenderer _ghostLine;
         private readonly Side _side;
 
         public SandboxPathDrawer(Transform arenaRoot, Material material, Side side)
@@ -31,19 +34,23 @@ namespace XRim.DebugTools.Sandbox
             _side = side;
             _strokeLine = CreateLine(arenaRoot, side + "Stroke", material, StrokeColor);
             _pathLine = CreateLine(arenaRoot, side + "ExecutedPath", material, PathColor);
+            _ghostLine = CreateLine(arenaRoot, side + "PathAtFullExtent", material, GhostColor);
         }
 
-        public void Show(IReadOnlyList<Vec2> strokeLocal, WeaponPath path, float widthUnits, BodyPose root, ArenaSpace space)
+        /// <param name="moveFrame">The path's frame once the body move is at full extent; null without a body move.</param>
+        public void Show(IReadOnlyList<Vec2> strokeLocal, WeaponPath path, float widthUnits, BodyPose root, BodyPose? moveFrame, ArenaSpace space)
         {
             ShowLocal(_strokeLine, strokeLocal, root, space);
             _pathLine.widthMultiplier = space.ToWorldLength(widthUnits);
             ShowLocal(_pathLine, path != null ? path.Points : null, root, space);
+            ShowLocal(_ghostLine, path != null && moveFrame.HasValue ? path.Points : null, moveFrame ?? root, space);
         }
 
         public void Clear()
         {
             _strokeLine.positionCount = 0;
             _pathLine.positionCount = 0;
+            _ghostLine.positionCount = 0;
         }
 
         /// <summary>
@@ -54,6 +61,7 @@ namespace XRim.DebugTools.Sandbox
         {
             if (_strokeLine != null) Object.Destroy(_strokeLine.gameObject);
             if (_pathLine != null) Object.Destroy(_pathLine.gameObject);
+            if (_ghostLine != null) Object.Destroy(_ghostLine.gameObject);
         }
 
         private void ShowLocal(LineRenderer line, IReadOnlyList<Vec2> pointsLocal, BodyPose root, ArenaSpace space)

@@ -36,7 +36,10 @@ namespace XRim.Rules
         public IInterruptPolicy Interrupt { get; set; }
         public IRepeatContactPolicy RepeatContact { get; set; }
         public IShieldBlockModel ShieldBlock { get; set; }
-        public IMobilityPenaltyPolicy MobilityPenalty { get; set; }
+
+        /// <summary>§12 (TBD): no penalty until Session 11 designs the leg-loss options.</summary>
+        public IMobilityPenaltyPolicy MobilityPenalty { get; set; } = new NoMobilityPenaltyPolicy();
+
         public IArmlessAttackMode ArmlessAttack { get; set; }
         public ILimbRetrievalPolicy LimbRetrieval { get; set; }
 

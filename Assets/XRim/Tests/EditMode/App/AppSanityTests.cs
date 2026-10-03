@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using XRim.App;
 using XRim.Core;
@@ -53,6 +54,23 @@ namespace XRim.Tests.EditMode.App
             simulator.Simulate(input);
 
             Assert.That(simulator.LastInput, Is.SameAs(input));
+        }
+
+        [Test]
+        public void RecordingSimulator_SandboxBodyMoveOverride_ReplacesOnlyTheBodyMoves()
+        {
+            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            List<BodyMoveStats> live = GddStartingValues.CreateBodyMoves();
+            var simulator = new RecordingTurnSimulator(new StubTurnSimulator()) { BodyMovesOverride = () => live };
+            var input = new TurnInput(TestData.CreateInitialBoard(settings), PerSide<TurnPlan>.Create(_ => TurnPlan.Empty(WeaponIds.Rapier)),
+                settings, new SimulationSettings());
+
+            simulator.Simulate(input);
+
+            Assert.That(simulator.LastInput.Rules.BodyMoves, Is.SameAs(live), "body-move tuning from the next turn");
+            Assert.That(simulator.LastInput.Rules.Weapons, Is.SameAs(settings.Weapons), "every other rule stays the match's");
+            Assert.That(simulator.LastInput.Simulation, Is.SameAs(input.Simulation));
+            Assert.That(settings.BodyMoves, Is.Not.SameAs(live), "the match's snapshot is untouched");
         }
 
         private static TurnResult CreateResult(RulesSettings settings)

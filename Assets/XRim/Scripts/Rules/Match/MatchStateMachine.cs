@@ -206,7 +206,10 @@ namespace XRim.Rules.Match
             PrepareTurn();
         }
 
-        /// <summary>The default limits, then every status effect's edit (stun and stagger arrive in Session 06).</summary>
+        /// <summary>
+        /// The default limits, then every status effect's edit (stun and stagger arrive in Session 06), then the leg-loss
+        /// penalty (§12, <see cref="RulePolicies.MobilityPenalty"/>).
+        /// </summary>
         private void PrepareTurn()
         {
             Constraints = PerSide<PlanningConstraints>.Create(side =>
@@ -217,6 +220,7 @@ namespace XRim.Rules.Match
                     status.ApplyToNextTurn(constraints);
                 }
 
+                Policies.MobilityPenalty?.Apply(State.Fighters[side], constraints);
                 return constraints;
             });
         }

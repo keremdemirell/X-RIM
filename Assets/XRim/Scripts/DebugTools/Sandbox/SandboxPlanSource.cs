@@ -28,6 +28,9 @@ namespace XRim.DebugTools.Sandbox
         /// <summary>The raw stroke last accepted, in the torso frame; empty when none.</summary>
         public WeaponPath Stroke { get; private set; } = WeaponPath.Empty;
 
+        /// <summary>The body move set for this turn (GDD §5); none until one is picked.</summary>
+        public BodyMove BodyMove { get; private set; }
+
         /// <summary>The last command the rules refused and why; empty when the last one was accepted.</summary>
         public string LastRejection { get; private set; } = string.Empty;
 
@@ -42,6 +45,7 @@ namespace XRim.DebugTools.Sandbox
             _sink = Guard.NotNull(sink, nameof(sink));
             Weapon = window.Board.State.Fighters[Side].CurrentWeapon;
             Stroke = WeaponPath.Empty;
+            BodyMove = BodyMove.None;
             LastRejection = string.Empty;
         }
 
@@ -68,6 +72,12 @@ namespace XRim.DebugTools.Sandbox
         public void ClearPath()
         {
             if (Send(new ClearPathCommand(), nameof(ClearPath))) Stroke = WeaponPath.Empty;
+        }
+
+        /// <summary>The stance swipe a finger will make in the body zone (Session 08); <see cref="BodyMove.None"/> clears it.</summary>
+        public void SetBodyMove(BodyMove move)
+        {
+            if (Send(new SetBodyMoveCommand(move), nameof(SetBodyMove))) BodyMove = move;
         }
 
         public void Ready() => Send(new SetReadyCommand(true), nameof(Ready));

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using XRim.Core;
+using XRim.Rules.Settings;
 using XRim.Simulation;
 using XRim.Simulation.Execution;
 using XRim.Simulation.Recording;
@@ -30,14 +32,26 @@ namespace XRim.App
 
         /// <summary>
         /// Debug sandbox: when set, every turn runs with these simulation settings instead of the match's snapshot, so
-        /// simulation tuning applies from the next turn. Rules settings always stay the match's.
+        /// simulation tuning applies from the next turn. Rules settings stay the match's (apart from <see cref="BodyMovesOverride"/>).
         /// </summary>
         public Func<SimulationSettings> SimulationSettingsOverride { get; set; }
+
+        /// <summary>
+        /// Debug sandbox: when set, every turn plays its body moves (GDD §5) with this list instead of the match's, so
+        /// body-move tuning applies from the next turn too. Every other rule stays the match's.
+        /// </summary>
+        public Func<List<BodyMoveStats>> BodyMovesOverride { get; set; }
 
         public TurnResult Simulate(TurnInput input)
         {
             Guard.NotNull(input, nameof(input));
-            if (SimulationSettingsOverride != null) input = new TurnInput(input.Board, input.Plans, input.Rules, SimulationSettingsOverride());
+            if (SimulationSettingsOverride != null || BodyMovesOverride != null)
+            {
+                RulesSettings rules = BodyMovesOverride != null ? input.Rules.WithBodyMoves(BodyMovesOverride()) : input.Rules;
+                SimulationSettings simulation = SimulationSettingsOverride != null ? SimulationSettingsOverride() : input.Simulation;
+                input = new TurnInput(input.Board, input.Plans, rules, simulation);
+            }
+
             LastInput = input;
             _watch.Restart();
             TurnResult result = _inner.Simulate(input);

@@ -44,6 +44,13 @@ namespace XRim.Simulation.Physics
         /// <summary>Where the dummy's root (the torso's pivot, the pelvis) should be this step: standing still or a body move.</summary>
         void SetRootTarget(Side side, BodyPose target);
 
+        /// <summary>
+        /// The angles a limb's joint motors turn toward, so a body move bends the legs (GDD §5): shoulder or hip, then elbow
+        /// or knee, in the <see cref="LimbAngles"/> convention. After <see cref="Load"/> every limb holds its rest pose. The
+        /// arm carrying the weapon follows the weapon instead.
+        /// </summary>
+        void SetLimbTarget(Side side, BodyPart limb, LimbAngles target);
+
         void Step(float deltaSeconds);
 
         /// <summary>Appends contacts that began during the last step, in a stable order.</summary>
