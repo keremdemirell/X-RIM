@@ -8,6 +8,7 @@ using XRim.Config;
 using XRim.Core;
 using XRim.DebugTools.Diagnostics;
 using XRim.Rules;
+using XRim.Rules.Match;
 using XRim.Rules.Paths;
 using XRim.Rules.Settings;
 using XRim.Simulation;
@@ -31,7 +32,7 @@ namespace XRim.DebugTools.Sandbox
 
         private const float HudMargin = 8f;
         private const float HudWidth = 560f;
-        private const float HudHeight = 330f;
+        private const float HudHeight = 350f;
         private const float MoveButtonWidth = 72f;
 
         /// <summary>The body moves in the order the HUD offers them.</summary>
@@ -43,6 +44,7 @@ namespace XRim.DebugTools.Sandbox
 
         private readonly List<Vec2> _stroke = new List<Vec2>();
         private readonly PerSide<BuiltPath> _built = new PerSide<BuiltPath>(null, null);
+        private readonly SandboxReadout _readout = new SandboxReadout();
         private MatchBootstrap _bootstrap;
         private DebugOverlay _overlay;
         private PathBuilder _pathBuilder;
@@ -153,7 +155,8 @@ namespace XRim.DebugTools.Sandbox
         private bool IsOverUi(Vector2 screen)
         {
             var guiPoint = new Vector2(screen.x, Screen.height - screen.y);
-            return GUIUtility.hotControl != 0 || _hudRect.Contains(guiPoint) || (_overlay != null && _overlay.Covers(guiPoint));
+            return GUIUtility.hotControl != 0 || _hudRect.Contains(guiPoint) || _readout.Area.Contains(guiPoint) ||
+                   (_overlay != null && _overlay.Covers(guiPoint));
         }
 
         /// <summary>Screen pixels → arena units → the side's upright turn-start torso frame (GDD §6: paths are torso-relative).</summary>
@@ -283,8 +286,18 @@ namespace XRim.DebugTools.Sandbox
             _hudRect = new Rect(Screen.width - HudWidth - HudMargin, HudMargin, HudWidth, HudHeight);
             GUILayout.BeginArea(_hudRect, GUI.skin.box);
             if (IsPlanning) DrawPlanning();
-            else GUILayout.Label("Executing and playing back… (Debug → Playback: slow motion, loop, re-simulate)");
+            else GUILayout.Label(MatchOverLine() ?? "Executing and playing back… (Debug → Playback: slow motion, loop, re-simulate, hits)");
             GUILayout.EndArea();
+            _readout.Draw(_bootstrap, _sources);
+        }
+
+        /// <summary>Null while the match goes on. A KO ends it (Session 06); to fight again, stop and enter Play mode.</summary>
+        private string MatchOverLine()
+        {
+            MatchOutcome outcome = _bootstrap.Flow != null ? _bootstrap.Flow.Outcome : null;
+            return outcome == null
+                ? null
+                : $"Match over after {outcome.TurnCount} turn(s): {outcome.Winner} wins by {outcome.Reason}. Stop and press Play to fight again.";
         }
 
         private void DrawPlanning()
@@ -312,7 +325,8 @@ namespace XRim.DebugTools.Sandbox
             GUILayout.EndHorizontal();
             GUILayout.Label("Drag in the arena to draw the active side's path. Weapons: 1/2/3. Body move: ↓ crouch, ↑ jump, " +
                             "→/← lunge or step back (toward or away from the opponent), N none. Feel report: F9. " +
-                            "Simulation and body-move tuning apply from the next Execute; other rules tuning from the next match.");
+                            "Simulation and body-move tuning apply from the next Execute; other rules tuning from the next match. " +
+                            "HP, limb damage and stuns: bottom of the screen. Hits: Debug → Playback.");
             if (_diagnosticsMessage.Length > 0) GUILayout.Label(_diagnosticsMessage);
         }
 

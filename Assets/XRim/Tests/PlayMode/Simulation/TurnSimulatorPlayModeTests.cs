@@ -204,6 +204,12 @@ namespace XRim.Tests.PlayMode.Simulation
                 }
 
                 Assert.That(StepsSimulated(other), Is.EqualTo(StepsSimulated(first)), "same length");
+                foreach (Side side in new[] { Side.Left, Side.Right })
+                {
+                    Assert.That(other.Report.ResolvedState.Fighters[side].Hp, Is.EqualTo(first.Report.ResolvedState.Fighters[side].Hp),
+                        $"{side} HP: the hit rules repeat too");
+                }
+
                 AssertSamePose(other.FinalBoard.Pose, first.FinalBoard.Pose);
             }
 

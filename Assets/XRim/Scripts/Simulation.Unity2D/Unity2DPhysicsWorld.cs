@@ -153,6 +153,15 @@ namespace XRim.Simulation.Unity2D
             fighter.PushAngularAccelerationDegrees = angularAccelerationDegreesPerSecondSquared;
         }
 
+        public void ReleaseHeldItem(Side side, Vec2 velocityUnitsPerSecond, float angularVelocityDegreesPerSecond)
+        {
+            Rigidbody2D item = HeldItem(side);
+            if (item == null) return;
+            if (item.bodyType != RigidbodyType2D.Dynamic) item.bodyType = RigidbodyType2D.Dynamic;
+            item.linearVelocity = Space.ToWorld(velocityUnitsPerSecond);
+            item.angularVelocity = angularVelocityDegreesPerSecond;
+        }
+
         public BodyState GetHeldItemState(Side side)
         {
             Rigidbody2D item = HeldItem(side);

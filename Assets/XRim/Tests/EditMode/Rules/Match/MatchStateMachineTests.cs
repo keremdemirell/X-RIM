@@ -360,6 +360,48 @@ namespace XRim.Tests.EditMode.Rules.Match
         }
 
         [Test]
+        public void AStunFromATurn_ForbidsBodyMoves_OnTheNextTurnOnly()
+        {
+            StartPlanning();
+            ReadyBoth();
+            _machine.BeginExecution();
+            _machine.CompleteExecution(Report(state =>
+                state.Fighters[Side.Left].Statuses.Add(_policies.StatusEffects.Create(StatusKind.Stunned, _settings.Damage))));
+
+            Assert.That(_machine.Constraints[Side.Left].Statuses, Is.EqualTo(new[] { StatusKind.Stunned }), "shown on the next turn");
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Crouch), Is.False, "D17 default: no body move");
+            Assert.That(_machine.Constraints[Side.Right].Statuses, Is.Empty);
+            Assert.That(_machine.State.Fighters[Side.Left].Statuses, Is.Empty, "used up once it shaped the turn");
+
+            _machine.BeginPlanning(Tips);
+            Assert.That(_machine.Apply(Side.Left, new SetBodyMoveCommand(BodyMove.Lunge)).Rejection, Is.EqualTo(CommandRejection.BodyMoveNotAllowed));
+            Assert.That(_machine.Apply(Side.Left, new SetPathCommand(PlanningTestData.Thrust(400f))).Accepted, Is.True,
+                "a stunned player still attacks");
+            ReadyBoth();
+            _machine.BeginExecution();
+            _machine.CompleteExecution(Report());
+
+            Assert.That(_machine.Constraints[Side.Left].Statuses, Is.Empty, "the turn after is free again");
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Crouch), Is.True);
+        }
+
+        [Test]
+        public void AStatusLastingTwoTurns_ShapesBothAndCountsDown()
+        {
+            _machine.State.Fighters[Side.Left].Statuses.Add(new NoBodyMoveStatus(StatusKind.Staggered, 2));
+            StartPlanning();
+
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Jump), Is.False, "turn 1");
+            Assert.That(_machine.State.Fighters[Side.Left].Statuses[0].RemainingTurns, Is.EqualTo(1));
+
+            ReadyBoth();
+            _machine.BeginExecution();
+            _machine.CompleteExecution(Report());
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Jump), Is.False, "turn 2");
+            Assert.That(_machine.State.Fighters[Side.Left].Statuses, Is.Empty);
+        }
+
+        [Test]
         public void MobilityPenalty_ByDefaultForbidsNothing()
         {
             _machine.State.Fighters[Side.Left].MarkSevered(BodyPart.LeftLeg);
@@ -561,6 +603,8 @@ namespace XRim.Tests.EditMode.Rules.Match
             public int RemainingTurns => 1;
 
             public void ApplyToNextTurn(PlanningConstraints constraints) => constraints.ForbidBodyMove(BodyMove.Jump);
+
+            public IStatusEffect WithOneTurnUsed() => null;
         }
 
         private sealed class EveryTurnIsIdlePolicy : IIdleTurnPolicy

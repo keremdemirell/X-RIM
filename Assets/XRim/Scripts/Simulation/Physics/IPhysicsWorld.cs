@@ -39,6 +39,12 @@ namespace XRim.Simulation.Physics
         /// </summary>
         void PushHeldItem(Side side, Vec2 accelerationUnitsPerSecondSquared, float angularAccelerationDegreesPerSecondSquared);
 
+        /// <summary>
+        /// The held item becomes a free (dynamic) body moving at this velocity, still the held item: a blade the rules stopped,
+        /// handed to physics so its own mass hits (D1). Its driver keeps it in the hand with <see cref="PushHeldItem"/>.
+        /// </summary>
+        void ReleaseHeldItem(Side side, Vec2 velocityUnitsPerSecond, float angularVelocityDegreesPerSecond);
+
         BodyState GetHeldItemState(Side side);
 
         /// <summary>Where the dummy's root (the torso's pivot, the pelvis) should be this step: standing still or a body move.</summary>

@@ -1,8 +1,20 @@
+using System.Collections.Generic;
+
 namespace XRim.Simulation.Execution
 {
-    /// <summary>Session 04's contact handler: no rules yet, every contact is recorded as a <see cref="ContactEvent"/>.</summary>
+    /// <summary>No rules: every contact is recorded as a <see cref="ContactEvent"/>. The feel report uses it to measure raw physics.</summary>
     public sealed class RecordContactsHandler : ITurnContactHandler
     {
-        public void Handle(TurnContact contact, TurnContactContext context) => context.Record(new ContactEvent(contact));
+        public void BeginTurn(TurnContactContext context)
+        {
+        }
+
+        public void Handle(IReadOnlyList<TurnContact> contacts, TurnContactContext context)
+        {
+            foreach (TurnContact contact in contacts)
+            {
+                context.Record(new ContactEvent(contact));
+            }
+        }
     }
 }

@@ -45,6 +45,12 @@ namespace XRim.Tests.EditMode.Simulation
         /// <summary>The first step count at which <see cref="IsSettled"/> is true (0 = always settled, int.MaxValue = never).</summary>
         public int SettlesAtStep { get; set; }
         public List<(Side Side, BodyPart Part)> BrokenJoints { get; } = new List<(Side, BodyPart)>();
+
+        /// <summary>Every impulse applied since the last load, in order.</summary>
+        public List<(Side Side, BodyPart Part, Vec2 Impulse)> Impulses { get; } = new List<(Side, BodyPart, Vec2)>();
+
+        /// <summary>Every held item handed to physics since the last load, with its starting velocity.</summary>
+        public List<(Side Side, Vec2 Velocity, float AngularVelocity)> Releases { get; } = new List<(Side, Vec2, float)>();
         public float TouchDistanceUnits { get; set; }
 
         /// <summary>Contacts to report after the next call to Step (one list per step).</summary>
@@ -69,6 +75,8 @@ namespace XRim.Tests.EditMode.Simulation
             LoadedEdges = edges;
             RootTargets.Clear();
             LimbTargets.Clear();
+            Impulses.Clear();
+            Releases.Clear();
             LoadedSimulation = simulation;
             LoadCount++;
             StepCount = 0;
@@ -89,6 +97,14 @@ namespace XRim.Tests.EditMode.Simulation
             _pendingMove[(int)side] = null;
             _pendingAcceleration[(int)side] = accelerationUnitsPerSecondSquared;
             _pendingAngularAcceleration[(int)side] = angularAccelerationDegreesPerSecondSquared;
+        }
+
+        public void ReleaseHeldItem(Side side, Vec2 velocityUnitsPerSecond, float angularVelocityDegreesPerSecond)
+        {
+            Releases.Add((side, velocityUnitsPerSecond, angularVelocityDegreesPerSecond));
+            _pendingMove[(int)side] = null;
+            _heldVelocity[(int)side] = velocityUnitsPerSecond;
+            _heldAngularVelocity[(int)side] = angularVelocityDegreesPerSecond;
         }
 
         public BodyState GetHeldItemState(Side side) =>
@@ -123,9 +139,7 @@ namespace XRim.Tests.EditMode.Simulation
 
         public void DropHeldItem(Side side) => _pose.Get(side).HasHeldItem = false;
 
-        public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse)
-        {
-        }
+        public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse) => Impulses.Add((side, part, impulse));
 
         public BodyPose GetPose(Side side, BodyPart part) => _pose.Get(side).Get(part);
 

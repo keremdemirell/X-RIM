@@ -10,7 +10,10 @@ namespace XRim.Rules.Combat
         public BodyPart Part { get; }
         public WeaponId Weapon { get; }
 
-        /// <summary>Time-to-impact on the simulation clock: distance along path / weapon speed (GDD §9).</summary>
+        /// <summary>
+        /// When the weapon reached the hitbox, on the simulation clock, refined from the weapon's motion along its path (GDD §9:
+        /// t = d / v while it travels at full speed).
+        /// </summary>
         public SimTime Time { get; }
 
         /// <summary>True when the attacker holds the weapon in its off hand after losing the dominant arm (GDD §12).</summary>

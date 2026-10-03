@@ -45,8 +45,20 @@ namespace XRim.Rules.Settings
 
         public RigiditySettings Rigidity = new RigiditySettings();
 
-        [GddTbd("§9", "Do heavy weapons resist interruption?")]
+        /// <summary>
+        /// Swing armour: a hit does not interrupt this weapon's attack while it travels its path (a killing hit still does).
+        /// D16 default: off for every weapon, to try at PT2.
+        /// </summary>
+        [GddTbd("§9", "Do heavy weapons resist interruption?", Proposal = "D16 default: off, a toggle per weapon")]
         public bool HasSwingArmour;
+
+        /// <summary>
+        /// D26 (designer, 2026-10-03): after a hit the weapon keeps going along its path at this share of its speed (0 = it
+        /// stops), and its next hit deals damage scaled by the speed it has left. Heavy weapons plough through, light ones
+        /// stick.
+        /// </summary>
+        [Placeholder("D26: the speed a weapon keeps after a hit has no value")]
+        public float SpeedKeptAfterHitFraction;
 
         /// <summary>Shield bash knockback (GDD §7). Unused by other kinds.</summary>
         [Placeholder("§7 bash knockback is Tunable with no value")]

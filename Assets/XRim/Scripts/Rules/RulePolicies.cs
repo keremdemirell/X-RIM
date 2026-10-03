@@ -1,9 +1,12 @@
+using System.Collections.Generic;
 using XRim.Rules.Arena;
 using XRim.Rules.Combat;
+using XRim.Rules.Damage;
 using XRim.Rules.Limbs;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Signature;
+using XRim.Rules.Status;
 using XRim.Rules.SuddenDeath;
 
 namespace XRim.Rules
@@ -12,8 +15,8 @@ namespace XRim.Rules
     /// The plug-in points for the rules. Most properties are GDD TBDs the designer has not decided; swapping the
     /// implementation is how an option gets prototyped. The path policies (start, reach, strokes) hold designer
     /// decisions (D3–D5, 2026-09-29) and stay here so each rule lives in one swappable place. A property is null
-    /// until the session that implements it. Status effects and weapon traits are created per event, so their
-    /// factories are added when they are implemented.
+    /// until the session that implements it. Status effects are created per event, by <see cref="StatusEffects"/>; weapon
+    /// traits get their factory in Session 14.
     /// </summary>
     public sealed class RulePolicies
     {
@@ -33,7 +36,25 @@ namespace XRim.Rules
 
         /// <summary>D5 (Decided): one continuous stroke per turn; redrawing replaces it.</summary>
         public IStrokePolicy Stroke { get; set; } = new ReplaceStrokePolicy();
-        public IInterruptPolicy Interrupt { get; set; }
+        /// <summary>D15 (designer, 2026-10-03): the rule <c>DamageSettings.InterruptRule</c> names; D16 swing armour per weapon (off).</summary>
+        public IInterruptPolicy Interrupt { get; set; } = new SettingsInterruptPolicy();
+
+        /// <summary>D27 (designer, 2026-10-03: the recommended default): a single hit cannot take a dummy from full HP to 0.</summary>
+        public IInstantKoPolicy InstantKo { get; set; } = new NoKoFromFullHpPolicy();
+
+        /// <summary>
+        /// The "Modifiers" of Damage = BaseDamage × ZoneMultiplier × Modifiers (§11), applied in this order: off hand (§12),
+        /// crush-through (§10), the body move's damage bonus (D13, 0 by default) and the follow-through of a weapon that already
+        /// hit this turn (D26). Session 07 adds the shield reduction and Session 14 the weapon traits.
+        /// </summary>
+        public List<IDamageModifier> DamageModifiers { get; set; } = new List<IDamageModifier>
+        {
+            new OffHandDamageModifier(), new CrushThroughDamageModifier(), new BodyMoveDamageBonusModifier(),
+            new FollowThroughDamageModifier(),
+        };
+
+        /// <summary>D17 (designer, 2026-10-03: the recommended default): the effect <c>DamageSettings.StunEffect</c> names, for the next turn.</summary>
+        public IStatusEffectFactory StatusEffects { get; set; } = new SettingsStatusEffectFactory();
         public IRepeatContactPolicy RepeatContact { get; set; }
         public IShieldBlockModel ShieldBlock { get; set; }
 

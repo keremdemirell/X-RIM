@@ -25,6 +25,9 @@ namespace XRim.Simulation
 
         public SimTime TimeAtStep(int step) => new SimTime(step * SimTime.MicrosecondsPerSecond / StepRateHz);
 
+        /// <summary>The step whose motion a time falls in: step k covers the times after step k − 1's end, up to its own end.</summary>
+        public int StepContaining(SimTime time) => (int)Math.Ceiling(time.Microseconds * (double)StepRateHz / SimTime.MicrosecondsPerSecond);
+
         /// <summary>Number of whole steps needed to cover a duration, e.g. the execution hard cap.</summary>
         public int StepsFor(double seconds) => (int)Math.Ceiling(seconds * StepRateHz);
     }

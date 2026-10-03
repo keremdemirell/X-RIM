@@ -50,7 +50,7 @@ namespace XRim.Rules.Match
 
         /// <summary>
         /// This turn's limits per side, built when the turn starts from the default plus the fighter's status effects
-        /// (stun and stagger, Session 06). The authority may adjust them before <see cref="BeginPlanning"/>.
+        /// (stun and stagger), which are used up as they are applied. The authority may adjust them before <see cref="BeginPlanning"/>.
         /// </summary>
         public PerSide<PlanningConstraints> Constraints { get; private set; }
 
@@ -207,22 +207,40 @@ namespace XRim.Rules.Match
         }
 
         /// <summary>
-        /// The default limits, then every status effect's edit (stun and stagger arrive in Session 06), then the leg-loss
-        /// penalty (§12, <see cref="RulePolicies.MobilityPenalty"/>).
+        /// The default limits, then every status effect's edit (a stun or a stagger), then the leg-loss penalty (§12,
+        /// <see cref="RulePolicies.MobilityPenalty"/>).
         /// </summary>
         private void PrepareTurn()
         {
             Constraints = PerSide<PlanningConstraints>.Create(side =>
             {
                 PlanningConstraints constraints = PlanningConstraints.CreateDefault(Settings.Match);
-                foreach (IStatusEffect status in State.Fighters[side].Statuses)
-                {
-                    status.ApplyToNextTurn(constraints);
-                }
-
+                ApplyStatuses(State.Fighters[side], constraints);
                 Policies.MobilityPenalty?.Apply(State.Fighters[side], constraints);
                 return constraints;
             });
+        }
+
+        /// <summary>
+        /// Each status effect shapes this turn's limits and is named on them for the HUD, then uses up one of its turns: a stun
+        /// from turn N shapes turn N + 1 and is gone after it (§11: "next turn").
+        /// </summary>
+        private static void ApplyStatuses(FighterState fighter, PlanningConstraints constraints)
+        {
+            List<IStatusEffect> statuses = fighter.Statuses;
+            if (statuses.Count == 0) return;
+
+            var remaining = new List<IStatusEffect>(statuses.Count);
+            foreach (IStatusEffect status in statuses)
+            {
+                status.ApplyToNextTurn(constraints);
+                constraints.AddStatus(status.Kind);
+                IStatusEffect next = status.WithOneTurnUsed();
+                if (next != null) remaining.Add(next);
+            }
+
+            statuses.Clear();
+            statuses.AddRange(remaining);
         }
 
         private void LockIfPlanningIsOver()

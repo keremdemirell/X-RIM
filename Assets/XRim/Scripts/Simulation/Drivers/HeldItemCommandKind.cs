@@ -7,5 +7,8 @@ namespace XRim.Simulation.Drivers
 
         /// <summary>Accelerate the held item (dynamic body); it can be slowed or deflected by what it hits.</summary>
         Push = 1,
+
+        /// <summary>Turn the held item into a free (dynamic) body with a starting velocity; it stays the held item.</summary>
+        Release = 2,
     }
 }

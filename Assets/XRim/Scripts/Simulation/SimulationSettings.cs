@@ -49,6 +49,9 @@ namespace XRim.Simulation
         public RootDriveSettings RootDrive = new RootDriveSettings();
         public RagdollSettings Ragdoll = new RagdollSettings();
 
+        /// <summary>How a landed hit moves the weapon and the victim (Session 06): hand-off, recoil, impulse and knockback.</summary>
+        public HitReactionSettings HitReaction = new HitReactionSettings();
+
         /// <summary>Appends a message for every value that cannot work. Placeholders are not errors.</summary>
         public void Validate(ICollection<string> issues)
         {
@@ -59,6 +62,17 @@ namespace XRim.Simulation
             ValidateMotor(issues);
             ValidateRootDrive(issues);
             ValidateRagdoll(issues);
+            ValidateHitReaction(issues);
+        }
+
+        private void ValidateHitReaction(ICollection<string> issues)
+        {
+            HitReactionSettings hit = HitReaction;
+            if (hit.ReleaseSpeedFraction < 0f || hit.ReleaseSpeedFraction > 1f)
+                issues.Add("Simulation: the speed a stopped blade carries must be a fraction in [0, 1].");
+            if (hit.RecoilDistanceUnits < 0f || hit.PartImpulseMomentumFraction < 0f || hit.KnockbackUnitsPerWeaponMass < 0f)
+                issues.Add("Simulation: recoil, hit impulse and knockback must not be negative.");
+            if (hit.KnockbackSeconds <= 0f) issues.Add("Simulation: the knockback time must be positive.");
         }
 
         private void ValidateMotor(ICollection<string> issues)

@@ -25,20 +25,26 @@ namespace XRim.Rules.Settings
             Rapier(), Sword(), Mace(), Spear(), Shield(), SeveredLimb(),
         };
 
-        /// <summary>Appendix A: ink 600×10, mass 2. Fast, low damage. Length, speed and damage are placeholders.</summary>
+        /// <summary>
+        /// Appendix A: ink 600×10, mass 2. Fast, low damage. Length, speed, damage and the speed kept after a hit (a light
+        /// blade sticks) are placeholders.
+        /// </summary>
         public static WeaponStats Rapier() => new WeaponStats
         {
             Id = WeaponIds.Rapier.Value, DisplayName = "Rapier", Kind = WeaponKind.Weapon,
             InkLengthUnits = 600f, InkThicknessUnits = 10f, LengthUnits = 400f, Mass = 2f,
-            SpeedUnitsPerSecond = 900f, BaseDamage = 8f,
+            SpeedUnitsPerSecond = 900f, BaseDamage = 8f, SpeedKeptAfterHitFraction = 0.3f,
         };
 
-        /// <summary>Appendix A: ink 200×30, mass 10. Slow, high damage. Length, speed and damage are placeholders.</summary>
+        /// <summary>
+        /// Appendix A: ink 200×30, mass 10. Slow, high damage. Length, speed, damage and the speed kept after a hit (a heavy
+        /// head ploughs through) are placeholders.
+        /// </summary>
         public static WeaponStats Mace() => new WeaponStats
         {
             Id = WeaponIds.Mace.Value, DisplayName = "Mace", Kind = WeaponKind.Weapon,
             InkLengthUnits = 200f, InkThicknessUnits = 30f, LengthUnits = 220f, Mass = 10f,
-            SpeedUnitsPerSecond = 250f, BaseDamage = 20f,
+            SpeedUnitsPerSecond = 250f, BaseDamage = 20f, SpeedKeptAfterHitFraction = 0.7f,
         };
 
         /// <summary>GDD §6: design TBD. Every number is a placeholder.</summary>
@@ -46,7 +52,7 @@ namespace XRim.Rules.Settings
         {
             Id = WeaponIds.Sword.Value, DisplayName = "Sword", Kind = WeaponKind.Weapon, DesignIsTbd = true,
             InkLengthUnits = 400f, InkThicknessUnits = 15f, LengthUnits = 320f, Mass = 5f,
-            SpeedUnitsPerSecond = 600f, BaseDamage = 12f,
+            SpeedUnitsPerSecond = 600f, BaseDamage = 12f, SpeedKeptAfterHitFraction = 0.5f,
         };
 
         /// <summary>GDD §6: "Long, TBD", longest reach, straight thrusts. Rigidity is the TBD spear rule.</summary>
@@ -56,7 +62,7 @@ namespace XRim.Rules.Settings
             {
                 Id = WeaponIds.Spear.Value, DisplayName = "Spear", Kind = WeaponKind.Weapon, DesignIsTbd = true,
                 InkLengthUnits = 800f, InkThicknessUnits = 8f, LengthUnits = 500f, Mass = 4f,
-                SpeedUnitsPerSecond = 700f, BaseDamage = 10f,
+                SpeedUnitsPerSecond = 700f, BaseDamage = 10f, SpeedKeptAfterHitFraction = 0.3f,
             };
             spear.Rigidity.Enabled = true;
             return spear;
@@ -67,7 +73,7 @@ namespace XRim.Rules.Settings
         {
             Id = WeaponIds.Shield.Value, DisplayName = "Shield", Kind = WeaponKind.Shield, DesignIsTbd = true,
             InkLengthUnits = 150f, InkThicknessUnits = 40f, LengthUnits = 150f, Mass = 8f,
-            SpeedUnitsPerSecond = 400f, BaseDamage = 3f, KnockbackImpulse = 5f,
+            SpeedUnitsPerSecond = 400f, BaseDamage = 3f, KnockbackImpulse = 5f, SpeedKeptAfterHitFraction = 0.5f,
         };
 
         /// <summary>GDD §12: blunt club after dismemberment; stats TBD. Placeholders.</summary>
@@ -75,7 +81,7 @@ namespace XRim.Rules.Settings
         {
             Id = WeaponIds.SeveredLimb.Value, DisplayName = "Severed limb", Kind = WeaponKind.SeveredLimb, DesignIsTbd = true,
             InkLengthUnits = 200f, InkThicknessUnits = 25f, LengthUnits = 200f, Mass = 6f,
-            SpeedUnitsPerSecond = 300f, BaseDamage = 10f,
+            SpeedUnitsPerSecond = 300f, BaseDamage = 10f, SpeedKeptAfterHitFraction = 0.5f,
         };
 
         /// <summary>

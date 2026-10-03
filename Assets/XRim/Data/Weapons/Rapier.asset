@@ -30,5 +30,6 @@ MonoBehaviour:
       BreakAngleDegrees: 90
       BreakWindowUnits: 20
     HasSwingArmour: 0
+    SpeedKeptAfterHitFraction: 0.3
     KnockbackImpulse: 0
     TraitIds: []

@@ -11,7 +11,7 @@ namespace XRim.Simulation.Execution
         /// <summary>Plays each planned body move. Default: the game's moves (GDD §5), each played from its tuning data.</summary>
         public IBodyMoveDriverFactory BodyMoves { get; set; } = new StanceBodyMoveDriverFactory();
 
-        /// <summary>Decides what contacts mean. Default: record them raw (Sessions 06 and 07 add the rules).</summary>
-        public ITurnContactHandler Contacts { get; set; } = new RecordContactsHandler();
+        /// <summary>Decides what contacts mean. Default: the hit rules (Session 06); clashes and blocks join in Session 07.</summary>
+        public ITurnContactHandler Contacts { get; set; } = new HitContactHandler();
     }
 }

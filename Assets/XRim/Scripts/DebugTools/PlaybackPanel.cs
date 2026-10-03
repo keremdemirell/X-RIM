@@ -48,7 +48,9 @@ namespace XRim.DebugTools
             DrawTransport(playback, player);
             DrawScrub(player, turn.Timeline);
             DrawResimulate(bootstrap);
-            DrawContacts(turn, player.CurrentTime, playback.IsPlaying || player.CurrentTime > SimTime.Zero);
+            bool showProgress = playback.IsPlaying || player.CurrentTime > SimTime.Zero;
+            DrawOutcomes(turn, player.CurrentTime, showProgress);
+            DrawContacts(turn, player.CurrentTime, showProgress);
         }
 
         private static void DrawSummary(MatchBootstrap bootstrap, TurnResult turn)
@@ -124,6 +126,24 @@ namespace XRim.DebugTools
             }
 
             if (_message.Length > 0) GUILayout.Label(_message);
+        }
+
+        /// <summary>The rules' verdicts: hits with their damage, cancelled attacks, stuns, KOs (Session 06).</summary>
+        private static void DrawOutcomes(TurnResult turn, SimTime now, bool showProgress)
+        {
+            int count = 0;
+            foreach (MatchEvent matchEvent in turn.Timeline.Events)
+            {
+                if (MatchEventText.IsOutcome(matchEvent)) count++;
+            }
+
+            GUILayout.Label($"Hits and outcomes: {count} (► = playback has reached it)");
+            foreach (MatchEvent matchEvent in turn.Timeline.Events)
+            {
+                if (!MatchEventText.IsOutcome(matchEvent)) continue;
+                bool reached = showProgress && matchEvent.Time <= now;
+                GUILayout.Label((reached ? ReachedMark : PendingMark) + MatchEventText.Describe(matchEvent));
+            }
         }
 
         private static void DrawContacts(TurnResult turn, SimTime now, bool showProgress)

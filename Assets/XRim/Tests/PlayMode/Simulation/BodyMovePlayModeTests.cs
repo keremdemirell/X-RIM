@@ -155,7 +155,8 @@ namespace XRim.Tests.PlayMode.Simulation
             var world = new Unity2DPhysicsWorld(_space, new RagdollPrefabSet(_sixBodies, _tenBodies));
             _worlds.Add(world);
             var input = new TurnInput(new BoardSnapshot(State(), board), new PerSide<TurnPlan>(left, right), _rules, _simulation);
-            return new TurnSimulator(world, _policies).Simulate(input);
+            // Body-move geometry: raw contacts, without the hit rules (Session 06), which would slow, stop or knock the dummies.
+            return new TurnSimulator(world, _policies, new TurnSimulatorOptions { Contacts = new RecordContactsHandler() }).Simulate(input);
         }
 
         private Vec2 Tip(BodyPose grip) => grip.PositionUnits + Vec2.FromAngleDegrees(grip.RotationDegrees) * _rapier.LengthUnits;

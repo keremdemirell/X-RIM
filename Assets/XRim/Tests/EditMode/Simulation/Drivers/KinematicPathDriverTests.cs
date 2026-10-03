@@ -106,16 +106,16 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
         }
 
         [Test]
-        public void Cancel_LetsTheWeaponGoLimp()
+        public void Stop_BeforeAnyMove_HoldsTheWeaponWithTheMotor()
         {
             KinematicPathDriver driver = Begin(Side.Left, StraightThrust, _rapier);
 
-            driver.Cancel();
+            driver.Stop(SimTime.Zero, WeaponStopKind.Interrupted);
 
             Assert.That(driver.IsComplete(SimTime.Zero), Is.True);
+            Assert.That(driver.IsTravelling(SimTime.Zero), Is.False);
             HeldItemCommand command = driver.Drive(SimTime.Zero, new SimTime(4_166L), TorsoAtOrigin, TorsoAtOrigin, default);
-            Assert.That(command.Kind, Is.EqualTo(HeldItemCommandKind.Push));
-            Assert.That(command.AccelerationUnitsPerSecondSquared, Is.EqualTo(Vec2.Zero));
+            Assert.That(command.Kind, Is.EqualTo(HeldItemCommandKind.Push), "nothing was moved kinematically, so nothing to hand over");
         }
 
         [Test]

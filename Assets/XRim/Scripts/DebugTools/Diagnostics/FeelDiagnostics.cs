@@ -236,7 +236,9 @@ namespace XRim.DebugTools.Diagnostics
             path = PathFor(shape, guardTip, rules.Paths, simulation.Ragdoll, weapon, distance);
             var plans = new PerSide<TurnPlan>(new TurnPlan(weapon.WeaponId, BodyMove.None, path, default, true), TurnPlan.Empty(weapon.WeaponId));
             var input = new TurnInput(new BoardSnapshot(CreateState(rules, weapon.WeaponId), board), plans, rules, simulation);
-            return new TurnSimulator(_world, _policies, new TurnSimulatorOptions { Aim = _aim }).Simulate(input);
+            // Raw physics: the report measures the drivers and the ragdoll, so no hit rule stops or slows the weapon.
+            var options = new TurnSimulatorOptions { Aim = _aim, Contacts = new RecordContactsHandler() };
+            return new TurnSimulator(_world, _policies, options).Simulate(input);
         }
 
         /// <summary>The attacker on the left in the guard stance and an unarmed target on the right, mirrored around x = 0.</summary>

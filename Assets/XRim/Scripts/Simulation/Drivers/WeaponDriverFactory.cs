@@ -11,8 +11,8 @@ namespace XRim.Simulation.Drivers
         {
             Guard.NotNull(simulation, nameof(simulation));
             return simulation.WeaponDriver == WeaponDriverKind.Motor
-                ? new MotorPathDriver(paths, simulation.WeaponMotor, aim)
-                : (IWeaponDriver)new KinematicPathDriver(paths, aim);
+                ? new MotorPathDriver(paths, simulation.WeaponMotor, aim, simulation.HitReaction)
+                : (IWeaponDriver)new KinematicPathDriver(paths, aim, simulation.WeaponMotor, simulation.HitReaction);
         }
     }
 }

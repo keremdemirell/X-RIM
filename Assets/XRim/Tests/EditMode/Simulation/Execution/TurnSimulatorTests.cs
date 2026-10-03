@@ -254,8 +254,10 @@ namespace XRim.Tests.EditMode.Simulation.Execution
         }
 
         [Test]
-        public void EachStepsContacts_AreHandledAfterThatStep()
+        public void EachContact_IsHandedOver_OnceNoEarlierContactCanStillBeReported()
         {
+            // A contact reported after step k is refined at the earliest to step k - 2's end, and contacts at exactly the same
+            // time must be handled together, so a body bump timed at step k's end is final after step k + 2.
             _world.ScheduleContacts(8, Bodies(Side.Left, BodyPart.Torso, Side.Right, BodyPart.LeftArm));
             _world.ScheduleContacts(5, Bodies(Side.Right, BodyPart.Torso, Side.Left, BodyPart.LeftArm));
 
@@ -263,16 +265,36 @@ namespace XRim.Tests.EditMode.Simulation.Execution
 
             Assert.That(_handler.Contacts[0].ReportedStep, Is.EqualTo(5));
             Assert.That(_handler.Contacts[1].ReportedStep, Is.EqualTo(8));
-            Assert.That(_handler.StepsSeenAtHandling, Is.EqualTo(new[] { 5, 8 }), "handled right after the step that reported them");
+            Assert.That(_handler.StepsSeenAtHandling, Is.EqualTo(new[] { 7, 10 }));
         }
 
         [Test]
-        public void DefaultHandler_RecordsEveryContactAsATimelineEvent()
+        public void AnEarlierContactReportedLater_IsStillHandledFirst()
+        {
+            // The weapon touched during step 10; the engine reported it after step 11. A body bump timed at step 10's end was
+            // reported first, after step 10, but the weapon touch happened before it.
+            const double touchSeconds = 0.0405;
+            int touchStep = _clock.StepsFor(touchSeconds);
+            _world.ScheduleContacts(touchStep, Bodies(Side.Left, BodyPart.Torso, Side.Right, BodyPart.LeftArm));
+            _world.ScheduleContacts(touchStep + 1, RapierHitsTorso(PointTouchedAt(touchSeconds)));
+
+            Run(StraightThrust);
+
+            Assert.That(_handler.Contacts.Count, Is.EqualTo(2));
+            Assert.That(_handler.Contacts[0].WeaponSide, Is.EqualTo(Side.Left), "the earlier weapon touch comes first");
+            Assert.That(_handler.Contacts[0].Time, Is.LessThan(_handler.Contacts[1].Time));
+            Assert.That(_handler.StepsSeenAtHandling, Is.EqualTo(new[] { touchStep + 1, touchStep + 2 }),
+                "the bump, timed at the end of the touch's step, waited for the weapon touch to be final");
+        }
+
+        [Test]
+        public void TheRecordOnlyHandler_RecordsEveryContactAsATimelineEvent()
         {
             _world.ScheduleContacts(5, Bodies(Side.Left, BodyPart.Torso, Side.Right, BodyPart.LeftArm));
             _world.ScheduleContacts(9, RapierHitsTorso(PointTouchedAt(0.0335)));
 
-            TurnResult result = new TurnSimulator(_world, new RulePolicies()).Simulate(Input(StraightThrust));
+            TurnResult result = new TurnSimulator(_world, new RulePolicies(), new TurnSimulatorOptions { Contacts = new RecordContactsHandler() })
+                .Simulate(Input(StraightThrust));
 
             IReadOnlyList<MatchEvent> events = result.Timeline.Events;
             Assert.That(events.Count, Is.EqualTo(2));
@@ -294,7 +316,7 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             Assert.That(result.FinalBoard.State, Is.Not.SameAs(_state), "the input board is never changed");
             Assert.That(result.Report.ResolvedState, Is.Not.SameAs(_state));
             Assert.That(result.Report.ResolvedState.TurnIndex, Is.EqualTo(TurnIndex));
-            Assert.That(result.Report.FirstValidHitTime.Left, Is.Null, "no hit rules yet (Session 06)");
+            Assert.That(result.Report.FirstValidHitTime.Left, Is.Null, "this handler lands no hits");
         }
 
         [Test]
@@ -591,9 +613,15 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             TurnResult first = simulator.Simulate(Input(StraightThrust));
             TurnResult second = simulator.Simulate(Input(StraightThrust));
 
-            Assert.That(first.Timeline.Events.Count, Is.EqualTo(1));
+            Assert.That(first.Timeline.Events.Count, Is.GreaterThan(1), "the contact and the hit it lands");
             Assert.That(second.Timeline.Events.Count, Is.EqualTo(first.Timeline.Events.Count));
-            Assert.That(second.Timeline.Events[0].Time, Is.EqualTo(first.Timeline.Events[0].Time));
+            for (int i = 0; i < first.Timeline.Events.Count; i++)
+            {
+                Assert.That(second.Timeline.Events[i].GetType(), Is.EqualTo(first.Timeline.Events[i].GetType()));
+                Assert.That(second.Timeline.Events[i].Time, Is.EqualTo(first.Timeline.Events[i].Time));
+            }
+
+            Assert.That(second.Report.ResolvedState.Fighters[Side.Right].Hp, Is.EqualTo(first.Report.ResolvedState.Fighters[Side.Right].Hp));
             Assert.That(second.FinalBoard.Pose.Left.HeldItem.PositionUnits, Is.EqualTo(first.FinalBoard.Pose.Left.HeldItem.PositionUnits));
         }
 
@@ -604,6 +632,7 @@ namespace XRim.Tests.EditMode.Simulation.Execution
 
             public List<TurnContact> Contacts { get; } = new List<TurnContact>();
             public List<int> StepsSeenAtHandling { get; } = new List<int>();
+            public int Batches { get; private set; }
 
             public CapturingContactHandler(FakePhysicsWorld world)
             {
@@ -612,10 +641,17 @@ namespace XRim.Tests.EditMode.Simulation.Execution
 
             public TurnContactContext LastContext { get; private set; }
 
-            public void Handle(TurnContact contact, TurnContactContext context)
+            public void BeginTurn(TurnContactContext context) => LastContext = context;
+
+            public void Handle(IReadOnlyList<TurnContact> contacts, TurnContactContext context)
             {
-                Contacts.Add(contact);
-                StepsSeenAtHandling.Add(_world.StepCount);
+                Batches++;
+                foreach (TurnContact contact in contacts)
+                {
+                    Contacts.Add(contact);
+                    StepsSeenAtHandling.Add(_world.StepCount);
+                }
+
                 LastContext = context;
             }
         }
