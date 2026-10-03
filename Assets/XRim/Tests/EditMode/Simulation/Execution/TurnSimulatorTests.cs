@@ -131,6 +131,25 @@ namespace XRim.Tests.EditMode.Simulation.Execution
         }
 
         [Test]
+        public void AShield_IsHeldLikeAShield_ItsCentreOnThePath_FaceOutward_ThenHoldsAtTheEnd()
+        {
+            Assert.That(new TurnSimulatorOptions().ShieldAim, Is.InstanceOf<ShieldFaceAimModel>());
+            _state.Fighters[Side.Left].CurrentWeapon = WeaponIds.Shield;
+            var end = new Vec2(150f, 180f);
+            var arc = new WeaponPath(new[] { new Vec2(100f, ShoulderHeight), end });
+            var input = new TurnInput(new BoardSnapshot(_state, _pose),
+                new PerSide<TurnPlan>(new TurnPlan(WeaponIds.Shield, BodyMove.None, arc, default, true), Plan(null)), _rules, _simulation);
+
+            TurnResult result = Simulator().Simulate(input);
+
+            BodyPose shield = result.FinalBoard.Pose.Left.HeldItem;
+            Assert.That(Vec2.Distance(shield.PositionUnits, end), Is.LessThan(1e-3f), "the drawn point is the shield's centre");
+            float outward = (end - new Vec2(0f, ShoulderHeight)).AngleDegrees;
+            Assert.That(shield.RotationDegrees, Is.EqualTo(outward).Within(1e-3f), "A3: the face looks out from the shoulder");
+            Assert.That(result.EndReason, Is.EqualTo(TurnEndReason.Settled), "then it holds at the end point");
+        }
+
+        [Test]
         public void IdleTurn_EndsOncePhysicsHasSettledForTheRequiredSteps()
         {
             TurnResult result = Run(null);

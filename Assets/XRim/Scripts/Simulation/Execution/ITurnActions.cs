@@ -2,6 +2,7 @@ using XRim.Core;
 using XRim.Rules;
 using XRim.Rules.Settings;
 using XRim.Simulation.Drivers;
+using XRim.Simulation.Physics;
 
 namespace XRim.Simulation.Execution
 {
@@ -25,8 +26,14 @@ namespace XRim.Simulation.Execution
         /// <summary>The weapon continues its path at this share of its own speed (D26).</summary>
         void SlowWeapon(Side side, float speedFraction);
 
-        /// <summary>Ends the weapon's attack: a last hit recoils, an interrupt holds it where it is.</summary>
-        void StopWeapon(Side side, WeaponStopKind kind);
+        /// <summary>
+        /// Ends the weapon's attack: a last hit recoils, an interrupt holds it where it is, a rebound bounces it back, a knock-off
+        /// kicks it with <paramref name="knockVelocityUnitsPerSecond"/> and lets it fly free.
+        /// </summary>
+        void StopWeapon(Side side, WeaponStopKind kind, Vec2 knockVelocityUnitsPerSecond = default);
+
+        /// <summary>Where the side's held item was at a time of the last few steps (interpolated): a shield's face at a block.</summary>
+        BodyPose HeldItemPoseAt(Side side, SimTime time);
 
         void ApplyImpulse(Side side, BodyPart part, Vec2 impulse);
 

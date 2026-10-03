@@ -13,7 +13,9 @@ namespace XRim.Simulation.Physics
     /// </summary>
     public static class StartingBoard
     {
-        public static PoseSnapshot Create(MatchState state, RulesSettings rules, SimulationSettings simulation, IWeaponAimModel aim)
+        /// <param name="aim">How a weapon or club lies; <paramref name="shieldAim"/> how the shield does (default: held like a shield, A3).</param>
+        public static PoseSnapshot Create(MatchState state, RulesSettings rules, SimulationSettings simulation, IWeaponAimModel aim,
+            IWeaponAimModel shieldAim = null)
         {
             Guard.NotNull(state, nameof(state));
             Guard.NotNull(rules, nameof(rules));
@@ -21,18 +23,18 @@ namespace XRim.Simulation.Physics
             float half = rules.Arena.StartingGapUnits * 0.5f;
             return new PoseSnapshot
             {
-                Left = Fighter(Side.Left, -half, state, rules, simulation, aim),
-                Right = Fighter(Side.Right, half, state, rules, simulation, aim),
+                Left = Fighter(Side.Left, -half, state, rules, simulation, aim, shieldAim),
+                Right = Fighter(Side.Right, half, state, rules, simulation, aim, shieldAim),
             };
         }
 
         private static FighterPose Fighter(Side side, float xUnits, MatchState state, RulesSettings rules, SimulationSettings simulation,
-            IWeaponAimModel aim)
+            IWeaponAimModel aim, IWeaponAimModel shieldAim)
         {
             FighterState fighter = state.Fighters[side];
             var pelvis = new BodyPose(new Vec2(xUnits, LegGeometry.StandingPelvisHeightUnits(simulation.Ragdoll)), TurnStartRoot.UprightDegrees);
             return GuardStance.Create(pelvis, side, BodyParts.DominantArm(fighter.Handedness), rules.FindWeapon(fighter.CurrentWeapon),
-                simulation.Segmentation, simulation.Ragdoll, rules.Paths, aim);
+                simulation.Segmentation, simulation.Ragdoll, rules.Paths, aim, shieldAim);
         }
     }
 }

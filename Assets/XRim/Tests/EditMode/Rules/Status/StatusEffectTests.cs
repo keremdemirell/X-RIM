@@ -101,6 +101,25 @@ namespace XRim.Tests.EditMode.Rules.Status
             Assert.That(stagger, Is.InstanceOf<NoBodyMoveStatus>(), "§10 proposal: same as head stun");
         }
 
+        [TestCase(StunEffect.NoBodyMove)]
+        [TestCase(StunEffect.ShorterPlanning)]
+        [TestCase(StunEffect.LessInk)]
+        public void AStagger_FollowsTheStunEffectSwitch(StunEffect effect)
+        {
+            _settings.Damage.StunEffect = effect;
+            PlanningConstraints stunned = StunnedConstraints();
+            PlanningConstraints staggered = Constraints();
+
+            IStatusEffect stagger = _factory.Create(StatusKind.Staggered, _settings.Damage);
+            stagger.ApplyToNextTurn(staggered);
+
+            Assert.That(stagger.Kind, Is.EqualTo(StatusKind.Staggered));
+            Assert.That(stagger.RemainingTurns, Is.EqualTo(1));
+            Assert.That(staggered.IsBodyMoveAllowed(BodyMove.Lunge), Is.EqualTo(stunned.IsBodyMoveAllowed(BodyMove.Lunge)));
+            Assert.That(staggered.PlanningDurationSeconds, Is.EqualTo(stunned.PlanningDurationSeconds).Within(Tolerance));
+            Assert.That(staggered.InkLengthMultiplier, Is.EqualTo(stunned.InkLengthMultiplier).Within(Tolerance));
+        }
+
         [Test]
         public void EffectsCountDown_WithoutChangingThemselves()
         {

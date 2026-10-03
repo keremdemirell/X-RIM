@@ -14,8 +14,10 @@ namespace XRim.Simulation.Drivers
     {
         private readonly WeaponMotorSettings _motor;
 
-        public MotorPathDriver(PathSettings paths, WeaponMotorSettings motor, IWeaponAimModel aim, HitReactionSettings reaction = null)
-            : base(paths, aim, Guard.NotNull(motor, nameof(motor)), reaction ?? new HitReactionSettings())
+        public MotorPathDriver(PathSettings paths, WeaponMotorSettings motor, IWeaponAimModel aim, HitReactionSettings reaction = null,
+            ClashReactionSettings clashReaction = null)
+            : base(paths, aim, Guard.NotNull(motor, nameof(motor)), reaction ?? new HitReactionSettings(),
+                clashReaction ?? new ClashReactionSettings())
         {
             _motor = motor;
         }

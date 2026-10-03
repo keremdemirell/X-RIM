@@ -76,7 +76,7 @@ namespace XRim.Bots
             IRandom random = context.Random;
 
             Vec2 tip = context.Window.WeaponTips[context.Side].TipLocal(weapon);
-            float reach = paths.ArmLengthUnits + stats.LengthUnits;
+            float reach = ReachLimit.For(paths, stats).RadiusUnits;
             float aimDegrees = (random.NextFloat() * 2f - 1f) * MaxAimAngleDegrees;
             float reachShare = MinReachShare + random.NextFloat() * (MaxReachShare - MinReachShare);
             Vec2 end = paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(aimDegrees) * (reach * reachShare);

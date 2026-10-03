@@ -41,6 +41,7 @@ namespace XRim.Simulation.Execution
 
         private readonly IPhysicsWorld _world;
         private readonly IWeaponAimModel _aim;
+        private readonly IWeaponAimModel _shieldAim;
         private readonly IBodyMoveDriverFactory _bodyMoves;
         private readonly ITurnContactHandler _contactHandler;
         private readonly List<ContactFacts> _drained = new List<ContactFacts>();
@@ -61,6 +62,7 @@ namespace XRim.Simulation.Execution
             Policies = Guard.NotNull(policies, nameof(policies));
             options = options ?? new TurnSimulatorOptions();
             _aim = options.Aim ?? new AimFromShoulderModel();
+            _shieldAim = options.ShieldAim ?? new ShieldFaceAimModel();
             _bodyMoves = options.BodyMoves ?? new StanceBodyMoveDriverFactory();
             _contactHandler = options.Contacts ?? new HitContactHandler();
         }
@@ -180,7 +182,8 @@ namespace XRim.Simulation.Execution
             // D13 (TBD §5, default 0): a body move may speed the weapon along its path for the whole turn.
             float speedMultiplier = 1f + (moveStats != null ? moveStats.WeaponSpeedBonusFraction : 0f);
             WeaponStats pathWeapon = weapon.WithSpeedMultiplier(speedMultiplier);
-            IWeaponDriver driver = WeaponDriverFactory.Create(input.Simulation, input.Rules.Paths, _aim);
+            IWeaponAimModel aim = weapon.Kind == WeaponKind.Shield ? _shieldAim : _aim;
+            IWeaponDriver driver = WeaponDriverFactory.Create(input.Simulation, input.Rules.Paths, aim);
             driver.Begin(side, plan != null ? plan.Path : WeaponPath.Empty, pathWeapon);
             return new Fighter(side, bodyMove, legs, startRotation, weapon, pathWeapon.SpeedUnitsPerSecond, driver);
         }
@@ -300,8 +303,10 @@ namespace XRim.Simulation.Execution
                 time = weapon.RefineImpactTime(facts.PointUnits, _world.TouchDistanceUnits);
                 if (weaponA != null && weaponB != null)
                 {
+                    // Two held items touch at the point only once both are there: the later of their arrivals. A still
+                    // shield is at the point all along, so the moving weapon's arrival is the contact.
                     SimTime other = weaponB.RefineImpactTime(facts.PointUnits, _world.TouchDistanceUnits);
-                    if (other < time) time = other;
+                    if (other > time) time = other;
                 }
 
                 distance = weapon.WeaponDriver.DistanceAlongPathUnits(time);
@@ -381,9 +386,26 @@ namespace XRim.Simulation.Execution
                 _bladeHistory.Add(new PoseSample(time, pose.HeldItem));
             }
 
+            /// <summary>The blade's pose at a time inside its remembered steps, interpolated; clamped to the oldest and newest.</summary>
+            public BodyPose HeldItemPoseAt(SimTime time)
+            {
+                if (_bladeHistory.Count == 0) return default;
+                if (time <= _bladeHistory[0].Time) return _bladeHistory[0].Pose;
+                for (int i = 1; i < _bladeHistory.Count; i++)
+                {
+                    PoseSample to = _bladeHistory[i];
+                    if (time > to.Time) continue;
+                    PoseSample from = _bladeHistory[i - 1];
+                    float fraction = (float)((time - from.Time).Seconds / (to.Time - from.Time).Seconds);
+                    return new BodyPose(Vec2.Lerp(from.Pose.PositionUnits, to.Pose.PositionUnits, fraction),
+                        XMath.LerpAngleDegrees(from.Pose.RotationDegrees, to.Pose.RotationDegrees, fraction));
+                }
+
+                return _bladeHistory[_bladeHistory.Count - 1].Pose;
+            }
+
             public SimTime RefineImpactTime(Vec2 pointUnits, float touchDistanceUnits) =>
-                ImpactTimeRefiner.Refine(pointUnits, new BladeShape(Weapon.LengthUnits, Weapon.InkThicknessUnits), touchDistanceUnits,
-                    _bladeHistory);
+                ImpactTimeRefiner.Refine(pointUnits, BladeShape.Of(Weapon), touchDistanceUnits, _bladeHistory);
 
             public void KnockBack(SimTime start, Vec2 displacementUnits, float seconds) => _knocks.Add(new Knock(start, displacementUnits, seconds));
 
@@ -465,7 +487,10 @@ namespace XRim.Simulation.Execution
 
             public void SlowWeapon(Side side, float speedFraction) => _fighters[side].WeaponDriver?.SlowTo(Now, speedFraction);
 
-            public void StopWeapon(Side side, WeaponStopKind kind) => _fighters[side].WeaponDriver?.Stop(Now, kind);
+            public void StopWeapon(Side side, WeaponStopKind kind, Vec2 knockVelocityUnitsPerSecond = default) =>
+                _fighters[side].WeaponDriver?.Stop(Now, kind, knockVelocityUnitsPerSecond);
+
+            public BodyPose HeldItemPoseAt(Side side, SimTime time) => _fighters[side].HeldItemPoseAt(time);
 
             public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse) => _world.ApplyImpulse(side, part, impulse);
 

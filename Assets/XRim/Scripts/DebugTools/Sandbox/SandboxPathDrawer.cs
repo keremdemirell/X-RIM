@@ -18,7 +18,6 @@ namespace XRim.DebugTools.Sandbox
     {
         private const float StrokeWidthWorld = 0.02f;
         private const int LineSortingOrder = 100;
-        private const int CapVertices = 4;
 
         private static readonly Color StrokeColor = new Color(1f, 1f, 1f, 0.6f);
         private static readonly Color PathColor = new Color(1f, 0.85f, 0.1f, 0.9f);
@@ -32,9 +31,9 @@ namespace XRim.DebugTools.Sandbox
         public SandboxPathDrawer(Transform arenaRoot, Material material, Side side)
         {
             _side = side;
-            _strokeLine = CreateLine(arenaRoot, side + "Stroke", material, StrokeColor);
-            _pathLine = CreateLine(arenaRoot, side + "ExecutedPath", material, PathColor);
-            _ghostLine = CreateLine(arenaRoot, side + "PathAtFullExtent", material, GhostColor);
+            _strokeLine = DebugLines.Create(arenaRoot, side + "Stroke", material, StrokeColor, StrokeWidthWorld, LineSortingOrder);
+            _pathLine = DebugLines.Create(arenaRoot, side + "ExecutedPath", material, PathColor, StrokeWidthWorld, LineSortingOrder);
+            _ghostLine = DebugLines.Create(arenaRoot, side + "PathAtFullExtent", material, GhostColor, StrokeWidthWorld, LineSortingOrder);
         }
 
         /// <param name="moveFrame">The path's frame once the body move is at full extent; null without a body move.</param>
@@ -74,21 +73,5 @@ namespace XRim.DebugTools.Sandbox
             }
         }
 
-        private static LineRenderer CreateLine(Transform parent, string name, Material material, Color color)
-        {
-            var gameObject = new GameObject(name);
-            gameObject.transform.SetParent(parent, false);
-            var line = gameObject.AddComponent<LineRenderer>();
-            line.useWorldSpace = false;
-            line.sharedMaterial = material;
-            line.startColor = color;
-            line.endColor = color;
-            line.widthMultiplier = StrokeWidthWorld;
-            line.numCapVertices = CapVertices;
-            line.numCornerVertices = CapVertices;
-            line.sortingOrder = LineSortingOrder;
-            line.positionCount = 0;
-            return line;
-        }
     }
 }

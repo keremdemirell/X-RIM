@@ -13,43 +13,57 @@ using XRim.Simulation.Settings;
 namespace XRim.Simulation.Execution
 {
     /// <summary>
-    /// The hit rules at the physics seam (Session 06; ARCHITECTURE §2: Simulation detects, Rules decide, Simulation applies).
-    /// Every contact is recorded raw for the debug list. A weapon touching another dummy's body part becomes
-    /// <see cref="HitFacts"/>: the zone from the part's tag, the weapon from what the attacker holds, the time refined from the
-    /// weapon's motion. Each instant's hits go to the rules' <see cref="HitResolver"/>, and what it decides is applied:
+    /// The combat rules at the physics seam (Sessions 06 and 07; ARCHITECTURE §2: Simulation detects, Rules decide, Simulation
+    /// applies). Every contact is recorded raw for the debug list. One instant at a time, in time order (GDD §9 priority):
+    /// <list type="number">
+    /// <item><b>Held item against held item</b> first (A2: at the same instant the blade or shield in the way wins the tie), in
+    /// stable order, through the rules' <see cref="WeaponContactResolver"/>:
     /// <list type="bullet">
-    /// <item>the attacker's weapon slows (D26), or stops and recoils at its last hit;</item>
-    /// <item>an interrupted weapon stops where it is;</item>
-    /// <item>the struck part gets a share of the weapon's momentum as an impulse along the weapon's motion, and the victim is
-    /// knocked back away from the attacker by a distance that grows with the weapon's mass (E1); both shrink with the speed
-    /// the weapon had left (D26);</item>
-    /// <item>the hit, stun, interrupt and death events are recorded at their time.</item>
+    /// <item>two weapons clash (§10, the contact's angle and the weapons' powers): a rebound bounces both back, a knocked-off
+    /// weapon is kicked away from the winner along the contact normal and flies free before the hand takes it, a survivor
+    /// carries on along its path unchanged;</item>
+    /// <item>a weapon meeting the other side's shield is blocked (§7), measured from where the shield is at that instant (the
+    /// weapon's motion against its face, and where on the face it landed): a full block bounces the weapon back and pushes
+    /// the holder back (D21's "physics knockback does the rest"), a partial block lets the weapon carry on with its later hits
+    /// reduced;</item>
+    /// <item>two shields meeting have no rule (A7).</item>
+    /// </list></item>
+    /// <item><b>A held item touching another dummy's body part</b> becomes <see cref="HitFacts"/> (the zone from the part's tag,
+    /// the weapon from what the attacker holds, the time refined from the weapon's motion) and goes to the rules'
+    /// <see cref="HitResolver"/>: the weapon slows (D26) or stops and recoils at its last hit; an interrupted weapon stops where it
+    /// is; the struck part gets a share of the weapon's momentum along its motion and the victim is knocked back (E1).</item>
     /// </list>
-    /// A dummy's contacts with its own body, body-to-body bumps, severed limbs on the floor and weapon-to-weapon contacts
-    /// (clashes, Session 07) deal no damage.
+    /// Both resolvers share each side's <see cref="TurnAttack"/>, so a clash or block carries into the hits after it (a crushed
+    /// weapon lands nothing, a crush-through or partially blocked weapon hits softer). A dummy's contacts with its own body,
+    /// body-to-body bumps and severed limbs on the floor change nothing.
     /// </summary>
     public sealed class HitContactHandler : ITurnContactHandler
     {
-        /// <summary>Below this relative speed the contact has no direction to measure, so the knock goes straight back.</summary>
+        /// <summary>Below this relative speed the contact has no direction to measure, so the push goes straight back.</summary>
         private const float MinMotionUnitsPerSecond = 1e-3f;
+
+        private static readonly Side[] BothSides = { Side.Left, Side.Right };
 
         private readonly List<HitFacts> _hits = new List<HitFacts>();
         private readonly List<TurnContact> _hitContacts = new List<TurnContact>();
-        private HitResolver _resolver;
+        private readonly List<TurnContact> _itemContacts = new List<TurnContact>();
+        private HitResolver _hitResolver;
+        private WeaponContactResolver _itemResolver;
 
         public void BeginTurn(TurnContactContext context)
         {
             Guard.NotNull(context, nameof(context));
             ITurnActions actions = context.Actions;
-            _resolver = new HitResolver(context.State, context.Rules, context.Policies,
-                PerSide<TurnAttack>.Create(side => new TurnAttack(actions.HeldWeapon(side), context.BodyMoves[side])));
+            PerSide<TurnAttack> attacks = PerSide<TurnAttack>.Create(side => new TurnAttack(actions.HeldWeapon(side), context.BodyMoves[side]));
+            _hitResolver = new HitResolver(context.State, context.Rules, context.Policies, attacks);
+            _itemResolver = new WeaponContactResolver(context.State, context.Rules, context.Policies, attacks);
         }
 
         public void Handle(IReadOnlyList<TurnContact> contacts, TurnContactContext context)
         {
             Guard.NotNull(contacts, nameof(contacts));
             Guard.NotNull(context, nameof(context));
-            if (_resolver == null) throw new InvalidOperationException("BeginTurn must be called before contacts are handled.");
+            if (_hitResolver == null) throw new InvalidOperationException("BeginTurn must be called before contacts are handled.");
 
             int index = 0;
             while (index < contacts.Count)
@@ -57,26 +71,147 @@ namespace XRim.Simulation.Execution
                 SimTime time = contacts[index].Time;
                 _hits.Clear();
                 _hitContacts.Clear();
+                _itemContacts.Clear();
                 for (; index < contacts.Count && contacts[index].Time == time; index++)
                 {
                     TurnContact contact = contacts[index];
                     context.Record(new ContactEvent(contact));
-                    if (!TryReadHit(contact, context.State, out HitFacts hit)) continue;
-                    _hits.Add(hit);
-                    _hitContacts.Add(contact);
+                    if (IsBetweenHeldItems(contact.Facts))
+                    {
+                        _itemContacts.Add(contact);
+                    }
+                    else if (TryReadHit(contact, context.State, out HitFacts hit))
+                    {
+                        _hits.Add(hit);
+                        _hitContacts.Add(contact);
+                    }
+                }
+
+                foreach (TurnContact contact in _itemContacts)
+                {
+                    ResolveItemContact(contact, context);
                 }
 
                 if (_hits.Count == 0) continue;
-                ITurnActions actions = context.Actions;
-                PerSide<bool> travelling = PerSide<bool>.Create(side => actions.IsWeaponTravelling(side, time));
-                Apply(_resolver.Resolve(_hits, travelling), context);
+                ApplyHits(_hitResolver.Resolve(_hits, Travelling(context.Actions, time)), context);
             }
 
-            context.FirstValidHitTime.Left = _resolver.FirstHitTime.Left;
-            context.FirstValidHitTime.Right = _resolver.FirstHitTime.Right;
+            context.FirstValidHitTime.Left = _hitResolver.FirstHitTime.Left;
+            context.FirstValidHitTime.Right = _hitResolver.FirstHitTime.Right;
         }
 
-        /// <summary>A held weapon touching another dummy's body part; nothing else is a hit.</summary>
+        private static PerSide<bool> Travelling(ITurnActions actions, SimTime time) =>
+            PerSide<bool>.Create(side => actions.IsWeaponTravelling(side, time));
+
+        // --- Held item against held item: clashes and blocks (§7, §10) ---------------------------------
+
+        private static bool IsBetweenHeldItems(ContactFacts facts) =>
+            facts.A.Role == BodyRole.HeldItem && facts.B.Role == BodyRole.HeldItem && facts.A.Owner.HasValue && facts.B.Owner.HasValue &&
+            facts.A.Owner.Value != facts.B.Owner.Value;
+
+        private void ResolveItemContact(TurnContact contact, TurnContactContext context)
+        {
+            ITurnActions actions = context.Actions;
+            WeaponStats left = actions.HeldWeapon(Side.Left);
+            WeaponStats right = actions.HeldWeapon(Side.Right);
+            if (left == null || right == null) return;
+
+            bool leftShield = left.Kind == WeaponKind.Shield;
+            bool rightShield = right.Kind == WeaponKind.Shield;
+            if (leftShield && rightShield) return;
+
+            PerSide<bool> travelling = Travelling(actions, contact.Time);
+            PerSide<float> pathSpeeds = PerSide<float>.Create(side => actions.WeaponSpeedUnitsPerSecond(side));
+            // The speeds the rules move the weapons at, read before the contact stops either of them.
+            PerSide<float> speeds = PerSide<float>.Create(side => _itemResolver.SpeedOf(side, travelling, pathSpeeds));
+            Vec2 point = contact.Facts.PointUnits;
+            if (leftShield || rightShield)
+            {
+                Side blocker = leftShield ? Side.Left : Side.Right;
+                MeasureBlock(contact, actions.HeldItemPoseAt(blocker, contact.Time), leftShield ? left : right, out float angle, out float facePosition);
+                if (_itemResolver.TryResolveBlock(contact.Time, blocker, angle, facePosition, point, travelling, pathSpeeds, out BlockResolution block))
+                    ApplyBlock(block, contact, speeds, context);
+                return;
+            }
+
+            if (_itemResolver.TryResolveClash(contact.Time, contact.ContactAngleDegrees, point, travelling, pathSpeeds, out ClashResolution clash))
+                ApplyClash(clash, contact, speeds, context);
+        }
+
+        /// <summary>
+        /// The shield's face at the contact (A3: it looks along its body's rotation, its height runs across): the angle between the
+        /// two items' relative motion and the face (90° = straight in), and where along the face the contact is (0 = the middle,
+        /// 1 = its end).
+        /// </summary>
+        private static void MeasureBlock(TurnContact contact, BodyPose shieldPose, WeaponStats shield, out float angle, out float facePosition)
+        {
+            HeldItemShape shape = HeldItemShape.Of(shield);
+            Vec2 faceNormal = Vec2.FromAngleDegrees(shieldPose.RotationDegrees);
+            var across = new Vec2(-faceNormal.Y, faceNormal.X);
+            angle = ContactAngle.Degrees(faceNormal, contact.Facts.RelativeVelocityUnitsPerSecond);
+            float halfHeight = shape.SizeUnits.Y * 0.5f;
+            Vec2 fromCentre = contact.Facts.PointUnits - HeldItemShape.ToArena(shape.CentreLocal, shieldPose);
+            facePosition = halfHeight > 0f ? Math.Abs(Vec2.Dot(fromCentre, across)) / halfHeight : 0f;
+        }
+
+        /// <param name="speeds">The speeds the rules moved the weapons at just before the contact.</param>
+        private static void ApplyBlock(BlockResolution block, TurnContact contact, PerSide<float> speeds, TurnContactContext context)
+        {
+            if (block.Result.AttackStopped)
+            {
+                Side attacker = block.Attacker;
+                ITurnActions actions = context.Actions;
+                actions.StopWeapon(attacker, WeaponStopKind.Rebounded);
+                float pathSpeed = actions.WeaponSpeedUnitsPerSecond(attacker);
+                float speedShare = pathSpeed > 0f ? speeds[attacker] / pathSpeed : 0f;
+                Push(attacker, block.Blocker, BodyPart.Torso, MotionOf(attacker, contact), speedShare,
+                    context.Simulation.ClashReaction.BlockKnockbackFraction, context);
+            }
+
+            Record(block.Events, context);
+        }
+
+        /// <param name="speeds">The speeds the rules moved the weapons at just before the contact.</param>
+        private static void ApplyClash(ClashResolution clash, TurnContact contact, PerSide<float> speeds, TurnContactContext context)
+        {
+            ClashResult result = clash.Result;
+            ITurnActions actions = context.Actions;
+            foreach (Side side in BothSides)
+            {
+                if (result.Rebounds) actions.StopWeapon(side, WeaponStopKind.Rebounded);
+                else if (result.IsKnockedOff(side))
+                    actions.StopWeapon(side, WeaponStopKind.KnockedOff, KnockOffVelocity(side, result.Winner.Value, contact, speeds, context));
+            }
+
+            Record(clash.Events, context);
+        }
+
+        /// <summary>
+        /// The kick a knocked-off weapon gets (A6): away from the winner along the contact normal, at the winner's momentum (its
+        /// mass × the speed the rules move it, as in the clash) over the loser's mass, times the knock-off share.
+        /// </summary>
+        private static Vec2 KnockOffVelocity(Side loser, Side winner, TurnContact contact, PerSide<float> speeds, TurnContactContext context)
+        {
+            ITurnActions actions = context.Actions;
+            float loserMass = actions.HeldWeapon(loser).Mass;
+            Vec2 normal = contact.Facts.Normal;
+            if (loserMass <= 0f || normal == Vec2.Zero) return Vec2.Zero;
+
+            Vec2 awayFromWinner = contact.Facts.B.Owner == loser ? normal.Normalized : -normal.Normalized;
+            float winnerMomentum = actions.HeldWeapon(winner).Mass * speeds[winner];
+            return awayFromWinner * (winnerMomentum / loserMass * context.Simulation.ClashReaction.KnockOffMomentumFraction);
+        }
+
+        /// <summary>How the side's held item moved relative to the other one: the contact reports B's velocity relative to A.</summary>
+        private static Vec2 MotionOf(Side side, TurnContact contact)
+        {
+            ContactFacts facts = contact.Facts;
+            return facts.A.Owner == side ? -facts.RelativeVelocityUnitsPerSecond : facts.RelativeVelocityUnitsPerSecond;
+        }
+
+        // --- Held item against a body: hits (§9, §11) -----------------------------------------------
+
+        /// <summary>A held item touching another dummy's body part; nothing else is a hit.</summary>
         private static bool TryReadHit(TurnContact contact, MatchState state, out HitFacts hit)
         {
             hit = default;
@@ -105,19 +240,19 @@ namespace XRim.Simulation.Execution
             return true;
         }
 
-        private void Apply(HitResolution resolution, TurnContactContext context)
+        private void ApplyHits(HitResolution resolution, TurnContactContext context)
         {
             ITurnActions actions = context.Actions;
-            HitReactionSettings reaction = context.Simulation.HitReaction;
             int contactIndex = 0;
             foreach (LandedHit landed in resolution.Landed)
             {
                 // Landed hits keep the order they were given in, so the matching contact is the next one with that weapon and part.
                 while (!SameHit(_hits[contactIndex], landed.Hit)) contactIndex++;
-                Knock(landed, _hitContacts[contactIndex], actions, reaction);
+                Side attacker = landed.Hit.Attacker;
+                Push(attacker, landed.Hit.Victim, landed.Hit.Part, WeaponMotionIntoVictim(_hitContacts[contactIndex]), landed.SpeedFractionAtHit,
+                    1f, context);
                 contactIndex++;
 
-                Side attacker = landed.Hit.Attacker;
                 if (landed.StopsWeapon) actions.StopWeapon(attacker, WeaponStopKind.LastHit);
                 else actions.SlowWeapon(attacker, landed.SpeedFractionAfter);
             }
@@ -127,27 +262,7 @@ namespace XRim.Simulation.Execution
                 actions.StopWeapon(side, WeaponStopKind.Interrupted);
             }
 
-            foreach (MatchEvent matchEvent in resolution.Events)
-            {
-                context.Record(matchEvent);
-            }
-        }
-
-        private static void Knock(LandedHit landed, TurnContact contact, ITurnActions actions, HitReactionSettings reaction)
-        {
-            Side attacker = landed.Hit.Attacker;
-            WeaponStats weapon = actions.HeldWeapon(attacker);
-            if (weapon == null) return;
-
-            var away = new Vec2(attacker.FacingSign(), 0f);
-            Vec2 motion = WeaponMotionIntoVictim(contact);
-            Vec2 direction = motion.Length >= MinMotionUnitsPerSecond ? motion.Normalized : away;
-            float momentum = weapon.Mass * actions.WeaponSpeedUnitsPerSecond(attacker) * landed.SpeedFractionAtHit;
-            actions.ApplyImpulse(landed.Hit.Victim, landed.Hit.Part, direction * (momentum * reaction.PartImpulseMomentumFraction));
-
-            if (!reaction.KnockbackPersists) return;
-            float distance = weapon.Mass * reaction.KnockbackUnitsPerWeaponMass * landed.SpeedFractionAtHit;
-            actions.KnockBack(landed.Hit.Victim, away * distance);
+            Record(resolution.Events, context);
         }
 
         /// <summary>How the weapon moved relative to the struck body: the contact reports B's velocity relative to A.</summary>
@@ -158,5 +273,37 @@ namespace XRim.Simulation.Execution
         }
 
         private static bool SameHit(HitFacts a, HitFacts b) => a.Attacker == b.Attacker && a.Part == b.Part && a.Time == b.Time;
+
+        // --- Shared ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// What the attacker's weapon does to a dummy it hits (or to the holder of a shield that fully blocked it, scaled down): the
+        /// part gets a share of the weapon's momentum along its motion, and the dummy is knocked back away from the attacker by a
+        /// distance that grows with the weapon's mass (E1). Both shrink with the share of its speed the weapon had (D26).
+        /// </summary>
+        private static void Push(Side attacker, Side victim, BodyPart part, Vec2 motion, float speedShare, float scale, TurnContactContext context)
+        {
+            ITurnActions actions = context.Actions;
+            WeaponStats weapon = actions.HeldWeapon(attacker);
+            if (weapon == null) return;
+
+            HitReactionSettings reaction = context.Simulation.HitReaction;
+            var away = new Vec2(attacker.FacingSign(), 0f);
+            Vec2 direction = motion.Length >= MinMotionUnitsPerSecond ? motion.Normalized : away;
+            float momentum = weapon.Mass * actions.WeaponSpeedUnitsPerSecond(attacker) * speedShare;
+            actions.ApplyImpulse(victim, part, direction * (momentum * reaction.PartImpulseMomentumFraction * scale));
+
+            if (!reaction.KnockbackPersists) return;
+            float distance = weapon.Mass * reaction.KnockbackUnitsPerWeaponMass * speedShare * scale;
+            actions.KnockBack(victim, away * distance);
+        }
+
+        private static void Record(IReadOnlyList<MatchEvent> events, TurnContactContext context)
+        {
+            foreach (MatchEvent matchEvent in events)
+            {
+                context.Record(matchEvent);
+            }
+        }
     }
 }

@@ -13,7 +13,8 @@ namespace XRim.Simulation.Physics
     /// (<c>PlaceholderRagdollBuilder</c> builds the same pivots from the same settings): pelvis at the torso pose, head on top
     /// of the torso, arms hanging from the shoulder, legs from the pelvis, every limb straight down. With a weapon, the
     /// dominant arm holds it at the guard angle, placed by the aim model so the first step of a swing starts exactly where
-    /// the weapon already is, and the hand holds the blade where the arm can reach (<see cref="ArmReach"/>).
+    /// the weapon already is, and the hand holds the blade where the arm can reach (<see cref="ArmReach"/>). A shield rests the
+    /// same way with its own aim model (held like a shield, A3): its centre at the guard point, its face outward.
     /// </summary>
     public static class GuardStance
     {
@@ -21,7 +22,7 @@ namespace XRim.Simulation.Physics
         private const float LimbAxisOffsetDegrees = 90f;
 
         public static FighterPose Create(BodyPose torso, Side side, BodyPart dominantArm, WeaponStats heldWeapon,
-            RagdollSegmentation segmentation, RagdollSettings body, PathSettings paths, IWeaponAimModel aim)
+            RagdollSegmentation segmentation, RagdollSettings body, PathSettings paths, IWeaponAimModel aim, IWeaponAimModel shieldAim = null)
         {
             Guard.NotNull(body, nameof(body));
             Guard.NotNull(paths, nameof(paths));
@@ -43,7 +44,8 @@ namespace XRim.Simulation.Physics
             Vec2 shoulder = paths.ShoulderOffsetUnits;
             float armLength = paths.ArmLengthUnits;
             float blade = heldWeapon.LengthUnits;
-            BodyPose grip = aim.Aim(TipLocal(heldWeapon, body, paths), shoulder, armLength, blade);
+            IWeaponAimModel itemAim = heldWeapon.Kind == WeaponKind.Shield ? shieldAim ?? new ShieldFaceAimModel() : aim;
+            BodyPose grip = itemAim.Aim(TipLocal(heldWeapon, body, paths), shoulder, armLength, blade);
             Vec2 axis = Vec2.FromAngleDegrees(grip.RotationDegrees);
             float upper = UpperLength(dominantArm, body, paths);
             float lower = armLength - upper;
@@ -65,7 +67,10 @@ namespace XRim.Simulation.Physics
             return pose;
         }
 
-        /// <summary>Where a weapon's tip rests in the guard stance, in the torso frame: a first stroke's lead-in starts here (D3).</summary>
+        /// <summary>
+        /// Where a held item's path point (a weapon's tip, the shield's centre) rests in the guard stance, in the torso frame: a
+        /// first stroke's lead-in starts here (D3).
+        /// </summary>
         public static Vec2 TipLocal(WeaponStats weapon, RagdollSettings body, PathSettings paths) =>
             paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(body.GuardAngleDegrees) *
             (paths.ArmLengthUnits * body.GuardHandReachFraction + Guard.NotNull(weapon, nameof(weapon)).LengthUnits);

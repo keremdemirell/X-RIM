@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using XRim.Core;
 using XRim.Rules;
@@ -33,8 +34,26 @@ namespace XRim.Tests.EditMode.Simulation.Physics
                 new FighterState(rightHandedness, _rules.Damage.MaxHp, right)),
             PerSide<ElectricWallState>.Create(_ => new ElectricWallState()));
 
-        private Vec2 Tip(FighterPose pose, WeaponId weapon) =>
-            pose.HeldItem.PositionUnits + Vec2.FromAngleDegrees(pose.HeldItem.RotationDegrees) * _rules.FindWeapon(weapon).LengthUnits;
+        /// <summary>The held item's path point: a weapon's tip, the shield's centre.</summary>
+        private Vec2 Tip(FighterPose pose, WeaponId weapon) => HeldItemShape.Of(_rules.FindWeapon(weapon)).PathPointAt(pose.HeldItem);
+
+        /// <summary>The corners of the held item's box in the arena.</summary>
+        private Vec2[] Corners(FighterPose pose, WeaponId weapon)
+        {
+            HeldItemShape shape = HeldItemShape.Of(_rules.FindWeapon(weapon));
+            Vec2 half = shape.SizeUnits * 0.5f;
+            var corners = new Vec2[4];
+            int i = 0;
+            foreach (float x in new[] { -half.X, half.X })
+            {
+                foreach (float y in new[] { -half.Y, half.Y })
+                {
+                    corners[i++] = HeldItemShape.ToArena(shape.CentreLocal + new Vec2(x, y), pose.HeldItem);
+                }
+            }
+
+            return corners;
+        }
 
         [Test]
         public void Dummies_StandTheStartingGapApart_MirroredAroundZero_OnTheirLegs()
@@ -65,6 +84,25 @@ namespace XRim.Tests.EditMode.Simulation.Physics
         }
 
         [Test]
+        public void ADummyStartingWithTheShield_HoldsItFaceOut_CentredOnTheGuardPoint()
+        {
+            PoseSnapshot board = StartingBoard.Create(State(WeaponIds.Shield, WeaponIds.Shield), _rules, _simulation, _aim);
+
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                FighterPose pose = board.Get(side);
+                BodyPose root = TurnStartRoot.Of(pose);
+                Vec2 guardLocal = GuardStance.TipLocal(_rules.FindWeapon(WeaponIds.Shield), _simulation.Ragdoll, _rules.Paths);
+                Vec2 centre = TorsoFrame.ToArena(guardLocal, root, side);
+                Assert.That(Vec2.Distance(pose.HeldItem.PositionUnits, centre), Is.LessThan(Tolerance), $"{side}: the grip is the shield's centre");
+                Vec2 faceLocal = guardLocal - _rules.Paths.ShoulderOffsetUnits;
+                float faceDegrees = TorsoFrame.AngleToArena(faceLocal.AngleDegrees, root, side);
+                Assert.That(XMath.DeltaAngleDegrees(pose.HeldItem.RotationDegrees, faceDegrees), Is.EqualTo(0f).Within(Tolerance),
+                    $"{side}: the face looks out from the shoulder (A3)");
+            }
+        }
+
+        [Test]
         public void LeftHandedDummy_HoldsItsWeaponInItsLeftHand()
         {
             PoseSnapshot board = StartingBoard.Create(State(WeaponIds.Rapier, WeaponIds.Rapier, Handedness.Left), _rules, _simulation, _aim);
@@ -85,11 +123,11 @@ namespace XRim.Tests.EditMode.Simulation.Physics
                 foreach (WeaponId right in loadout)
                 {
                     PoseSnapshot board = StartingBoard.Create(State(left, right), _rules, _simulation, _aim);
-                    float leftReach = Tip(board.Left, left).X + _rules.FindWeapon(left).InkThicknessUnits * 0.5f;
-                    float rightReach = Tip(board.Right, right).X - _rules.FindWeapon(right).InkThicknessUnits * 0.5f;
-                    Assert.That(leftReach, Is.LessThan(rightReach), $"{left.Value} and {right.Value} start apart");
-                    Assert.That(Tip(board.Left, left).Y - _rules.FindWeapon(left).InkThicknessUnits * 0.5f, Is.GreaterThan(0f),
-                        $"{left.Value} tip above the floor");
+                    Vec2[] leftBox = Corners(board.Left, left);
+                    Vec2[] rightBox = Corners(board.Right, right);
+                    Assert.That(leftBox.Max(corner => corner.X), Is.LessThan(rightBox.Min(corner => corner.X)),
+                        $"{left.Value} and {right.Value} start apart");
+                    Assert.That(leftBox.Min(corner => corner.Y), Is.GreaterThan(0f), $"{left.Value} above the floor");
                 }
             }
         }

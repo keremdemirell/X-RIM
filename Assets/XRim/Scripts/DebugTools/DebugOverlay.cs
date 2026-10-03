@@ -21,6 +21,7 @@ namespace XRim.DebugTools
         private readonly TuningPanel _tuningPanel = new TuningPanel();
         private readonly PlaybackPanel _playbackPanel = new PlaybackPanel();
         private MatchBootstrap _bootstrap;
+        private GameplayGizmos _gizmos;
         private bool _open;
         private int _tab;
         private Vector2 _scroll;
@@ -29,7 +30,10 @@ namespace XRim.DebugTools
         {
             // Debug tooling may look up the scene's composition root once; gameplay code never does this.
             _bootstrap = FindAnyObjectByType<MatchBootstrap>();
-            if (_bootstrap != null && _bootstrap.Mode == MatchMode.Sandbox) gameObject.AddComponent<SandboxController>().Init(_bootstrap, this);
+            if (_bootstrap == null) return;
+            _gizmos = gameObject.AddComponent<GameplayGizmos>();
+            _gizmos.Init(_bootstrap);
+            if (_bootstrap.Mode == MatchMode.Sandbox) gameObject.AddComponent<SandboxController>().Init(_bootstrap, this);
         }
 
         /// <summary>True when a screen point (GUI coordinates, y down) is on the Debug button or the open panel.</summary>
@@ -87,7 +91,7 @@ namespace XRim.DebugTools
             _tuningPanel.Draw(profile);
         }
 
-        private void DrawPlayback() => _playbackPanel.Draw(_bootstrap);
+        private void DrawPlayback() => _playbackPanel.Draw(_bootstrap, _gizmos);
 
         private static void DrawCheats()
         {

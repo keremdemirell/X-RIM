@@ -39,8 +39,6 @@ namespace XRim.DebugTools.Sandbox
         private static readonly BodyMove[] Moves = { BodyMove.None, BodyMove.Crouch, BodyMove.Lunge, BodyMove.StepBack, BodyMove.Jump };
         private const string ReportFolderName = "Logs";
         private const string ReportFileName = "XRimFeelReport.txt";
-        private const string SpriteShaderName = "Universal Render Pipeline/2D/Sprite-Unlit-Default";
-        private const string FallbackShaderName = "Sprites/Default";
 
         private readonly List<Vec2> _stroke = new List<Vec2>();
         private readonly PerSide<BuiltPath> _built = new PerSide<BuiltPath>(null, null);
@@ -88,7 +86,7 @@ namespace XRim.DebugTools.Sandbox
             if (!_bootstrap.IsComposed || _bootstrap.HasStarted) return;
 
             _pathBuilder = new PathBuilder(_bootstrap.Policies);
-            Material material = CreateLineMaterial();
+            Material material = DebugLines.CreateMaterial();
             _drawers = PerSide<SandboxPathDrawer>.Create(side => new SandboxPathDrawer(_bootstrap.ArenaRoot, material, side));
             _sources = PerSide<SandboxPlanSource>.Create(side => new SandboxPlanSource(side));
             _bootstrap.StartMatch(new[] { _sources.Left, _sources.Right });
@@ -148,7 +146,8 @@ namespace XRim.DebugTools.Sandbox
             else if (_drawing)
             {
                 _drawing = false;
-                if (_stroke.Count >= 2) _sources[_activeSide].SetPath(new WeaponPath(_stroke));
+                // A click without a drag is a tap (GDD §7): a short lead-in to that spot (D3), then the item holds there (A4).
+                _sources[_activeSide].SetPath(new WeaponPath(_stroke));
             }
         }
 
@@ -225,7 +224,7 @@ namespace XRim.DebugTools.Sandbox
 
                 IReadOnlyList<Vec2> stroke = _drawing && side == _activeSide ? _stroke : source.Stroke.Points;
                 WeaponStats weapon = Weapon(source);
-                _built[side] = weapon != null && HasMovement(stroke)
+                _built[side] = weapon != null && stroke.Count > 0
                     ? _pathBuilder.Build(WeaponPath.Empty, new WeaponPath(stroke), source.Window.WeaponTips[side].TipLocal(source.Weapon), weapon,
                         _bootstrap.RulesSettings.Paths)
                     : null;
@@ -268,16 +267,6 @@ namespace XRim.DebugTools.Sandbox
         {
             WeaponStats stats = _bootstrap.RulesSettings.FindWeapon(source.Weapon);
             return stats?.WithInkLengthMultiplier(source.Window.Constraints[source.Side].InkLengthMultiplier);
-        }
-
-        private static bool HasMovement(IReadOnlyList<Vec2> stroke)
-        {
-            for (int i = 1; i < stroke.Count; i++)
-            {
-                if (stroke[i] != stroke[0]) return true;
-            }
-
-            return false;
         }
 
         private void OnGUI()
@@ -323,10 +312,12 @@ namespace XRim.DebugTools.Sandbox
             if (GUILayout.Button("Clear path (C)")) _sources[_activeSide].ClearPath();
             if (GUILayout.Button("Execute (Space)")) Execute();
             GUILayout.EndHorizontal();
-            GUILayout.Label("Drag in the arena to draw the active side's path. Weapons: 1/2/3. Body move: ↓ crouch, ↑ jump, " +
+            GUILayout.Label("Drag in the arena to draw the active side's path; a click is a tap (the item moves there and holds, " +
+                            "e.g. a raised shield). Weapons: 1/2/3. Body move: ↓ crouch, ↑ jump, " +
                             "→/← lunge or step back (toward or away from the opponent), N none. Feel report: F9. " +
                             "Simulation and body-move tuning apply from the next Execute; other rules tuning from the next match. " +
-                            "HP, limb damage and stuns: bottom of the screen. Hits: Debug → Playback.");
+                            "HP, limb damage, stuns and staggers: bottom of the screen. Hits, clashes and blocks: Debug → Playback, " +
+                            "which also toggles the contact gizmos (normals, clash angle, time-to-impact).");
             if (_diagnosticsMessage.Length > 0) GUILayout.Label(_diagnosticsMessage);
         }
 
@@ -378,11 +369,5 @@ namespace XRim.DebugTools.Sandbox
                 inked.Ink.CostUnits, inked.BudgetUnits, notes);
         }
 
-        private static Material CreateLineMaterial()
-        {
-            Shader shader = Shader.Find(SpriteShaderName);
-            if (shader == null) shader = Shader.Find(FallbackShaderName);
-            return shader != null ? new Material(shader) : null;
-        }
     }
 }

@@ -5,6 +5,7 @@ using XRim.App;
 using XRim.Core;
 using XRim.Presentation.Playback;
 using XRim.Rules;
+using XRim.Rules.Combat;
 using XRim.Rules.Events;
 using XRim.Rules.Match;
 using XRim.Rules.Planning;
@@ -183,11 +184,27 @@ namespace XRim.DebugTools.Sandbox
                     if (matchEvent.Time > _now) continue;
                     if (matchEvent is StatusAppliedEvent status && status.Side == side)
                         notes.Add(status.Kind.ToString().ToUpperInvariant() + ": shapes the next turn");
+                    if (matchEvent is WeaponClashEvent clash) AddClashNote(clash.Result, side, notes);
+                    if (matchEvent is ShieldBlockEvent block) AddBlockNote(block, side, notes);
                     if (matchEvent is FighterDiedEvent died && died.Side == side) notes.Add("KO");
                 }
 
                 if (_outcome != null) notes.Add(_outcome.Winner == side ? $"WINS ({_outcome.Reason})" : "LOSES");
                 return notes.Count > 0 ? string.Join("   ", notes) : " ";
+            }
+
+            private static void AddClashNote(ClashResult result, Side side, List<string> notes)
+            {
+                if (result.Rebounds) notes.Add("REBOUND");
+                else if (result.IsKnockedOff(side)) notes.Add("KNOCKED OFF");
+                else if (result.Kind == ClashKind.CrushThrough) notes.Add("CRUSHED THROUGH");
+            }
+
+            private static void AddBlockNote(ShieldBlockEvent block, Side side, List<string> notes)
+            {
+                bool full = block.Result.AttackStopped;
+                if (side == block.Blocker) notes.Add(full ? "BLOCK" : "PARTIAL BLOCK");
+                else notes.Add(full ? "BLOCKED" : "HALF-BLOCKED");
             }
 
             private IEnumerable<HitLandedEvent> HitsStillAhead(Side victim)

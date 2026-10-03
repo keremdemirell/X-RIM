@@ -52,6 +52,9 @@ namespace XRim.Simulation
         /// <summary>How a landed hit moves the weapon and the victim (Session 06): hand-off, recoil, impulse and knockback.</summary>
         public HitReactionSettings HitReaction = new HitReactionSettings();
 
+        /// <summary>How the clash and block rules move the weapons and the shield holder (Session 07): knock-off, rebound, push back.</summary>
+        public ClashReactionSettings ClashReaction = new ClashReactionSettings();
+
         /// <summary>Appends a message for every value that cannot work. Placeholders are not errors.</summary>
         public void Validate(ICollection<string> issues)
         {
@@ -63,6 +66,21 @@ namespace XRim.Simulation
             ValidateRootDrive(issues);
             ValidateRagdoll(issues);
             ValidateHitReaction(issues);
+            ValidateClashReaction(issues);
+        }
+
+        private void ValidateClashReaction(ICollection<string> issues)
+        {
+            ClashReactionSettings clash = ClashReaction;
+            if (clash == null)
+            {
+                issues.Add("Simulation: the clash reaction settings are missing.");
+                return;
+            }
+
+            if (clash.ReboundSpeedFraction < 0f || clash.KnockOffMomentumFraction < 0f || clash.KnockOffFreeSeconds < 0f ||
+                clash.BlockKnockbackFraction < 0f)
+                issues.Add("Simulation: rebound speed, knock-off strength and time, and block push must not be negative.");
         }
 
         private void ValidateHitReaction(ICollection<string> issues)

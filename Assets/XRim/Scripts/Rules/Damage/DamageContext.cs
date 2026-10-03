@@ -23,11 +23,14 @@ namespace XRim.Rules.Damage
         /// </summary>
         public float FollowThroughSpeedFraction { get; }
 
+        /// <summary>The share of its damage the weapon still deals after shields partially blocked it this turn (GDD §7; A5).</summary>
+        public float ShieldBlockDamageMultiplier { get; }
+
         public HitZone Zone => Hit.Part.ToHitZone();
         public float ZoneMultiplier => Settings.HitZones.MultiplierFor(Zone);
 
         public DamageContext(HitFacts hit, WeaponStats weapon, RulesSettings settings, BodyMoveStats attackerBodyMove = null,
-            bool crushedThrough = false, float followThroughSpeedFraction = 1f)
+            bool crushedThrough = false, float followThroughSpeedFraction = 1f, float shieldBlockDamageMultiplier = 1f)
         {
             Hit = hit;
             Weapon = Guard.NotNull(weapon, nameof(weapon));
@@ -35,6 +38,7 @@ namespace XRim.Rules.Damage
             AttackerBodyMove = attackerBodyMove;
             CrushedThrough = crushedThrough;
             FollowThroughSpeedFraction = followThroughSpeedFraction;
+            ShieldBlockDamageMultiplier = shieldBlockDamageMultiplier;
         }
     }
 }

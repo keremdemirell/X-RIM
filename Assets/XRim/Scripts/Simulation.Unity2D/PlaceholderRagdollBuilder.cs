@@ -126,16 +126,18 @@ namespace XRim.Simulation.Unity2D
             return rigidbody;
         }
 
-        /// <summary>Resizes a held-item body to a weapon's current stats (live tuning of length and ink thickness).</summary>
+        /// <summary>
+        /// Resizes a held-item body to a weapon's current stats (live tuning of length and ink thickness), laid out as
+        /// <see cref="HeldItemShape"/> says: a weapon from the grip to its tip, the shield centred on the grip with its face outward.
+        /// </summary>
         public static void FitHeldItem(Rigidbody2D item, WeaponStats weapon, ArenaSpace space)
         {
-            float length = space.ToWorldLength(weapon.LengthUnits);
-            float width = space.ToWorldLength(weapon.InkThicknessUnits);
+            HeldItemShape shape = HeldItemShape.Of(weapon);
             item.mass = weapon.Mass;
             if (item.TryGetComponent(out BoxCollider2D box))
             {
-                box.size = new Vector2(length, width);
-                box.offset = new Vector2(length * 0.5f, 0f);
+                box.size = ToWorld(shape.SizeUnits, space);
+                box.offset = ToWorld(shape.CentreLocal, space);
             }
 
             FitHeldItemVisual(item.transform, weapon, space);
@@ -144,15 +146,18 @@ namespace XRim.Simulation.Unity2D
         /// <summary>Resizes only the drawing of a held item (for visual copies that have no physics).</summary>
         public static void FitHeldItemVisual(Transform item, WeaponStats weapon, ArenaSpace space)
         {
-            float length = space.ToWorldLength(weapon.LengthUnits);
-            float width = space.ToWorldLength(weapon.InkThicknessUnits);
+            HeldItemShape shape = HeldItemShape.Of(weapon);
             Transform visual = item.Find(VisualName);
             if (visual != null)
             {
-                visual.localPosition = new Vector3(length * 0.5f, 0f, 0f);
-                visual.localScale = new Vector3(length, width, 1f);
+                Vector2 centre = ToWorld(shape.CentreLocal, space);
+                Vector2 size = ToWorld(shape.SizeUnits, space);
+                visual.localPosition = new Vector3(centre.x, centre.y, 0f);
+                visual.localScale = new Vector3(size.x, size.y, 1f);
             }
         }
+
+        private static Vector2 ToWorld(Vec2 units, ArenaSpace space) => new Vector2(space.ToWorldLength(units.X), space.ToWorldLength(units.Y));
 
         /// <summary>Width and length of a severed arm, leg or torso, in arena units.</summary>
         private static Vector2 SeveredLimbSizeUnits(BodyPart part, RagdollSettings body, PathSettings paths)

@@ -128,7 +128,8 @@ namespace XRim.Rules.Combat
             TurnAttack attack = Attacks[hit.Attacker];
             FighterState victim = _state.Fighters[hit.Victim];
             float speedAtHit = attack.SpeedFraction;
-            var context = new DamageContext(hit, attack.Weapon, _settings, attack.BodyMove, attack.CrushedThrough, speedAtHit);
+            var context = new DamageContext(hit, attack.Weapon, _settings, attack.BodyMove, attack.CrushedThrough, speedAtHit,
+                attack.ShieldBlockDamageMultiplier);
             DamageResult damage = _calculator.Calculate(context, _policies.DamageModifiers, victim);
 
             DamageCalculator.ApplyTo(victim, hit.Part, damage);

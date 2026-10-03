@@ -44,19 +44,26 @@ namespace XRim.Rules
 
         /// <summary>
         /// The "Modifiers" of Damage = BaseDamage × ZoneMultiplier × Modifiers (§11), applied in this order: off hand (§12),
-        /// crush-through (§10), the body move's damage bonus (D13, 0 by default) and the follow-through of a weapon that already
-        /// hit this turn (D26). Session 07 adds the shield reduction and Session 14 the weapon traits.
+        /// crush-through (§10), shield reduction (§7, A5), the body move's damage bonus (D13, 0 by default) and the
+        /// follow-through of a weapon that already hit this turn (D26). Session 14 adds the weapon traits.
         /// </summary>
         public List<IDamageModifier> DamageModifiers { get; set; } = new List<IDamageModifier>
         {
-            new OffHandDamageModifier(), new CrushThroughDamageModifier(), new BodyMoveDamageBonusModifier(),
-            new FollowThroughDamageModifier(),
+            new OffHandDamageModifier(), new CrushThroughDamageModifier(), new ShieldBlockDamageModifier(),
+            new BodyMoveDamageBonusModifier(), new FollowThroughDamageModifier(),
         };
 
         /// <summary>D17 (designer, 2026-10-03: the recommended default): the effect <c>DamageSettings.StunEffect</c> names, for the next turn.</summary>
         public IStatusEffectFactory StatusEffects { get; set; } = new SettingsStatusEffectFactory();
-        public IRepeatContactPolicy RepeatContact { get; set; }
-        public IShieldBlockModel ShieldBlock { get; set; }
+
+        /// <summary>D19 (designer, 2026-10-03: the recommended default): only the first contact between the two held items resolves.</summary>
+        public IRepeatContactPolicy RepeatContact { get; set; } = new SettingsRepeatContactPolicy();
+
+        /// <summary>
+        /// D20 and D21 (designer, 2026-10-03: the recommended defaults): full block square-on to the face, partial otherwise; no
+        /// special rule for heavy weapons.
+        /// </summary>
+        public IShieldBlockModel ShieldBlock { get; set; } = new SettingsShieldBlockModel();
 
         /// <summary>§12 (TBD): no penalty until Session 11 designs the leg-loss options.</summary>
         public IMobilityPenaltyPolicy MobilityPenalty { get; set; } = new NoMobilityPenaltyPolicy();

@@ -5,8 +5,9 @@ namespace XRim.Rules.Paths
 {
     /// <summary>
     /// How far the weapon can reach in the torso frame (GDD §6): a circle around the weapon arm's shoulder whose
-    /// radius is arm length plus weapon length. A lunge does not enlarge it: the path moves with the torso, so a
-    /// lunge already carries the whole reach forward in the arena (designer, 2026-09-29).
+    /// radius is arm length plus weapon length (<see cref="WeaponStats.ReachBeyondHandUnits"/>: the shield adds none, A3). A
+    /// lunge does not enlarge it: the path moves with the torso, so a lunge already carries the whole reach forward in the
+    /// arena (designer, 2026-09-29).
     /// </summary>
     public readonly struct ReachLimit
     {
@@ -25,7 +26,7 @@ namespace XRim.Rules.Paths
         {
             Guard.NotNull(paths, nameof(paths));
             Guard.NotNull(weapon, nameof(weapon));
-            return new ReachLimit(paths.ShoulderOffsetUnits, paths.ArmLengthUnits + weapon.LengthUnits);
+            return new ReachLimit(paths.ShoulderOffsetUnits, paths.ArmLengthUnits + weapon.ReachBeyondHandUnits);
         }
 
         public bool Contains(Vec2 point, float toleranceUnits) =>

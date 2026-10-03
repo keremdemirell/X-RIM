@@ -14,8 +14,9 @@ namespace XRim.Simulation.Drivers
     public sealed class KinematicPathDriver : PathWeaponDriver
     {
         public KinematicPathDriver(PathSettings paths, IWeaponAimModel aim, WeaponMotorSettings holdMotor = null,
-            HitReactionSettings reaction = null)
-            : base(paths, aim, holdMotor ?? new WeaponMotorSettings(), reaction ?? new HitReactionSettings())
+            HitReactionSettings reaction = null, ClashReactionSettings clashReaction = null)
+            : base(paths, aim, holdMotor ?? new WeaponMotorSettings(), reaction ?? new HitReactionSettings(),
+                clashReaction ?? new ClashReactionSettings())
         {
         }
 

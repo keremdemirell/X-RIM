@@ -14,6 +14,9 @@ namespace XRim.Rules.Settings
         /// <summary>GDD §11: two hits at this cap would already sever a limb, but severing needs at least 3.</summary>
         private const float MaxPerHitLimbCapFraction = 0.5f;
 
+        /// <summary>GDD §10: a contact angle runs from 0° (sliding) to 90° (square impact).</summary>
+        private const float MaxContactAngleDegrees = 90f;
+
         public MatchSettings Match = new MatchSettings();
         public PathSettings Paths = new PathSettings();
         public DamageSettings Damage = new DamageSettings();
@@ -89,6 +92,27 @@ namespace XRim.Rules.Settings
             if (Clash.MassWeight == Clash.SpeedWeight)
                 issues.Add("Clash: GDD §10 requires the mass and speed weights to differ.");
             if (Clash.CrushRatio <= 1f) issues.Add("Clash: crush ratio must be greater than 1.");
+            if (Clash.HardClashAngleDegrees < 0f || Clash.HardClashAngleDegrees > MaxContactAngleDegrees)
+                issues.Add("Clash: the hard-clash angle must be between 0° and 90°.");
+            if (Clash.MassWeight < 0f || Clash.SpeedWeight < 0f) issues.Add("Clash: the mass and speed weights must not be negative.");
+            if (Clash.CrushThroughDamageMultiplier < 0f) issues.Add("Clash: the crush-through damage multiplier must not be negative.");
+            if (Clash.GlancingSimilarMassBandFraction < 0f) issues.Add("Clash: the similar-mass band must not be negative.");
+            if (Clash.MaxResolvedContactsPerWeaponPair < 0)
+                issues.Add("Clash: the contacts resolved per weapon pair must not be negative (0 = every contact).");
+            ShieldBlockSettings block = Clash.ShieldBlock;
+            if (block == null)
+            {
+                issues.Add("Clash: the shield block settings are missing.");
+            }
+            else
+            {
+                if (block.PartialBlockDamageMultiplier < 0f || block.PartialBlockDamageMultiplier > 1f)
+                    issues.Add("Shield block: the partial block damage multiplier must be in [0, 1].");
+                if (block.SquareHitMinAngleDegrees < 0f || block.SquareHitMinAngleDegrees > MaxContactAngleDegrees)
+                    issues.Add("Shield block: the square-hit angle must be between 0° and 90°.");
+                if (block.RimFraction < 0f || block.RimFraction > 1f) issues.Add("Shield block: the rim fraction must be in [0, 1].");
+                if (block.HeavyWeaponMinMass < 0f) issues.Add("Shield block: the heavy weapon mass must not be negative.");
+            }
 
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (WeaponStats weapon in Weapons)

@@ -44,6 +44,16 @@ namespace XRim.Tests.EditMode.Networking
         }
 
         [Test]
+        public void TheShieldsPathPoint_IsItsCentre_TheGrip()
+        {
+            BoardSnapshot board = Board(new BodyPose(new Vec2(-350f, 180f), 0f), new BodyPose(new Vec2(-200f, 300f), 25f),
+                new BodyPose(new Vec2(350f, 180f), 0f), new BodyPose(new Vec2(200f, 300f), 155f));
+
+            AssertNear(_locator.ForSide(board, Side.Left).TipLocal(WeaponIds.Shield), new Vec2(150f, 120f));
+            AssertNear(_locator.ForSide(board, Side.Right).TipLocal(WeaponIds.Shield), new Vec2(150f, 120f), "mirrored");
+        }
+
+        [Test]
         public void Tip_IsTheGripPlusTheWeaponsLength_InTheTorsoFrame()
         {
             // Left pelvis at (-350, 180); the grip 100 above it, pointing straight at the opponent.

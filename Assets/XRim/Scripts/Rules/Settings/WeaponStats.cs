@@ -70,6 +70,12 @@ namespace XRim.Rules.Settings
         public WeaponId WeaponId => new WeaponId(Id);
 
         /// <summary>
+        /// How far past the hand this item reaches, for the reach limit (GDD §6, D4: arm plus weapon length): its whole length for
+        /// a weapon or club; nothing for the shield, which is held at its centre with its face outward (designer, 2026-10-03, A3).
+        /// </summary>
+        public float ReachBeyondHandUnits => Kind == WeaponKind.Shield ? 0f : LengthUnits;
+
+        /// <summary>
         /// This weapon with its ink length scaled, for effects that change the ink budget
         /// (<c>PlanningConstraints.InkLengthMultiplier</c>). A shallow copy that shares the rigidity and trait
         /// data with the original, so treat it as read-only. Returns this weapon when the multiplier is 1.

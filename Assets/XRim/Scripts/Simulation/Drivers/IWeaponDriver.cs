@@ -9,7 +9,8 @@ namespace XRim.Simulation.Drivers
     /// Moves a held item along its path at the weapon's own speed (GDD §9, Decided: t = d / v). The path is in
     /// the torso frame and travels with the body (§6). Implementations are a feel choice (pillar 1, D1):
     /// kinematic path following (<see cref="KinematicPathDriver"/>) or a motor chasing the path (<see cref="MotorPathDriver"/>).
-    /// The hit rules can slow the weapon (D26) or stop it (its last hit, an interrupt).
+    /// The hit rules can slow the weapon (D26) or stop it (its last hit, an interrupt); the clash and block rules can knock it
+    /// off its path or bounce it back (§7, §10).
     /// </summary>
     public interface IWeaponDriver
     {
@@ -46,8 +47,9 @@ namespace XRim.Simulation.Drivers
         /// <summary>
         /// Ends the attack at this time. A weapon moved kinematically until now is handed to physics carrying its own speed
         /// (D1); from then on a motor holds it in the hand: where it stopped, or backed off along its path by the recoil after
-        /// its last hit (D26).
+        /// its last hit (D26) or a rebound. A rebound bounces it back first; a knock-off kicks it with
+        /// <paramref name="knockVelocityUnitsPerSecond"/> and lets it fly free before the hand takes it where it ended up.
         /// </summary>
-        void Stop(SimTime time, WeaponStopKind kind);
+        void Stop(SimTime time, WeaponStopKind kind, Vec2 knockVelocityUnitsPerSecond = default);
     }
 }

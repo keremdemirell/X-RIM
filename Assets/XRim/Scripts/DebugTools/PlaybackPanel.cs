@@ -26,7 +26,7 @@ namespace XRim.DebugTools
 
         private string _message = string.Empty;
 
-        public void Draw(MatchBootstrap bootstrap)
+        public void Draw(MatchBootstrap bootstrap, GameplayGizmos gizmos)
         {
             if (bootstrap == null || !bootstrap.IsComposed)
             {
@@ -48,6 +48,8 @@ namespace XRim.DebugTools
             DrawTransport(playback, player);
             DrawScrub(player, turn.Timeline);
             DrawResimulate(bootstrap);
+            if (gizmos != null)
+                gizmos.ShowContacts = GUILayout.Toggle(gizmos.ShowContacts, "Contact gizmos: normals, clash angle and powers, time-to-impact");
             bool showProgress = playback.IsPlaying || player.CurrentTime > SimTime.Zero;
             DrawOutcomes(turn, player.CurrentTime, showProgress);
             DrawContacts(turn, player.CurrentTime, showProgress);
@@ -128,7 +130,7 @@ namespace XRim.DebugTools
             if (_message.Length > 0) GUILayout.Label(_message);
         }
 
-        /// <summary>The rules' verdicts: hits with their damage, cancelled attacks, stuns, KOs (Session 06).</summary>
+        /// <summary>The rules' verdicts: hits with their damage, clashes, blocks, cancelled attacks, stuns and staggers, KOs.</summary>
         private static void DrawOutcomes(TurnResult turn, SimTime now, bool showProgress)
         {
             int count = 0;
@@ -137,7 +139,7 @@ namespace XRim.DebugTools
                 if (MatchEventText.IsOutcome(matchEvent)) count++;
             }
 
-            GUILayout.Label($"Hits and outcomes: {count} (► = playback has reached it)");
+            GUILayout.Label($"Hits, clashes, blocks and outcomes: {count} (► = playback has reached it)");
             foreach (MatchEvent matchEvent in turn.Timeline.Events)
             {
                 if (!MatchEventText.IsOutcome(matchEvent)) continue;

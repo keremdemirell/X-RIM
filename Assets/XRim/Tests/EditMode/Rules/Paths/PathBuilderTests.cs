@@ -66,6 +66,33 @@ namespace XRim.Tests.EditMode.Rules.Paths
         }
 
         [Test]
+        public void D4_TheShieldReachesOnlyArmsLength_BecauseItIsHeldAtItsCentre()
+        {
+            WeaponStats shield = GddStartingValues.Shield();
+
+            BuiltPath built = _builder.Build(WeaponPath.Empty, Stroke(new Vec2(1000f, 100f)), new Vec2(100f, 100f), shield, _settings);
+
+            Assert.That(shield.ReachBeyondHandUnits, Is.EqualTo(0f), "A3: the shield adds no reach");
+            Assert.That(GddStartingValues.Rapier().ReachBeyondHandUnits, Is.EqualTo(GddStartingValues.Rapier().LengthUnits));
+            Assert.That(built.WasClampedByReach, Is.True);
+            Assert.That(Vec2.Distance(End(built.Path), new Vec2(_settings.ArmLengthUnits, 100f)), Is.LessThan(Tolerance));
+        }
+
+        [Test]
+        public void ATap_IsALeadInFromTheTipToTheTappedSpot()
+        {
+            WeaponStats shield = GddStartingValues.Shield();
+            var centre = new Vec2(100f, 100f);
+
+            BuiltPath built = _builder.Build(WeaponPath.Empty, Stroke(new Vec2(130f, 140f)), centre, shield, _settings);
+
+            Assert.That(built.Path.IsEmpty, Is.False, "D3: the lead-in makes a tap a short path");
+            Assert.That(built.Path.Points[0], Is.EqualTo(centre));
+            Assert.That(Vec2.Distance(End(built.Path), new Vec2(130f, 140f)), Is.LessThan(Tolerance));
+            Assert.That(built.Path.LengthUnits, Is.EqualTo(50f).Within(Tolerance));
+        }
+
+        [Test]
         public void D5_RedrawingReplacesThePreviousStroke()
         {
             WeaponStats rapier = GddStartingValues.Rapier();

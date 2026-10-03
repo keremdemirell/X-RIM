@@ -28,6 +28,51 @@ namespace XRim.Tests.EditMode.Rules
         }
 
         [Test]
+        public void Validation_RejectsUnworkableClashValues()
+        {
+            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            settings.Clash.HardClashAngleDegrees = 91f;
+            settings.Clash.SpeedWeight = -0.1f;
+            settings.Clash.CrushThroughDamageMultiplier = -1f;
+            settings.Clash.GlancingSimilarMassBandFraction = -0.1f;
+            settings.Clash.MaxResolvedContactsPerWeaponPair = -1;
+            settings.Clash.CrushRatio = 1f;
+            var issues = new List<string>();
+
+            settings.Validate(issues);
+
+            Assert.That(issues, Has.Some.Contains("hard-clash angle"));
+            Assert.That(issues, Has.Some.Contains("weights must not be negative"));
+            Assert.That(issues, Has.Some.Contains("crush-through damage"));
+            Assert.That(issues, Has.Some.Contains("similar-mass band"));
+            Assert.That(issues, Has.Some.Contains("contacts resolved per weapon pair"));
+            Assert.That(issues, Has.Some.Contains("crush ratio"));
+        }
+
+        [Test]
+        public void Validation_RejectsUnworkableShieldBlockValues()
+        {
+            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            settings.Clash.ShieldBlock.PartialBlockDamageMultiplier = 1.5f;
+            settings.Clash.ShieldBlock.SquareHitMinAngleDegrees = -1f;
+            settings.Clash.ShieldBlock.RimFraction = 2f;
+            settings.Clash.ShieldBlock.HeavyWeaponMinMass = -1f;
+            var issues = new List<string>();
+
+            settings.Validate(issues);
+
+            Assert.That(issues, Has.Some.Contains("partial block damage multiplier"));
+            Assert.That(issues, Has.Some.Contains("square-hit angle"));
+            Assert.That(issues, Has.Some.Contains("rim fraction"));
+            Assert.That(issues, Has.Some.Contains("heavy weapon mass"));
+
+            settings.Clash.ShieldBlock = null;
+            issues.Clear();
+            settings.Validate(issues);
+            Assert.That(issues, Has.Some.Contains("shield block settings are missing"));
+        }
+
+        [Test]
         public void Validation_RejectsADoubledBodyMoveAndANegativeDuration()
         {
             RulesSettings settings = GddStartingValues.CreateRulesSettings();

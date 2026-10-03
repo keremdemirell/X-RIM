@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules.Settings;
@@ -33,8 +34,14 @@ namespace XRim.Rules.Combat
         public AttackStop Stop { get; private set; }
         public bool IsStopped => Stop != AttackStop.None;
 
-        /// <summary>The weapon crushed through a clash earlier this turn, so its hits deal less (GDD §10). Session 07 sets it.</summary>
+        /// <summary>The weapon crushed through a clash earlier this turn, so its later hits deal less (GDD §10).</summary>
         public bool CrushedThrough { get; set; }
+
+        /// <summary>
+        /// The share of its damage the weapon's later hits deal after shields partially blocked it this turn (GDD §7, §11; A5):
+        /// 1 until then, multiplied by each partial block's reduction.
+        /// </summary>
+        public float ShieldBlockDamageMultiplier { get; private set; } = 1f;
 
         /// <summary>D26: a weapon hits each body part at most once per turn.</summary>
         public bool HasHit(BodyPart part) => _partsHit.Contains(part);
@@ -46,6 +53,8 @@ namespace XRim.Rules.Combat
             SpeedFraction *= Weapon != null ? XMath.Clamp01(Weapon.SpeedKeptAfterHitFraction) : 0f;
             if (HitsLanded >= maxHits || SpeedFraction <= 0f) Stop = AttackStop.LastHit;
         }
+
+        internal void ReduceByShield(float damageMultiplier) => ShieldBlockDamageMultiplier *= Math.Max(0f, damageMultiplier);
 
         internal void StopWith(AttackStop reason)
         {

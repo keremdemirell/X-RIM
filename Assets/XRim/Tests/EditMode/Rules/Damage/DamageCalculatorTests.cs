@@ -116,6 +116,28 @@ namespace XRim.Tests.EditMode.Rules.Damage
         }
 
         [Test]
+        public void ShieldReduction_ScalesAHitAfterAPartialBlock_AndStacksWithCrushThroughAndFollowThrough()
+        {
+            var context = new DamageContext(Hit(BodyPart.Torso, _mace), _mace, _settings, null, true, 0.5f, 0.5f);
+
+            Assert.That(_calculator.Calculate(context, _policies.DamageModifiers, _victim).Damage,
+                Is.EqualTo(_mace.BaseDamage * 0.7f * 0.5f * 0.5f).Within(Tolerance), "20 × 0.7 crush × 0.5 shield × 0.5 speed left");
+            Assert.That(Calculate(BodyPart.Torso).Damage, Is.EqualTo(_mace.BaseDamage).Within(Tolerance), "no block: untouched");
+        }
+
+        [Test]
+        public void TheModifiers_RunInTheDocumentedOrder()
+        {
+            var order = new System.Type[]
+            {
+                typeof(OffHandDamageModifier), typeof(CrushThroughDamageModifier), typeof(ShieldBlockDamageModifier),
+                typeof(BodyMoveDamageBonusModifier), typeof(FollowThroughDamageModifier),
+            };
+
+            Assert.That(System.Linq.Enumerable.Select(_policies.DamageModifiers, modifier => modifier.GetType()), Is.EqualTo(order));
+        }
+
+        [Test]
         public void BodyMoveDamageBonus_D13_AddsNothingByDefault_AndScalesTheHitWhenSet()
         {
             BodyMoveStats lunge = _settings.FindBodyMove(BodyMove.Lunge);

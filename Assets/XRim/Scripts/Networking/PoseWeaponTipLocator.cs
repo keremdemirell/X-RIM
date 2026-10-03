@@ -11,10 +11,11 @@ using XRim.Simulation.Recording;
 namespace XRim.Networking
 {
     /// <summary>
-    /// Where each weapon tip rests on the frozen board (GDD §3), the point a stroke's lead-in starts from (D3): read from the
-    /// pose the last turn left the weapon in, in the upright turn-start frame the turn will run in (<see cref="TurnStartRoot"/>).
-    /// A weapon switched to during planning appears in the same grip, so its tip is the grip plus its own length. A side
-    /// holding nothing (its weapon was dropped) plans from the guard stance tip.
+    /// Where each held item's path point rests on the frozen board (GDD §3), the point a stroke's lead-in starts from (D3): read
+    /// from the pose the last turn left the item in, in the upright turn-start frame the turn will run in (<see cref="TurnStartRoot"/>).
+    /// A weapon's path point is its tip, the shield's its centre (<see cref="HeldItemShape"/>, A3). An item switched to during
+    /// planning appears in the same grip, so its path point follows from the grip and its own shape. A side holding nothing
+    /// (its weapon was dropped) plans from the guard stance.
     /// </summary>
     public sealed class PoseWeaponTipLocator : IWeaponTipLocator
     {
@@ -51,8 +52,7 @@ namespace XRim.Networking
                     ?? throw new InvalidOperationException($"The rules settings have no stats for weapon '{weapon}'.");
                 if (!_pose.HasHeldItem) return GuardStance.TipLocal(stats, _simulation.Ragdoll, _rules.Paths);
 
-                BodyPose grip = _pose.HeldItem;
-                Vec2 tip = grip.PositionUnits + Vec2.FromAngleDegrees(grip.RotationDegrees) * stats.LengthUnits;
+                Vec2 tip = HeldItemShape.Of(stats).PathPointAt(_pose.HeldItem);
                 return TorsoFrame.ToLocal(tip, TurnStartRoot.Of(_pose), _side);
             }
         }
