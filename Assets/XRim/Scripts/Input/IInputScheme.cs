@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using XRim.Core;
 using XRim.Core.Gdd;
 using XRim.Networking;
 
@@ -10,10 +12,23 @@ namespace XRim.Input
     [GddTbd("§4–5", "Overall feel of the dual-zone scheme", Proposal = "Validate in prototype")]
     public interface IInputScheme
     {
-        void Begin(ScreenLayout layout, IPlanningCommandSink sink);
+        /// <summary>Planning starts for the layout's own side: touches become commands to <paramref name="sink"/> until <see cref="End"/>.</summary>
+        void Begin(PlanningWindow window, ScreenLayout layout, IPlanningCommandSink sink);
 
         /// <summary>Reads this frame's touches. Called once per frame during planning.</summary>
         void Tick();
+
+        /// <summary>A different layout from now on (the window changed size, handedness changed). Fingers already down are dropped.</summary>
+        void SetLayout(ScreenLayout layout);
+
+        /// <summary>Forgets every finger that is down and the stroke in progress, without sending anything.</summary>
+        void CancelGestures();
+
+        /// <summary>
+        /// The stroke being drawn right now, in the torso frame, for the live preview; empty when no finger is drawing. It is
+        /// sent as a plan only when the finger lifts.
+        /// </summary>
+        IReadOnlyList<Vec2> ActiveStroke { get; }
 
         void End();
     }

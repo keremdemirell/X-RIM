@@ -3,6 +3,7 @@ using System.Globalization;
 using UnityEngine;
 using XRim.App;
 using XRim.Core;
+using XRim.Input;
 using XRim.Presentation.Playback;
 using XRim.Rules;
 using XRim.Rules.Combat;
@@ -36,19 +37,21 @@ namespace XRim.DebugTools.Sandbox
         public Rect Area => new Rect((Screen.width - BoxWidth * 2f - Margin) * 0.5f, Screen.height - BoxHeight - Margin,
             BoxWidth * 2f + Margin, BoxHeight);
 
-        public void Draw(MatchBootstrap bootstrap, PerSide<SandboxPlanSource> sources)
+        /// <param name="viewFlipped">The arena is drawn mirrored (GDD §4): each box stays under its own dummy.</param>
+        public void Draw(MatchBootstrap bootstrap, PerSide<TouchPlanSource> sources, bool viewFlipped)
         {
             Rect area = Area;
             foreach (Side side in new[] { Side.Left, Side.Right })
             {
-                float x = side == Side.Left ? area.x : area.x + BoxWidth + Margin;
+                bool onTheLeft = (side == Side.Left) != viewFlipped;
+                float x = onTheLeft ? area.x : area.x + BoxWidth + Margin;
                 GUILayout.BeginArea(new Rect(x, area.y, BoxWidth, BoxHeight), GUI.skin.box);
                 DrawFighter(bootstrap, sources[side], side);
                 GUILayout.EndArea();
             }
         }
 
-        private static void DrawFighter(MatchBootstrap bootstrap, SandboxPlanSource source, Side side)
+        private static void DrawFighter(MatchBootstrap bootstrap, TouchPlanSource source, Side side)
         {
             DamageSettings damage = bootstrap.RulesSettings.Damage;
             if (!TryRead(bootstrap, source, side, out Reading reading))
@@ -104,7 +107,7 @@ namespace XRim.DebugTools.Sandbox
         /// While planning: the frozen board and this turn's limits. Otherwise: the last turn as resolved, rewound to the playback
         /// time (hits after it are added back).
         /// </summary>
-        private static bool TryRead(MatchBootstrap bootstrap, SandboxPlanSource source, Side side, out Reading reading)
+        private static bool TryRead(MatchBootstrap bootstrap, TouchPlanSource source, Side side, out Reading reading)
         {
             if (source.IsPlanning)
             {

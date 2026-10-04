@@ -28,7 +28,7 @@ namespace XRim.App
     /// finished (<see cref="PlaybackHoldMode.ClientReport"/>), so the replay never eats planning time. One per scene; no
     /// singletons.
     /// Modes running now: <see cref="MatchMode.BotVsBot"/>, and <see cref="MatchMode.Sandbox"/> once the debug tools hand
-    /// over their plan sources. Touch input arrives in Session 08 and hot-seat in Session 09.
+    /// over their plan sources (touch input and the planning HUD, Session 08). Human vs bot and hot-seat are wired in Session 09.
     /// </summary>
     public sealed class MatchBootstrap : MonoBehaviour
     {
@@ -104,6 +104,9 @@ namespace XRim.App
 
         public bool HasStarted => _started;
 
+        /// <summary>The authority's clock: the time the planning deadline is on, for the HUD's countdown and lock-out.</summary>
+        public double AuthorityNowSeconds => _clock.NowSeconds;
+
         /// <summary>While true the authority's clock stands still, so the planning timer never runs out (Sandbox, debug cheats).</summary>
         public bool IsPlanningTimerFrozen { get; set; }
 
@@ -122,7 +125,7 @@ namespace XRim.App
                     Debug.Log("[XRim] Sandbox mode: waiting for the debug sandbox to plan both sides.", this);
                     break;
                 default:
-                    Debug.LogError($"[XRim] {_mode} is not playable yet (touch input arrives in Session 08, hot-seat in Session 09). " +
+                    Debug.LogError($"[XRim] {_mode} is not playable yet (human vs bot and hot-seat are wired in Session 09). " +
                                    "Set MatchBootstrap's mode to BotVsBot or Sandbox.", this);
                     break;
             }

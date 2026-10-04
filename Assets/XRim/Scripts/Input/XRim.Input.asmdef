@@ -5,6 +5,7 @@
         "XRim.Core",
         "XRim.Rules",
         "XRim.Config",
+        "XRim.Simulation",
         "XRim.Networking",
         "Unity.InputSystem"
     ],

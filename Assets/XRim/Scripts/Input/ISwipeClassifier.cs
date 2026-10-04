@@ -8,6 +8,10 @@ namespace XRim.Input
     [GddTbd("§5", "Diagonal or combined swipes", Proposal = "Not allowed")]
     public interface ISwipeClassifier
     {
-        BodyMove Classify(Vec2 startPixels, Vec2 endPixels, float durationSeconds, ScreenLayout layout);
+        /// <summary>
+        /// The move the flick from <paramref name="startPixels"/> to <paramref name="endPixels"/> means, or null when it is
+        /// not a swipe (too short, too slow, or pointing between two directions). Pixels are Unity screen pixels (Y up).
+        /// </summary>
+        BodyMove? Classify(Vec2 startPixels, Vec2 endPixels, float durationSeconds, ScreenLayout layout);
     }
 }

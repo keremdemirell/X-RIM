@@ -19,13 +19,22 @@ namespace XRim.Rules.Paths
         /// <summary>True when the path had a too-sharp turn and was cut where that turn completes (designer, 2026-09-29).</summary>
         public bool WasCutAtBreak { get; }
 
-        public BuiltPath(WeaponPath drawn, WeaponPath reachable, InkedPath inked, bool wasClampedByReach, bool wasCutAtBreak)
+        /// <summary>
+        /// The part that does not execute because a too-sharp turn broke the path (GDD §6: it turns red and is marked invalid),
+        /// from the break point to where the ink-limited path ends, for the preview to draw red. Empty (fewer than two points)
+        /// when the path was not cut at a break.
+        /// </summary>
+        public WeaponPath InvalidTail { get; }
+
+        public BuiltPath(WeaponPath drawn, WeaponPath reachable, InkedPath inked, bool wasClampedByReach, bool wasCutAtBreak,
+            WeaponPath invalidTail = null)
         {
             Drawn = drawn;
             Reachable = reachable;
             Inked = inked;
             WasClampedByReach = wasClampedByReach;
             WasCutAtBreak = wasCutAtBreak;
+            InvalidTail = invalidTail ?? WeaponPath.Empty;
         }
     }
 }

@@ -7,9 +7,15 @@ using XRim.App;
 using XRim.Config;
 using XRim.Core;
 using XRim.DebugTools.Diagnostics;
+using XRim.Input;
+using XRim.Networking;
+using XRim.Presentation.Arena;
+using XRim.Presentation.Cameras;
+using XRim.Presentation.UI;
 using XRim.Rules;
 using XRim.Rules.Match;
 using XRim.Rules.Paths;
+using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Simulation;
 using XRim.Simulation.Drivers;
@@ -20,36 +26,50 @@ using XRim.Simulation.Unity2D;
 namespace XRim.DebugTools.Sandbox
 {
     /// <summary>
-    /// The debug sandbox (MatchBootstrap in <see cref="MatchMode.Sandbox"/>): plan both sides with the mouse before touch
-    /// input exists (Session 08). Pick a side, drag a path in its torso frame, pick its weapon and body move (GDD §5), press
-    /// Execute, watch the playback, then plan the next turn from the frozen board. Everything goes through two <see cref="SandboxPlanSource"/>s
-    /// as real planning commands, so the rules apply exactly as in a match. The planning timer is frozen.
+    /// The debug sandbox (MatchBootstrap in <see cref="MatchMode.Sandbox"/>): plan both sides on one screen, hot-seat style.
+    /// One side at a time is played with the real touch scheme (<see cref="TouchPlanSource"/>, GDD §4–6): drag in the arena to
+    /// draw its path, flick in the body zone at the screen edge to set its body move; the mouse acts as a finger. Tab (or the
+    /// buttons) switches the side being played, and the view flips as that player would see it. The mirrored (left-handed)
+    /// layout is a dev toggle (D24). Everything reaches the rules as real planning commands, so they apply exactly as in a
+    /// match. The planning HUD (<see cref="PlanningHud"/>, weapon selector, Ready, timer, ink, opponent) serves the side being
+    /// played; the sandbox's own panel keeps the debug extras: both sides' weapons and moves, Execute (both Ready), keys. The
+    /// planning timer is frozen unless the panel's checkbox runs it (to try the weapon lock-out).
     /// </summary>
     internal sealed class SandboxController : MonoBehaviour
     {
-        /// <summary>Raw points closer than this are skipped; the path rules resample anyway.</summary>
-        private const float MinPointSpacingUnits = 1f;
-
         private const float HudMargin = 8f;
         private const float HudWidth = 560f;
-        private const float HudHeight = 350f;
+        private const float HudHeight = 410f;
+
+        /// <summary>The panel sits below the planning HUD's top row (selector, ink, opponent), as a share of the screen height.</summary>
+        private const float HudTopScreenFraction = 0.16f;
         private const float MoveButtonWidth = 72f;
 
         /// <summary>The body moves in the order the HUD offers them.</summary>
         private static readonly BodyMove[] Moves = { BodyMove.None, BodyMove.Crouch, BodyMove.Lunge, BodyMove.StepBack, BodyMove.Jump };
+
+        private static readonly Side[] Sides = { Side.Left, Side.Right };
         private const string ReportFolderName = "Logs";
         private const string ReportFileName = "XRimFeelReport.txt";
 
-        private readonly List<Vec2> _stroke = new List<Vec2>();
-        private readonly PerSide<BuiltPath> _built = new PerSide<BuiltPath>(null, null);
+        private readonly PerSide<PathPreview> _preview = new PerSide<PathPreview>(null, null);
         private readonly SandboxReadout _readout = new SandboxReadout();
+        private readonly IHandednessLayoutPolicy _handednessPolicy = new MirrorWhenLeftHanded();
         private MatchBootstrap _bootstrap;
         private DebugOverlay _overlay;
-        private PathBuilder _pathBuilder;
-        private PerSide<SandboxPlanSource> _sources;
-        private PerSide<SandboxPathDrawer> _drawers;
+        private Camera _camera;
+        private FixedSideCameraDirector _director;
+        private TouchInputReader _reader;
+        private InputConfig _input;
+        private bool _ownsInput;
+        private PathPreviewBuilder _previewBuilder;
+        private PerSide<TouchPlanSource> _sources;
+        private PlanningHud _hud;
+        private PlanningHudPresenter _presenter;
+        private HudTouchBlocker _hudBlocker;
+        private PerSide<PathPreviewView> _views;
         private Side _activeSide = Side.Left;
-        private bool _drawing;
+        private Handedness _handedness;
         private Rect _hudRect;
         private string _diagnosticsMessage = string.Empty;
 
@@ -69,27 +89,96 @@ namespace XRim.DebugTools.Sandbox
             }
 
             HandleKeys();
-            HandleMouse();
+            _sources[_activeSide].Tick();
             UpdatePreviews();
+            ShowHud();
         }
 
         private void OnDestroy()
         {
-            if (_drawers == null) return;
-            _drawers.Left.Destroy();
-            _drawers.Right.Destroy();
+            if (_views != null)
+            {
+                _views.Left.Destroy();
+                _views.Right.Destroy();
+            }
+
+            _presenter?.Dispose();
+            if (_hud != null) Destroy(_hud.gameObject);
+            if (_ownsInput && _input != null) Destroy(_input);
         }
 
-        /// <summary>Waits until the match scene has composed, then hands it the two plan sources.</summary>
+        /// <summary>Waits until the match scene has composed, then hands it the two touch plan sources.</summary>
         private void TryStart()
         {
             if (!_bootstrap.IsComposed || _bootstrap.HasStarted) return;
 
-            _pathBuilder = new PathBuilder(_bootstrap.Policies);
-            Material material = DebugLines.CreateMaterial();
-            _drawers = PerSide<SandboxPathDrawer>.Create(side => new SandboxPathDrawer(_bootstrap.ArenaRoot, material, side));
-            _sources = PerSide<SandboxPlanSource>.Create(side => new SandboxPlanSource(side));
-            _bootstrap.StartMatch(new[] { _sources.Left, _sources.Right });
+            _camera = Camera.main;
+            if (_camera == null)
+            {
+                Debug.LogError("[XRim] The sandbox needs a camera tagged MainCamera.", this);
+                enabled = false;
+                return;
+            }
+
+            _input = _bootstrap.Tuning.InputConfig;
+            if (_input == null)
+            {
+                Debug.LogWarning("[XRim] The tuning profile has no Input asset: the sandbox uses the code defaults.", this);
+                _input = ScriptableObject.CreateInstance<InputConfig>();
+                _ownsInput = true;
+            }
+
+            _handedness = _input.DevHandedness;
+            _director = _camera.GetComponent<FixedSideCameraDirector>();
+            _reader = _bootstrap.GetComponent<TouchInputReader>();
+            if (_reader == null) _reader = _bootstrap.gameObject.AddComponent<TouchInputReader>();
+            _reader.MouseActsAsTouch = true; // the mouse is a finger from here on (Mouse.current reads nothing)
+
+            _hud = PlanningHud.Create(_input.ReferenceResolution);
+            _hudBlocker = new HudTouchBlocker(_hud);
+            _presenter = new PlanningHudPresenter(_hud, _bootstrap.Authority, _bootstrap.Setup, _bootstrap.RulesSettings.Match);
+
+            // The swipe and tap numbers are read once, here: edit them in the Input asset before pressing Play.
+            SwipeSettings swipe = SwipeSettings.From(_input);
+            DualZoneSettings zones = DualZoneSettings.From(_input);
+            var mapper = new ScreenToArenaMapper();
+            var blocker = new UiBlocker(this);
+            _sources = PerSide<TouchPlanSource>.Create(side => new TouchPlanSource(side,
+                new DualZoneInputScheme(_reader, new FourWaySwipeClassifier(swipe), swipe, zones, mapper, ReadView, blocker), LayoutFor(side)));
+
+            _previewBuilder = new PathPreviewBuilder(_bootstrap.Policies);
+            Material material = ArenaLines.CreateMaterial();
+            _views = PerSide<PathPreviewView>.Create(side => new PathPreviewView(_bootstrap.ArenaRoot, material, side.ToString()));
+            _bootstrap.StartMatch(new IPlanSource[] { _sources.Left, _sources.Right });
+            ApplyActiveSide();
+        }
+
+        /// <summary>What the camera shows now, so touches map to the arena correctly even if the camera moves.</summary>
+        private ArenaViewFrame ReadView() => CameraArenaView.Read(_camera, _bootstrap.Space);
+
+        private ScreenLayout LayoutFor(Side side) => new ScreenLayout(Screen.width, Screen.height, _input.BodyZoneWidthFraction,
+            _handednessPolicy.IsScreenMirrored(_handedness), side);
+
+        /// <summary>Only the side being played reads touches, and the view is flipped as that player would see it (GDD §4).</summary>
+        private void ApplyActiveSide()
+        {
+            foreach (Side side in Sides)
+            {
+                _sources[side].IsActive = side == _activeSide;
+            }
+
+            if (_director != null) _director.SetArenaFlipped(_sources[_activeSide].Layout.ArenaViewFlipped);
+        }
+
+        private void SetHandedness(Handedness handedness)
+        {
+            _handedness = handedness;
+            foreach (Side side in Sides)
+            {
+                _sources[side].Layout = LayoutFor(side);
+            }
+
+            ApplyActiveSide();
         }
 
         private bool IsPlanning => _sources.Left.IsPlanning && _sources.Right.IsPlanning;
@@ -103,83 +192,61 @@ namespace XRim.DebugTools.Sandbox
             if (keyboard.f9Key.wasPressedThisFrame) RunDiagnostics();
             if (keyboard.tabKey.wasPressedThisFrame) SwitchSide();
             if (keyboard.spaceKey.wasPressedThisFrame) Execute();
-            if (keyboard.cKey.wasPressedThisFrame) _sources[_activeSide].ClearPath();
+            TouchPlanSource active = _sources[_activeSide];
+            if (keyboard.cKey.wasPressedThisFrame) active.Send(new ClearPathCommand());
             IReadOnlyList<WeaponId> loadout = _bootstrap.Setup.Fighters[_activeSide].Loadout;
-            if (keyboard.digit1Key.wasPressedThisFrame && loadout.Count > 0) _sources[_activeSide].SelectWeapon(loadout[0]);
-            if (keyboard.digit2Key.wasPressedThisFrame && loadout.Count > 1) _sources[_activeSide].SelectWeapon(loadout[1]);
-            if (keyboard.digit3Key.wasPressedThisFrame && loadout.Count > 2) _sources[_activeSide].SelectWeapon(loadout[2]);
+            if (keyboard.digit1Key.wasPressedThisFrame && loadout.Count > 0) active.Send(new SelectWeaponCommand(loadout[0]));
+            if (keyboard.digit2Key.wasPressedThisFrame && loadout.Count > 1) active.Send(new SelectWeaponCommand(loadout[1]));
+            if (keyboard.digit3Key.wasPressedThisFrame && loadout.Count > 2) active.Send(new SelectWeaponCommand(loadout[2]));
 
-            // Body moves as the swipes will be (§5): down, up, toward or away from the opponent; N clears it.
-            SandboxPlanSource active = _sources[_activeSide];
-            bool facesRight = _activeSide.FacingSign() > 0;
-            if (keyboard.downArrowKey.wasPressedThisFrame) active.SetBodyMove(BodyMove.Crouch);
-            if (keyboard.upArrowKey.wasPressedThisFrame) active.SetBodyMove(BodyMove.Jump);
-            if (keyboard.rightArrowKey.wasPressedThisFrame) active.SetBodyMove(facesRight ? BodyMove.Lunge : BodyMove.StepBack);
-            if (keyboard.leftArrowKey.wasPressedThisFrame) active.SetBodyMove(facesRight ? BodyMove.StepBack : BodyMove.Lunge);
-            if (keyboard.nKey.wasPressedThisFrame) active.SetBodyMove(BodyMove.None);
+            // Body moves from the keys, as the swipes are (§5): down, up, toward or away from the opponent; N clears it.
+            // Like the swipes, the arrows follow the screen: → is toward the opponent when this player sees their dummy facing right
+            // (the view is flipped for the right side, mirrored when left-handed), whichever arena side it is.
+            ScreenLayout layout = active.Layout;
+            if (keyboard.downArrowKey.wasPressedThisFrame) SetBodyMove(active, BodyMove.Crouch);
+            if (keyboard.upArrowKey.wasPressedThisFrame) SetBodyMove(active, BodyMove.Jump);
+            if (keyboard.rightArrowKey.wasPressedThisFrame) SetBodyMove(active, layout.HorizontalMove(1f) ?? BodyMove.None);
+            if (keyboard.leftArrowKey.wasPressedThisFrame) SetBodyMove(active, layout.HorizontalMove(-1f) ?? BodyMove.None);
+            if (keyboard.nKey.wasPressedThisFrame) SetBodyMove(active, BodyMove.None);
         }
 
-        private void HandleMouse()
-        {
-            Mouse mouse = Mouse.current;
-            Camera view = Camera.main;
-            if (mouse == null || view == null || !IsPlanning)
-            {
-                _drawing = false;
-                return;
-            }
+        private static void SetBodyMove(TouchPlanSource source, BodyMove move) => source.Send(new SetBodyMoveCommand(move));
 
-            Vector2 screen = mouse.position.ReadValue();
-            Vec2 local = ToTorsoFrame(screen, view, _activeSide);
-            if (mouse.leftButton.wasPressedThisFrame && !IsOverUi(screen))
-            {
-                // Clicking into the arena takes keyboard focus away from any tuning text field, so the keys work again.
-                GUIUtility.keyboardControl = 0;
-                _drawing = true;
-                _stroke.Clear();
-                _stroke.Add(local);
-            }
-            else if (_drawing && mouse.leftButton.isPressed)
-            {
-                if (Vec2.Distance(_stroke[_stroke.Count - 1], local) >= MinPointSpacingUnits) _stroke.Add(local);
-            }
-            else if (_drawing)
-            {
-                _drawing = false;
-                // A click without a drag is a tap (GDD §7): a short lead-in to that spot (D3), then the item holds there (A4).
-                _sources[_activeSide].SetPath(new WeaponPath(_stroke));
-            }
-        }
-
-        private bool IsOverUi(Vector2 screen)
+        /// <summary>
+        /// True when a screen point (pixels, y up) is over the sandbox panel, the fight readout or the debug overlay, so a
+        /// touch there is a button press and not a stroke.
+        /// </summary>
+        private bool IsOverUi(Vec2 screen)
         {
-            var guiPoint = new Vector2(screen.x, Screen.height - screen.y);
+            var guiPoint = new Vector2(screen.X, Screen.height - screen.Y);
             return GUIUtility.hotControl != 0 || _hudRect.Contains(guiPoint) || _readout.Area.Contains(guiPoint) ||
                    (_overlay != null && _overlay.Covers(guiPoint));
         }
 
-        /// <summary>Screen pixels → arena units → the side's upright turn-start torso frame (GDD §6: paths are torso-relative).</summary>
-        private Vec2 ToTorsoFrame(Vector2 screen, Camera view, Side side)
+        /// <summary>True when a screen point (pixels, y up) is on one of the planning HUD's controls.</summary>
+        private bool IsOverHud(Vec2 screen) => _hudBlocker != null && _hudBlocker.Blocks(screen);
+
+        /// <summary>The HUD serves the side being played: its timer, selector, Ready, ink, body move and the other side's public state.</summary>
+        private void ShowHud()
         {
-            Vector3 world = view.ScreenToWorldPoint(new Vector3(screen.x, screen.y, -view.transform.position.z));
-            Vector3 inArena = _bootstrap.ArenaRoot.InverseTransformPoint(world);
-            Vec2 arena = _bootstrap.Space.ToArena(new Vector2(inArena.x, inArena.y));
-            return TorsoFrame.ToLocal(arena, Root(side), side);
+            _presenter.Source = _sources[_activeSide];
+            _presenter.Tick(_bootstrap.AuthorityNowSeconds, _preview[_activeSide]);
         }
 
         private BodyPose Root(Side side) => TurnStartRoot.Of(_sources[side].Window.Board.Pose.Get(side));
 
         private void SwitchSide()
         {
-            _drawing = false;
             _activeSide = _activeSide.Opponent();
+            ApplyActiveSide();
         }
 
         private void Execute()
         {
-            _drawing = false;
-            _sources.Left.Ready();
-            _sources.Right.Ready();
+            foreach (Side side in Sides)
+            {
+                _sources[side].Send(new SetReadyCommand(true));
+            }
         }
 
         /// <summary>
@@ -209,27 +276,29 @@ namespace XRim.DebugTools.Sandbox
             Debug.Log($"[XRim] {_diagnosticsMessage}\n{report}");
         }
 
-        /// <summary>Builds each side's path as the rules will (PathBuilder with the window's weapon tip and ink) and draws it.</summary>
+        /// <summary>
+        /// Builds each side's path as the rules will (the stroke being drawn, or the last one set; the weapon tip and ink from the
+        /// window) and draws it: the executed path at the weapon's width, clipped at reach and where the ink runs out.
+        /// </summary>
         private void UpdatePreviews()
         {
-            foreach (Side side in new[] { Side.Left, Side.Right })
+            foreach (Side side in Sides)
             {
-                SandboxPlanSource source = _sources[side];
-                if (!source.IsPlanning)
+                TouchPlanSource source = _sources[side];
+                WeaponStats weapon = source.IsPlanning ? Weapon(source) : null;
+                if (weapon == null)
                 {
-                    _built[side] = null;
-                    _drawers[side].Clear();
+                    _preview[side] = null;
+                    _views[side].Clear();
                     continue;
                 }
 
-                IReadOnlyList<Vec2> stroke = _drawing && side == _activeSide ? _stroke : source.Stroke.Points;
-                WeaponStats weapon = Weapon(source);
-                _built[side] = weapon != null && stroke.Count > 0
-                    ? _pathBuilder.Build(WeaponPath.Empty, new WeaponPath(stroke), source.Window.WeaponTips[side].TipLocal(source.Weapon), weapon,
-                        _bootstrap.RulesSettings.Paths)
-                    : null;
-                _drawers[side].Show(stroke, _built[side]?.Path, weapon != null ? weapon.InkThicknessUnits : 0f, Root(side), MoveFrame(source),
-                    _bootstrap.Space);
+                bool drawing = source.ActiveStroke.Count > 0;
+                IReadOnlyList<Vec2> stroke = drawing ? source.ActiveStroke : source.Draft.Stroke.Points;
+                Vec2 tip = source.Window.WeaponTips[side].TipLocal(source.Draft.Weapon);
+                PathPreview preview = _previewBuilder.Build(stroke, tip, weapon, _bootstrap.RulesSettings.Paths);
+                _preview[side] = preview;
+                _views[side].Show(preview, Root(side), side, _bootstrap.Space, MoveFrame(source), drawing);
             }
         }
 
@@ -237,9 +306,10 @@ namespace XRim.DebugTools.Sandbox
         /// Where the side's path frame will be once its body move is at full extent (a hop: at its top), as the simulation plays
         /// it; null without a body move.
         /// </summary>
-        private BodyPose? MoveFrame(SandboxPlanSource source)
+        private BodyPose? MoveFrame(TouchPlanSource source)
         {
-            BodyMoveStats stats = source.BodyMove != BodyMove.None ? LiveBodyMove(source.BodyMove) : null;
+            BodyMove move = source.Draft.BodyMove;
+            BodyMoveStats stats = move != BodyMove.None ? LiveBodyMove(move) : null;
             if (stats == null) return null;
 
             Side side = source.Side;
@@ -263,21 +333,21 @@ namespace XRim.DebugTools.Sandbox
             return _bootstrap.RulesSettings.FindBodyMove(move);
         }
 
-        private WeaponStats Weapon(SandboxPlanSource source)
+        private WeaponStats Weapon(TouchPlanSource source)
         {
-            WeaponStats stats = _bootstrap.RulesSettings.FindWeapon(source.Weapon);
+            WeaponStats stats = _bootstrap.RulesSettings.FindWeapon(source.Draft.Weapon);
             return stats?.WithInkLengthMultiplier(source.Window.Constraints[source.Side].InkLengthMultiplier);
         }
 
         private void OnGUI()
         {
             if (_sources == null) return;
-            _hudRect = new Rect(Screen.width - HudWidth - HudMargin, HudMargin, HudWidth, HudHeight);
+            _hudRect = new Rect(Screen.width - HudWidth - HudMargin, Screen.height * HudTopScreenFraction, HudWidth, HudHeight);
             GUILayout.BeginArea(_hudRect, GUI.skin.box);
             if (IsPlanning) DrawPlanning();
             else GUILayout.Label(MatchOverLine() ?? "Executing and playing back… (Debug → Playback: slow motion, loop, re-simulate, hits)");
             GUILayout.EndArea();
-            _readout.Draw(_bootstrap, _sources);
+            _readout.Draw(_bootstrap, _sources, _sources[_activeSide].Layout.ArenaViewFlipped);
         }
 
         /// <summary>Null while the match goes on. A KO ends it (Session 06); to fight again, stop and enter Play mode.</summary>
@@ -291,45 +361,52 @@ namespace XRim.DebugTools.Sandbox
 
         private void DrawPlanning()
         {
-            GUILayout.Label($"X-RIM sandbox: turn {_sources.Left.Window.TurnIndex + 1}, planning (timer frozen)");
+            string timer = _bootstrap.IsPlanningTimerFrozen ? "timer frozen" : "timer running";
+            GUILayout.Label($"X-RIM sandbox: turn {_sources.Left.Window.TurnIndex + 1}, planning ({timer})");
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Drawing for:");
-            foreach (Side side in new[] { Side.Left, Side.Right })
+            GUILayout.Label("Playing:");
+            foreach (Side side in Sides)
             {
                 string label = side == _activeSide ? $"[ {side.ToString().ToUpperInvariant()} ]" : side.ToString();
                 if (GUILayout.Button(label) && side != _activeSide) SwitchSide();
             }
 
-            GUILayout.Label("(Tab)");
+            GUILayout.Label("(Tab: the view flips as that player sees it)");
             GUILayout.EndHorizontal();
 
-            foreach (Side side in new[] { Side.Left, Side.Right })
+            bool leftHanded = GUILayout.Toggle(_handedness == Handedness.Left, "Left-handed: mirror the layout (dev setting, D24)");
+            if (leftHanded != (_handedness == Handedness.Left)) SetHandedness(leftHanded ? Handedness.Left : Handedness.Right);
+
+            bool runTimer = GUILayout.Toggle(!_bootstrap.IsPlanningTimerFrozen, "Run the planning timer (to try the weapon lock-out)");
+            _bootstrap.IsPlanningTimerFrozen = !runTimer;
+
+            foreach (Side side in Sides)
             {
                 DrawSide(side);
             }
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Clear path (C)")) _sources[_activeSide].ClearPath();
+            if (GUILayout.Button("Clear path (C)")) _sources[_activeSide].Send(new ClearPathCommand());
             if (GUILayout.Button("Execute (Space)")) Execute();
             GUILayout.EndHorizontal();
-            GUILayout.Label("Drag in the arena to draw the active side's path; a click is a tap (the item moves there and holds, " +
-                            "e.g. a raised shield). Weapons: 1/2/3. Body move: ↓ crouch, ↑ jump, " +
-                            "→/← lunge or step back (toward or away from the opponent), N none. Feel report: F9. " +
+            GUILayout.Label("The mouse is a finger. Drag in the arena to draw the active side's path; a click is a tap (the item moves " +
+                            "there and holds, e.g. a raised shield). Flick in the body zone (the strip at the screen edge over your own " +
+                            "dummy): up jump, down crouch, toward the opponent lunge, away step back; a quick click there clears the move. " +
+                            "Keys: weapons 1/2/3, arrows (↓ crouch, ↑ jump, →/← lunge or step back), N none, C clear path. Feel report: F9. " +
                             "Simulation and body-move tuning apply from the next Execute; other rules tuning from the next match. " +
-                            "HP, limb damage, stuns and staggers: bottom of the screen. Hits, clashes and blocks: Debug → Playback, " +
-                            "which also toggles the contact gizmos (normals, clash angle, time-to-impact).");
+                            "HP, limb damage, stuns and staggers: bottom of the screen. Hits, clashes and blocks: Debug → Playback.");
             if (_diagnosticsMessage.Length > 0) GUILayout.Label(_diagnosticsMessage);
         }
 
         private void DrawSide(Side side)
         {
-            SandboxPlanSource source = _sources[side];
+            TouchPlanSource source = _sources[side];
             GUILayout.BeginHorizontal();
             GUILayout.Label(side + ":", GUILayout.Width(44f));
             foreach (WeaponId weapon in _bootstrap.Setup.Fighters[side].Loadout)
             {
-                string label = weapon == source.Weapon ? $"[{weapon.Value}]" : weapon.Value;
-                if (GUILayout.Button(label)) source.SelectWeapon(weapon);
+                string label = weapon == source.Draft.Weapon ? $"[{weapon.Value}]" : weapon.Value;
+                if (GUILayout.Button(label)) source.Send(new SelectWeaponCommand(weapon));
             }
 
             GUILayout.EndHorizontal();
@@ -338,11 +415,12 @@ namespace XRim.DebugTools.Sandbox
             foreach (BodyMove move in Moves)
             {
                 string name = MoveName(move);
-                if (GUILayout.Button(move == source.BodyMove ? $"[{name}]" : name, GUILayout.Width(MoveButtonWidth))) source.SetBodyMove(move);
+                if (GUILayout.Button(move == source.Draft.BodyMove ? $"[{name}]" : name, GUILayout.Width(MoveButtonWidth))) SetBodyMove(source, move);
             }
 
             GUILayout.EndHorizontal();
-            GUILayout.Label("   " + PathLine(_built[side]) + (source.LastRejection.Length > 0 ? "   " + source.LastRejection : string.Empty));
+            string refused = source.Draft.LastRejection != CommandRejection.None ? $"   refused: {source.Draft.LastRejection}" : string.Empty;
+            GUILayout.Label("   " + PathLine(_preview[side]) + refused);
         }
 
         /// <summary>The HUD name of a move; the backward move says which D12 option it plays.</summary>
@@ -358,16 +436,35 @@ namespace XRim.DebugTools.Sandbox
             }
         }
 
-        private static string PathLine(BuiltPath built)
+        private static string PathLine(PathPreview preview)
         {
-            if (built == null) return "no path (holds its weapon)";
-            InkedPath inked = built.Inked;
-            string notes = (built.WasClampedByReach ? ", clamped to reach" : string.Empty) +
-                           (inked.WasCut ? ", cut where the ink ran out" : string.Empty) +
-                           (built.WasCutAtBreak ? ", cut at a too-sharp turn" : string.Empty);
-            return string.Format(CultureInfo.InvariantCulture, "path {0:0} units, ink {1:0} of {2:0}{3}", inked.Path.LengthUnits,
-                inked.Ink.CostUnits, inked.BudgetUnits, notes);
+            if (preview == null || preview.Path.IsEmpty) return "no path (holds its weapon)";
+
+            string notes = (preview.WasClampedByReach ? ", clamped to reach" : string.Empty) +
+                           (preview.WasCutByInk ? ", cut where the ink ran out" : string.Empty) +
+                           (preview.WasCutAtBreak ? ", cut at a too-sharp turn" : string.Empty);
+            return string.Format(CultureInfo.InvariantCulture, "path {0:0} units, ink {1:0} of {2:0}{3}", preview.Path.LengthUnits,
+                preview.InkSpentUnits, preview.InkBudgetUnits, notes);
         }
 
+        /// <summary>A touch that lands on the sandbox panel, the readout or the debug overlay is a button press, not a stroke.</summary>
+        private sealed class UiBlocker : ITouchBlocker
+        {
+            private readonly SandboxController _owner;
+
+            public UiBlocker(SandboxController owner)
+            {
+                _owner = owner;
+            }
+
+            public bool Blocks(Vec2 screenPixels)
+            {
+                bool overUi = _owner.IsOverUi(screenPixels) || _owner.IsOverHud(screenPixels);
+
+                // A touch that lands in the arena takes keyboard focus off any tuning text field, so the keys work again.
+                if (!overUi) GUIUtility.keyboardControl = 0;
+                return overUi;
+            }
+        }
     }
 }

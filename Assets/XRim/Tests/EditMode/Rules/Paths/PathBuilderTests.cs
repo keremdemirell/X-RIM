@@ -125,6 +125,35 @@ namespace XRim.Tests.EditMode.Rules.Paths
         }
 
         [Test]
+        public void SharpTurn_TheRestAfterTheBreakIsExposedAsTheInvalidTail_ForThePreviewToDrawRed()
+        {
+            WeaponStats spear = GddStartingValues.Spear();
+            var tip = new Vec2(0f, 100f);
+            var corner = new Vec2(200f, 100f);
+            double turn = 120.0 * Math.PI / 180.0;
+            var afterCorner = corner + new Vec2((float)Math.Cos(turn), (float)Math.Sin(turn)) * 100f;
+
+            BuiltPath built = _builder.Build(WeaponPath.Empty, Stroke(tip, corner, afterCorner), tip, spear, _settings);
+
+            Assert.That(built.InvalidTail.IsEmpty, Is.False);
+            Assert.That(built.InvalidTail.Points[0], Is.EqualTo(End(built.Path)), "the red part starts where the executing path stops");
+            Assert.That(Vec2.Distance(End(built.InvalidTail), afterCorner), Is.LessThan(Tolerance));
+        }
+
+        [Test]
+        public void SharpTurn_NoTailWhenNothingBroke()
+        {
+            var tip = new Vec2(0f, 100f);
+            var afterCorner = new Vec2(150f, 186.6f);
+            WeaponPath bent = Stroke(tip, new Vec2(200f, 100f), afterCorner);
+
+            Assert.That(_builder.Build(WeaponPath.Empty, bent, tip, GddStartingValues.Rapier(), _settings).InvalidTail.IsEmpty, Is.True,
+                "a rapier does not break");
+            Assert.That(_builder.Build(WeaponPath.Empty, Stroke(tip, new Vec2(200f, 100f)), tip, GddStartingValues.Spear(), _settings)
+                .InvalidTail.IsEmpty, Is.True, "a straight spear thrust does not either");
+        }
+
+        [Test]
         public void SharpTurn_DoesNotCutARapier()
         {
             WeaponStats rapier = GddStartingValues.Rapier();

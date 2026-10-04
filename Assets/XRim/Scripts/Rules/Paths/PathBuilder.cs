@@ -43,14 +43,29 @@ namespace XRim.Rules.Paths
             InkedPath inked = _cutoff.Apply(reach.Path, weapon, _policies.InkCost);
 
             bool cutAtBreak = !inked.Ink.IsValid;
+            WeaponPath invalidTail = WeaponPath.Empty;
             if (cutAtBreak)
             {
-                WeaponPath kept = KeepUpTo(inked.Path, inked.Ink.FirstInvalidPointIndex);
+                int breakIndex = inked.Ink.FirstInvalidPointIndex;
+                WeaponPath kept = KeepUpTo(inked.Path, breakIndex);
+                invalidTail = From(inked.Path, breakIndex);
                 inked = new InkedPath(kept, _policies.InkCost.Measure(kept, weapon), inked.BudgetUnits,
                     inked.ThicknessUnits, inked.WasCut);
             }
 
-            return new BuiltPath(drawn, reach.Path, inked, reach.WasClamped, cutAtBreak);
+            return new BuiltPath(drawn, reach.Path, inked, reach.WasClamped, cutAtBreak, invalidTail);
+        }
+
+        /// <summary>The points from <paramref name="firstIndex"/> to the end, so the tail starts where the executing path stops.</summary>
+        private static WeaponPath From(WeaponPath path, int firstIndex)
+        {
+            var tail = new List<Vec2>();
+            for (int i = firstIndex; i < path.Points.Count; i++)
+            {
+                tail.Add(path.Points[i]);
+            }
+
+            return new WeaponPath(tail);
         }
 
         private static WeaponPath KeepUpTo(WeaponPath path, int lastIndex)
