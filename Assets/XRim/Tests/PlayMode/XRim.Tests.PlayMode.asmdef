@@ -8,7 +8,12 @@
         "XRim.Rules",
         "XRim.Config",
         "XRim.Simulation",
-        "XRim.Simulation.Unity2D"
+        "XRim.Simulation.Unity2D",
+        "XRim.Networking",
+        "XRim.Bots",
+        "XRim.Input",
+        "XRim.Presentation",
+        "XRim.App"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

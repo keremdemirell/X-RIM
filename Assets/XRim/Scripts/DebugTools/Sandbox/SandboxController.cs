@@ -52,7 +52,6 @@ namespace XRim.DebugTools.Sandbox
         private const string ReportFolderName = "Logs";
         private const string ReportFileName = "XRimFeelReport.txt";
 
-        private readonly PerSide<PathPreview> _preview = new PerSide<PathPreview>(null, null);
         private readonly SandboxReadout _readout = new SandboxReadout();
         private readonly IHandednessLayoutPolicy _handednessPolicy = new MirrorWhenLeftHanded();
         private MatchBootstrap _bootstrap;
@@ -62,12 +61,11 @@ namespace XRim.DebugTools.Sandbox
         private TouchInputReader _reader;
         private InputConfig _input;
         private bool _ownsInput;
-        private PathPreviewBuilder _previewBuilder;
         private PerSide<TouchPlanSource> _sources;
         private PlanningHud _hud;
         private PlanningHudPresenter _presenter;
         private HudTouchBlocker _hudBlocker;
-        private PerSide<PathPreviewView> _views;
+        private PerSide<PlanPreviewPresenter> _previews;
         private Side _activeSide = Side.Left;
         private Handedness _handedness;
         private Rect _hudRect;
@@ -96,10 +94,10 @@ namespace XRim.DebugTools.Sandbox
 
         private void OnDestroy()
         {
-            if (_views != null)
+            if (_previews != null)
             {
-                _views.Left.Destroy();
-                _views.Right.Destroy();
+                _previews.Left.Dispose();
+                _previews.Right.Dispose();
             }
 
             _presenter?.Dispose();
@@ -146,9 +144,9 @@ namespace XRim.DebugTools.Sandbox
             _sources = PerSide<TouchPlanSource>.Create(side => new TouchPlanSource(side,
                 new DualZoneInputScheme(_reader, new FourWaySwipeClassifier(swipe), swipe, zones, mapper, ReadView, blocker), LayoutFor(side)));
 
-            _previewBuilder = new PathPreviewBuilder(_bootstrap.Policies);
             Material material = ArenaLines.CreateMaterial();
-            _views = PerSide<PathPreviewView>.Create(side => new PathPreviewView(_bootstrap.ArenaRoot, material, side.ToString()));
+            _previews = PerSide<PlanPreviewPresenter>.Create(side => new PlanPreviewPresenter(_bootstrap.ArenaRoot, material, side.ToString(),
+                _bootstrap.Policies, _bootstrap.RulesSettings, _bootstrap.SimulationSettings, _bootstrap.Space, LiveBodyMove));
             _bootstrap.StartMatch(new IPlanSource[] { _sources.Left, _sources.Right });
             ApplyActiveSide();
         }
@@ -230,10 +228,8 @@ namespace XRim.DebugTools.Sandbox
         private void ShowHud()
         {
             _presenter.Source = _sources[_activeSide];
-            _presenter.Tick(_bootstrap.AuthorityNowSeconds, _preview[_activeSide]);
+            _presenter.Tick(_bootstrap.AuthorityNowSeconds, _previews[_activeSide].Preview);
         }
-
-        private BodyPose Root(Side side) => TurnStartRoot.Of(_sources[side].Window.Board.Pose.Get(side));
 
         private void SwitchSide()
         {
@@ -277,49 +273,15 @@ namespace XRim.DebugTools.Sandbox
         }
 
         /// <summary>
-        /// Builds each side's path as the rules will (the stroke being drawn, or the last one set; the weapon tip and ink from the
-        /// window) and draws it: the executed path at the weapon's width, clipped at reach and where the ink runs out.
+        /// Both sides' paths as the rules will build them (the stroke being drawn, or the last one set) and drawn in the arena: the
+        /// sandbox shows both, a match only the player planning.
         /// </summary>
         private void UpdatePreviews()
         {
             foreach (Side side in Sides)
             {
-                TouchPlanSource source = _sources[side];
-                WeaponStats weapon = source.IsPlanning ? Weapon(source) : null;
-                if (weapon == null)
-                {
-                    _preview[side] = null;
-                    _views[side].Clear();
-                    continue;
-                }
-
-                bool drawing = source.ActiveStroke.Count > 0;
-                IReadOnlyList<Vec2> stroke = drawing ? source.ActiveStroke : source.Draft.Stroke.Points;
-                Vec2 tip = source.Window.WeaponTips[side].TipLocal(source.Draft.Weapon);
-                PathPreview preview = _previewBuilder.Build(stroke, tip, weapon, _bootstrap.RulesSettings.Paths);
-                _preview[side] = preview;
-                _views[side].Show(preview, Root(side), side, _bootstrap.Space, MoveFrame(source), drawing);
+                _previews[side].Update(_sources[side], true);
             }
-        }
-
-        /// <summary>
-        /// Where the side's path frame will be once its body move is at full extent (a hop: at its top), as the simulation plays
-        /// it; null without a body move.
-        /// </summary>
-        private BodyPose? MoveFrame(TouchPlanSource source)
-        {
-            BodyMove move = source.Draft.BodyMove;
-            BodyMoveStats stats = move != BodyMove.None ? LiveBodyMove(move) : null;
-            if (stats == null) return null;
-
-            Side side = source.Side;
-            BoardSnapshot board = source.Window.Board;
-            var start = BodyMoveStart.Of(side, board.Pose.Get(side), board.State.Fighters[side].Handedness, _bootstrap.SimulationSettings.Ragdoll);
-            var driver = new StanceBodyMoveDriver();
-            driver.Begin(stats, start);
-            bool isHop = stats.DisplacementUnits.Y > 0f && !stats.IsLeanInPlace;
-            BodyPose root = driver.Evaluate(SimTime.FromSeconds(isHop ? stats.DurationSeconds * 0.5 : stats.DurationSeconds)).Root;
-            return _bootstrap.RulesSettings.Paths.PathTiltsWithTorsoLean ? root : new BodyPose(root.PositionUnits, start.Root.RotationDegrees);
         }
 
         /// <summary>A body move's data as the tuning panel has it now: the sandbox plays body moves with the live tuning.</summary>
@@ -331,12 +293,6 @@ namespace XRim.DebugTools.Sandbox
             }
 
             return _bootstrap.RulesSettings.FindBodyMove(move);
-        }
-
-        private WeaponStats Weapon(TouchPlanSource source)
-        {
-            WeaponStats stats = _bootstrap.RulesSettings.FindWeapon(source.Draft.Weapon);
-            return stats?.WithInkLengthMultiplier(source.Window.Constraints[source.Side].InkLengthMultiplier);
         }
 
         private void OnGUI()
@@ -420,7 +376,7 @@ namespace XRim.DebugTools.Sandbox
 
             GUILayout.EndHorizontal();
             string refused = source.Draft.LastRejection != CommandRejection.None ? $"   refused: {source.Draft.LastRejection}" : string.Empty;
-            GUILayout.Label("   " + PathLine(_preview[side]) + refused);
+            GUILayout.Label("   " + PathLine(_previews[side].Preview) + refused);
         }
 
         /// <summary>The HUD name of a move; the backward move says which D12 option it plays.</summary>

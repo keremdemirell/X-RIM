@@ -7,10 +7,11 @@ using XRim.Simulation.Recording;
 namespace XRim.App
 {
     /// <summary>
-    /// The client-side flow: follows the authority's events and holds the next planning phase or the match end until
-    /// the current turn's playback has finished, so players always see the result before planning again.
-    /// Note for the authority: it should start the next planning timer only after the playback duration, or the
-    /// replay eats into planning time.
+    /// The client-side flow: Idle → Planning → WaitingForAuthority → Playback → (next turn) … → MatchOver. It follows the
+    /// authority's events and holds the next planning phase or the match end until the current turn's playback has finished,
+    /// so players always see the result before planning again. When playback finishes it tells the authority
+    /// (<see cref="ITurnAuthority.NotifyPlaybackFinished"/>), which starts the next planning timer only then, so the replay never
+    /// eats planning time (ARCHITECTURE §5). It mirrors the authority and never decides anything.
     /// </summary>
     public sealed class ClientMatchFlow : IDisposable
     {
@@ -42,11 +43,20 @@ namespace XRim.App
             _authority.MatchEnded -= OnMatchEnded;
         }
 
-        /// <summary>Called by presentation when the timeline player finishes the current turn.</summary>
+        /// <summary>
+        /// Called by presentation when the timeline player finishes the current turn: shows what comes next and reports the
+        /// playback to the authority. Ignored outside playback (a debug replay watched while planning).
+        /// </summary>
         public void OnPlaybackFinished()
         {
             if (Phase != ClientPhase.Playback) return;
 
+            ShowWhatFollowsPlayback();
+            _authority.NotifyPlaybackFinished(CurrentResult.TurnIndex);
+        }
+
+        private void ShowWhatFollowsPlayback()
+        {
             if (_pendingOutcome != null)
             {
                 Outcome = _pendingOutcome;

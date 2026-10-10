@@ -1,30 +1,35 @@
 using System;
 using XRim.Config;
-using XRim.Core;
 using XRim.Presentation.Playback;
 using XRim.Rules.Events;
 
 namespace XRim.Presentation.Feel
 {
     /// <summary>
-    /// Game-feel layer (GDD pillar 1): hitstop, slow motion on severs and KOs, camera punch. It only bends playback
-    /// speed and triggers effects, so it can be tuned aggressively without changing outcomes.
+    /// Game-feel layer (GDD pillar 1). It only bends playback, so it can be pushed hard without changing outcomes. Now: a hitstop on
+    /// every landed hit (<see cref="FeelConfig.HitStopSeconds"/>, read live so tuning edits show on the next hit). Slow motion on severs
+    /// and KOs and the camera punch come in Session 13.
     /// </summary>
-    public sealed class FeelDirector : IMatchEventReactor
+    public sealed class FeelDirector : IMatchEventReactor, IPlaybackPacer
     {
-        private FeelConfig Config { get; }
-        private TimelinePlayer Player { get; }
+        private readonly HitStop _hitStop = new HitStop();
 
-        public FeelDirector(FeelConfig config, TimelinePlayer player)
+        private FeelConfig Config { get; }
+
+        public FeelDirector(FeelConfig config)
         {
             Config = config != null ? config : throw new ArgumentNullException(nameof(config));
-            Player = Guard.NotNull(player, nameof(player));
         }
+
+        public bool IsHolding => _hitStop.IsHolding;
 
         public void OnMatchEvent(MatchEvent matchEvent)
         {
-            // Placeholder: architecture setup only. Feel effects come later.
-            throw new NotImplementedException("FeelDirector.OnMatchEvent is not implemented yet.");
+            if (matchEvent is HitLandedEvent) _hitStop.Trigger(Config.HitStopSeconds);
         }
+
+        public float Pace(float realDeltaSeconds) => _hitStop.Pace(realDeltaSeconds);
+
+        public void Reset() => _hitStop.Reset();
     }
 }

@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using XRim.Rules.Events;
 
@@ -21,10 +20,9 @@ namespace XRim.Presentation.Cameras
             _arenaRoot.localScale = scale;
         }
 
+        /// <summary>The fixed side view does not react to events yet; shake and punch-in come in Session 13 (§2 camera stays TBD).</summary>
         public void OnMatchEvent(MatchEvent matchEvent)
         {
-            // Placeholder: architecture setup only. Camera reactions come later.
-            throw new NotImplementedException("FixedSideCameraDirector.OnMatchEvent is not implemented yet.");
         }
 
         /// <summary>Serialized field names, for Editor tools that assign references through SerializedObject.</summary>

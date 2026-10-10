@@ -53,12 +53,12 @@ References only point downward. Assemblies below the line set `noEngineReference
 | `XRim.Config` | yes | Every ScriptableObject, `TuningProfile`, `ArenaSpace`, `TunableFields` | Core, Rules, Simulation, Economy |
 | `XRim.Simulation.Unity2D` | yes | `Unity2DPhysicsWorld` (hidden, manually stepped scene), `PhysicsBodyTag`, `Ragdoll` | Core, Rules, Simulation, Config |
 | `XRim.Input` | yes | `ScreenLayout` (zones and mirroring), handedness policy, swipe classifier (`SwipeSettings`), screen-to-arena mapper (`ArenaViewFrame`), `IInputScheme`, `TouchPlanSource`, `TouchInputReader`. The logic classes use plain data (`Vec2`, `SwipeSettings`), so their EditMode tests can run outside the Editor with the check tool's runner | Core, Rules, Config, Simulation, Networking, Unity.InputSystem |
-| `XRim.Presentation` | yes | `TimelinePlayer`, `TurnPlayback`, `DummyView`, `ArenaView`, `PathPreviewView` and `ArenaLines` (live path preview, shared line set-up), camera director, `FeelDirector`, audio, VFX, moment detector, `PlanningHud` | Core, Rules, Simulation, Config |
-| `XRim.App` | yes | `MatchBootstrap` (composes the whole local loop; exposes the authority's clock), `ClientMatchFlow`, `PlanSourceFactory`, `HotSeatCoordinator`, `PlanningHudPresenter`, `HudTouchBlocker`, `MatchMode`, `VisualDummyFactory`, `RecordingTurnSimulator` | all runtime |
+| `XRim.Presentation` | yes | `TimelinePlayer`, `TurnPlayback` (event reactors, `IPlaybackPacer`), `PlaybackHitPoints`, `DummyView`, `ArenaView`, `PathPreviewView` and `ArenaLines` (live path preview, shared line set-up), camera director, `FeelDirector` + `HitStop`, audio, VFX, moment detector, `PlanningHud`, `MatchHud`, `MatchScreens` (UI Toolkit in code, shared `HudElements`) | Core, Rules, Simulation, Config |
+| `XRim.App` | yes | `MatchBootstrap` (composes the scene once and each match fresh; exposes the authority's clock), `ClientMatchFlow`, `PlanSourceFactory`, `HotSeatCoordinator`, `LocalPlayers`, `PlanPreviewPresenter`, `PlanningHudPresenter`, `MatchHudPresenter`, `MatchLabels`, `MatchOverText`, `SuddenDeathTiePlaceholder`, `HudTouchBlocker`, `TouchBlockerSet`, `MatchMode`, `VisualDummyFactory`, `RecordingTurnSimulator` | all runtime |
 | `XRim.DebugTools` | yes | `DebugOverlay` (Tuning, Playback, Cheats tabs), `TuningPanel`, `PlaybackPanel`, the sandbox (`SandboxController`, `SandboxPlanSource`), `FeelDiagnostics`, gizmos, `ScenarioStore`. Compiled only when `UNITY_EDITOR \|\| DEVELOPMENT_BUILD`; installs itself at runtime, so scenes never reference it | all runtime |
 | `XRim.Editor` | Editor | Setup menus (incl. the placeholder dummy prefab builder and the sandbox scene), reports, `SettingsConfigEditor` | all runtime, and DebugTools |
 | `XRim.Tests.EditMode` | Editor | Sanity and GDD-conformance tests, fakes | pure modules, Config, Input, Presentation, App |
-| `XRim.Tests.PlayMode` | yes | Unity 2D physics backend tests | Core, Rules, Config, Simulation, Simulation.Unity2D |
+| `XRim.Tests.PlayMode` | yes | Unity 2D physics backend tests; the match scene smoke test and the explicit bot-vs-bot batch (Session 09) | Core, Rules, Config, Simulation, Simulation.Unity2D, Networking, Bots, Input, Presentation, App |
 
 Rules this graph enforces:
 
@@ -174,9 +174,12 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 - **Locked.** Plans are frozen and validated by `PlanValidator` on the authority's clock (§18).
 - **Resolving.** `EndConditionEvaluator` is the single place that checks KO, double KO (→ sudden death), forfeit and turn cap (→ sudden death).
 - **Sudden death.** HP is set to 1. The first valid hit wins; if both land, the earlier `SimTime` wins. The no-hit and same-step-tie cases go through policies.
-- **Client flow (`XRim.App.ClientMatchFlow`).** Idle → Planning → WaitingForAuthority → Playback → … → MatchOver. It only mirrors the authority. It holds the next planning phase and the match end until playback has finished.
+- **Client flow (`XRim.App.ClientMatchFlow`).** Idle → Planning → WaitingForAuthority → Playback → … → MatchOver. It only mirrors the authority. It holds the next planning phase and the match end until playback has finished, then reports the turn to the authority (`NotifyPlaybackFinished`, Session 09).
   - The authority starts the next planning timer only after playback (Session 03): `MatchStateMachine.BeginPlanning` is what starts the timer, and `LocalTurnAuthority` holds in TurnStart until its `PlaybackHoldSettings` mode says playback is over (none, the recorded timeline duration, or the client's `NotifyPlaybackFinished` with a timeout). SuddenDeathSetup is a resting phase like TurnStart; Resolving happens inside `CompleteExecution`.
-- **Composition (`XRim.App.MatchBootstrap`, Session 04).** Hidden `Unity2DPhysicsWorld` → `TurnSimulator` (wrapped by `RecordingTurnSimulator` for debug re-simulation) → `LocalTurnAuthority` (hold mode `ClientReport`, a `ManualClock` advanced by unscaled time) → `ClientMatchFlow` → `TurnPlayback` on two `DummyView`s. When playback finishes, the bootstrap tells the flow and calls `NotifyPlaybackFinished`. Modes now: `BotVsBot`, and `Sandbox`, where the planning timer is frozen and DebugTools hands its plan sources to `MatchBootstrap.StartMatch` (App never references DebugTools); since Session 08 the sandbox plans through the real touch scheme and planning HUD. Human vs bot and hot-seat are wired in Session 09 (`PlanSourceFactory`, `HotSeatCoordinator`).
+- **Composition (`XRim.App.MatchBootstrap`, Sessions 04 and 09).** Built once per scene: the hidden `Unity2DPhysicsWorld`, the visible `DummyView`s and `TurnPlayback` (with `FeelDirector` as reactor and pacer), the `TouchInputReader`, and outside the sandbox the `PlanningHud`, `MatchHud` and `MatchScreens`. Built fresh for every match (`PrepareMatch` / `BeginMatch` / Rematch / a new mode), so tuning edits apply from the next match: the settings snapshot, `RulePolicies`, `TurnSimulator` (wrapped by `RecordingTurnSimulator` for debug re-simulation) → `LocalTurnAuthority` (hold mode `ClientReport`, a `ManualClock` advanced by unscaled time) → `ClientMatchFlow` (subscribed before any plan source) → playback; the plan sources from `PlanSourceFactory` (the humans on this device as `TouchPlanSource`s held by `LocalPlayers` with their `PlanPreviewPresenter`, the random bot), the HUD presenters. Touches pending when a player's input starts are discarded, so a tap on a closing screen never becomes a stroke.
+  - **Modes (D25, flagged: dev opponents only).** The Match scene (`XRim/Setup/Create Match Scene`) opens on a mode picker: **hot-seat**, **vs random bot** (the human plays Left) and **bot vs bot** to watch (the frozen board stays 1 s between turns, a viewing aid). In `Sandbox` the planning timer is frozen and DebugTools hands its plan sources to `MatchBootstrap.StartMatch` (App never references DebugTools).
+  - **Hot-seat (`HotSeatCoordinator`, a dev mode; designer 2026-10-04).** The players plan one after the other behind an opaque cover screen, each with the full planning time and the real lock-out, enforced by the authority: the coordinator drives the authority's clock, stops it behind the cover and turns it back to the opening for the second player. Ready ends a slot (no Ready cancel in hot-seat); the first player's time running out ends their slot with whatever is set (Ready is pressed for them just before their deadline). The first planner alternates each turn; a side with less planning time goes first. Each player sees their own view while planning; playback uses the plain view.
+  - **End of match.** `MatchScreens` shows the winner, the reason, the turns and the real time, with Rematch and Change mode. Sudden death plays as the rules have it (1 HP, first hit wins) under a banner naming its placeholders; a sudden-death turn both dummies end dead (the rules would repeat it at 0 HP) stops the match on a placeholder screen (`SuddenDeathTiePlaceholder`, until Session 12).
 - **Starting board and weapon tips.** A match starts on `StartingBoard` (engine-free): both dummies in `GuardStance`, `StartingGapUnits` apart, mirrored around x = 0, blades apart en garde. Each turn's weapon tips come from the frozen pose (`PoseWeaponTipLocator`), in the turn-start frame.
 
 ---
@@ -266,7 +269,9 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 
 - **`TimelinePlayer`** plays a `TurnTimeline` at any speed, with pause, seek, frame-step, restart and loop.
   - Events fire once, in order, as playback passes them. Scrubbing back does not re-fire them; replaying forward does.
-- **`IMatchEventReactor`s react to events:** `FeelDirector` (hitstop and slow motion from `FeelConfig`), `MatchVfx` (bolts, springs, sparks, hydraulic fluid; no blood), `MatchAudio`, and the camera director.
+- **`IMatchEventReactor`s react to events** (`TurnPlayback.AddReactor`): `FeelDirector` (Session 09: a hitstop on every landed hit, `FeelConfig.HitStopSeconds` read live; slow motion in Session 13), `MatchVfx` (bolts, springs, sparks, hydraulic fluid; no blood), `MatchAudio`, and the camera director (no reactions until Session 13).
+- **Pacing.** An `IPlaybackPacer` (`TurnPlayback.Pacer`, the `FeelDirector`) bends how fast a turn plays; a turn never finishes while it holds, so even a hit on the last frame gets its freeze. Only playback timing changes, never the result.
+- **Match HUD (Session 09).** `MatchHud` (never catches a touch): an HP bar under each dummy at the bottom, following the view flip and dropping as playback passes each hit (`PlaybackHitPoints`), the turn counter, and the sudden-death banner. `MatchScreens`: the mode picker, the hot-seat cover, the match-over screen. Both are fed by App presenters (`MatchHudPresenter`, `MatchLabels`, `MatchOverText`).
 - **`TurnPlayback`** drives the two `DummyView`s from a `TimelinePlayer` and raises `Finished` once per play; a looping or paused turn never finishes, so the match waits on it.
 - **`DummyView`** only copies recorded poses onto transforms, in the arena root's local space (so flipping the arena root mirrors the view), and shows the held weapon by id. Skins change visuals only. Until Session 17 it is the ragdoll prefab with its physics stripped (`VisualDummyFactory`).
 - **`IMomentDetector`** flags legendary turns for cinematic replay (pillar 1). Replay sharing is TBD (§17).
@@ -289,7 +294,8 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
   - Client flow ordering.
   - Bot and plan-source routing.
   - `FakePhysicsWorld`, `StubTurnSimulator` and `FakeTurnAuthority` let the execution loop and flow be tested without Unity physics.
-- PlayMode: the hidden physics scene moves only when stepped and never moves the visual scene.
+- PlayMode: the hidden physics scene moves only when stepped and never moves the visual scene; the match scene smoke test (`MatchScenePlayModeTests`: three turns planned by scripts through the real `MatchBootstrap` and the project's tuning).
+- **Bot-vs-bot batch (Session 09):** `BotBatchPlayModeTests` is `[Explicit]`: picked by hand in the Test Runner, it plays 20 random-bot matches on real physics, headless, and writes `Logs/XRimBotBatch.txt` (ends, turns, sudden death, hits, would-sever, simulation cost, match length estimates). It measures; it decides nothing (§1 target match length is TBD).
 - Planned:
   - Scenario tests from saved (board, plans).
   - A same-inputs-twice repeatability check.
@@ -309,7 +315,8 @@ MatchSetup → TurnStart → Planning ──(both Ready || now ≥ deadline)─�
 - **XRim → Setup:**
   - **Create Default Tuning Assets.** Safe to rerun; never overwrites tuned assets.
   - **Apply Project Settings.** Landscape only; Physics 2D in Script mode.
-  - **Create Sandbox Scene.** Generated; running it again rebuilds it (camera, arena root, MatchBootstrap in Sandbox mode).
+  - **Create Match Scene.** The first playable (Session 09): camera with the fixed-side director, arena root, MatchBootstrap opening on the mode picker; first in the build list. Generated; running it again rebuilds it.
+  - **Create Sandbox Scene.** Generated by the same builder (`MatchSceneBuilder`), MatchBootstrap in Sandbox mode; appended to the build list.
   - **Fill New Tuning Fields.**
   - **Build Placeholder Dummies.** The 6- and 10-body ragdoll prefabs, from the live tuning.
   - **Reset Body Moves To Starting Values.** Asks, then overwrites every body-move asset (adding missing ones) from `GddStartingValues`; undoable.
@@ -355,7 +362,7 @@ The code is the live register: **XRim → Reports → TBD Seams** prints this li
 
 | § | Open question | Seam |
 |---|---|---|
-| 1 | Target match length | `BalanceTargetsConfig._targetMatchLengthSeconds` (0 = undecided) |
+| 1 | Target match length | `BalanceTargetsConfig._targetMatchLengthSeconds` (0 = undecided); measured, not decided, by the bot-vs-bot batch (Session 09) |
 | 2 | Camera behaviour | `ICameraDirector` → `FixedSideCameraDirector` |
 | 2 | Adaptive music | `IMusicIntensityDriver` |
 | 3 | Cancel Ready to edit | `MatchSettings.AllowReadyCancel` |
@@ -396,10 +403,10 @@ The code is the live register: **XRim → Reports → TBD Seams** prints this li
 | 12 | Armless body blows; limb weapon slot; limb retrieval | `IArmlessAttackMode`, `LoadoutSettings.SeveredLimbIsExtraOption`, `ILimbRetrievalPolicy` |
 | 13 | Wall damage growth; damage when knocked into it | `ElectricWallSettings` fields |
 | 13 | Arena width and edge behaviour | `ArenaSettings.WidthUnits`, `IArenaEdgePolicy` (D22 default: 2000, solid invisible stop) |
-| 14 | Board state; no hit; exact tie; wall; options | `SuddenDeathBoardMode`, `ISuddenDeathNoHitPolicy`, `ITiePolicy`, `ElectricWallSettings.ActiveInSuddenDeath`, `SuddenDeathSettings` flags |
+| 14 | Board state; no hit; exact tie; wall; options | `SuddenDeathBoardMode`, `ISuddenDeathNoHitPolicy`, `ITiePolicy`, `ElectricWallSettings.ActiveInSuddenDeath`, `SuddenDeathSettings` flags (Session 12). Until then the first playable stops a match whose sudden-death turn both dummies end dead (`SuddenDeathTiePlaceholder`) |
 | 15 | Lifesteal and build-up traits | `IWeaponTrait`, `WeaponStats.TraitIds` |
 | 16 | Currency sources and amounts; premium earnable; farming | `IRewardPolicy`, `IFarmingGuard`, `EconomySettings` |
-| 17 | Bots and practice; replays and sharing | `IBotBrain`, `IMomentDetector`, stored `TurnResult`s |
+| 17 | Bots and practice (D25 default: dev opponents only, hot-seat and the random bot); replays and sharing | `IBotBrain`, `PlanSourceFactory`, `MatchMode`; `IMomentDetector`, stored `TurnResult`s |
 | 18 | Networking model | `ITurnAuthority` |
 | 18 | Arena unit scale and reference resolution | `ArenaSpaceConfig`, `InputConfig._referenceResolution` (the HUD's reference screen), `ScreenToArenaMapper` (scale from what the camera shows, so it needs no reference resolution) |
 
@@ -441,6 +448,9 @@ Record these in the GDD when convenient.
 | 2026-10-03 | D19, D20, D21 on their recommended defaults (flagged): only the first contact between two held items resolves; full block square on the face, partial (×0.5) otherwise; no special mace rule | Designer |
 | 2026-10-03 | D7, D14, D23, D24 on their recommended defaults (flagged): ink shown while drawing; no diagonal swipes; selector along the top of the weapon zone, Ready in the far bottom corner, timer top centre; handedness changeable later in settings, no separate mirror toggle | Designer |
 | 2026-10-03 | Session 08 A1–A10: the mouse is a finger by touch simulation; a touch keeps the zone it landed in and a touch on a HUD control draws nothing; a body swipe fires as soon as it is recognised; a quick tap in the body zone clears the move (flagged); a weapon-zone tap is a one-point stroke; the stroke is sent when the finger lifts; the HUD shows the body move; dev handedness mirrors the layout only | Designer |
+| 2026-10-04 | D25 on its recommended default (flagged): the prototype's opponents are dev-only: hot-seat with a cover screen and the random bot (plus bot vs bot to watch) | Designer |
+| 2026-10-04 | Hot-seat timing (dev mode, not a GDD rule): sequential, each player alone with the full timer and the real lock-out; the timer stops behind the cover; Ready or running out ends a slot; the first planner alternates | Designer (Claude's proposal) |
+| 2026-10-04 | Sudden death in the first playable: play the interim rules under a banner; a sudden-death turn both end dead stops the match on a placeholder screen until Session 12 | Designer |
 | 2026-10-03 | Session 07 A1–A8: clash speed is the rules' path speed (0 when not travelling); blade or shield contacts beat body hits at the same instant; the shield is held like a shield and adds no reach; a tap is a short lead-in, then held; a partial block reduces every later hit that turn; knock-offs fly free then are held where they end, rebounds bounce back, a full block pushes the holder back; shield vs shield has no rule | Designer |
 
 ---
@@ -459,6 +469,7 @@ Record these in the GDD when convenient.
   - Path rules (Session 01): `PathResampler`, ink cost models, ink cut-off, the D3–D5 policies and `PathBuilder` (order: stroke, lead-in, resample, reach, ink cut-off, break cut).
   - Feel spike (Session 02): kinematic and motor weapon drivers, the aim model, impact-time refinement, the contact angle and the placeholder ragdoll (6 or 10 bodies). Its swing loop, scene and harness were retired in Session 04.
   - Body moves (Session 05): crouch, lunge, step back (both D12 options) and jump from data, legs posed by `LegPoser`, the path travelling with the body, the backward fact for the wall, the mobility seam, sandbox pickers.
+  - First playable (Session 09): the Match scene with the mode picker (hot-seat with the cover screen, vs the random bot, bot vs bot), `MatchBootstrap` composing each match fresh (Rematch, Change mode), the client flow reporting playback, the hitstop, the match HUD (HP bars, turn counter, sudden-death banner), the match-over screen, the sudden-death tie placeholder, the PlayMode smoke test and the explicit bot-vs-bot batch.
   - Touch input and planning HUD (Session 08): `ScreenLayout` (zones, mirroring, the forward direction on screen), `FourWaySwipeClassifier` (D14), `ScreenToArenaMapper` + `ArenaViewFrame` (resolution-independent, flip-aware), `TouchInputReader` (EnhancedTouch with history, mouse as a finger), `DualZoneInputScheme`, `TouchPlanSource` + `PlanDraft`, the live path preview (`PathPreviewBuilder`, `PathPreviewView`: reach clip, ink cut, weapon width, red invalid tail), `PlanningHud` (UI Toolkit in code, D23) with `PlanningHudPresenter`, and the sandbox planned through all of it (hot-seat toggle with view flip, left-handed toggle, timer checkbox).
   - Clashes and shield (Session 07): `ClashResolver` (two stages), `WeaponContactResolver` (clashes, blocks, D19, stagger), `SettingsShieldBlockModel` (D20, D21), the partial-block damage modifier, `HitContactHandler` resolving blade and shield contacts before hits with knock-off, rebound and push-back reactions, the shield held like a shield (`ShieldFaceAimModel`, `HeldItemShape`), taps, contact gizmos and the clash and block lines in the debug panels.
   - Hits, priority and damage (Session 06): `DamageCalculator`, modifiers, limb cap, D27, stun and status lifetime, `HitResolver` (priority, trades, D15/D16 interrupts, D26 drag-through, E2), `HitContactHandler` (contacts to hits, weapon slow/stop/hand-off/recoil, part impulse, knockback), sandbox HP/limb/stun readout and the Playback tab's outcome list.
@@ -467,5 +478,5 @@ Record these in the GDD when convenient.
 - **Placeholders that throw `NotImplementedException`:** the remaining gameplay logic.
   - Rules: wall.
   - Simulation: severing by logic (Session 11).
-  - Presentation: feel, VFX, audio, camera reactions (Session 13).
-  - Tooling: hot-seat and scenarios.
+  - Presentation: slow motion, VFX, audio, camera reactions (Session 13).
+  - Tooling: scenarios.

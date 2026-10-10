@@ -1,6 +1,8 @@
 using UnityEngine;
 using XRim.App;
 using XRim.Config;
+using XRim.Core;
+using XRim.Input;
 using XRim.DebugTools.Sandbox;
 
 namespace XRim.DebugTools
@@ -34,6 +36,7 @@ namespace XRim.DebugTools
             _gizmos = gameObject.AddComponent<GameplayGizmos>();
             _gizmos.Init(_bootstrap);
             if (_bootstrap.Mode == MatchMode.Sandbox) gameObject.AddComponent<SandboxController>().Init(_bootstrap, this);
+            else _bootstrap.AddTouchBlocker(new OverlayTouchBlocker(this)); // a tap on the Debug button is not a body-zone tap
         }
 
         /// <summary>True when a screen point (GUI coordinates, y down) is on the Debug button or the open panel.</summary>
@@ -92,6 +95,19 @@ namespace XRim.DebugTools
         }
 
         private void DrawPlayback() => _playbackPanel.Draw(_bootstrap, _gizmos);
+
+        /// <summary>Touches on the Debug button or the open panel (screen pixels, y up) never reach a player's input.</summary>
+        private sealed class OverlayTouchBlocker : ITouchBlocker
+        {
+            private readonly DebugOverlay _overlay;
+
+            public OverlayTouchBlocker(DebugOverlay overlay)
+            {
+                _overlay = overlay;
+            }
+
+            public bool Blocks(Vec2 screenPixels) => _overlay != null && _overlay.Covers(new Vector2(screenPixels.X, Screen.height - screenPixels.Y));
+        }
 
         private static void DrawCheats()
         {

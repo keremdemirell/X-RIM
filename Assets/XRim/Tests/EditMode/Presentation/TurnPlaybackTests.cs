@@ -4,6 +4,7 @@ using UnityEngine;
 using XRim.Config;
 using XRim.Core;
 using XRim.Presentation.Dummy;
+using XRim.Presentation.Feel;
 using XRim.Presentation.Playback;
 using XRim.Rules;
 using XRim.Rules.Events;
@@ -137,6 +138,92 @@ namespace XRim.Tests.EditMode.Presentation
             _playback.Play(Result(0.0));
 
             Assert.That(_finished, Is.EqualTo(1));
+        }
+
+        // --- Feel: reactors and hitstop (Session 09) ---------------------------------------------------------------
+
+        [Test]
+        public void Reactors_HearEachEventOnce_AsPlaybackPassesIt()
+        {
+            var heard = new List<MatchEvent>();
+            var reactor = new RecordingReactor(heard);
+            _playback.AddReactor(reactor);
+            HitLandedEvent hit = PlayedTurn.Hit(Side.Right, 0.4, 10f);
+            _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, hit));
+
+            _playback.Advance(0.3f);
+            Assert.That(heard, Is.Empty);
+            _playback.Advance(0.2f);
+            _playback.Advance(1f);
+            Assert.That(heard, Is.EqualTo(new MatchEvent[] { hit }));
+
+            _playback.RemoveReactor(reactor);
+            _playback.Replay();
+            _playback.Advance(1f);
+            Assert.That(heard, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void AHit_FreezesPlaybackForTheHitstop_AndTheTurnFinishesThatMuchLater()
+        {
+            FeelConfig feel = ScriptableObject.CreateInstance<FeelConfig>();
+            try
+            {
+                var director = new FeelDirector(feel);
+                _playback.Pacer = director;
+                _playback.AddReactor(director);
+                _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, PlayedTurn.Hit(Side.Right, 0.5, 10f)));
+
+                _playback.Advance(0.5f); // reaches the hit
+                SimTime atHit = _playback.Player.CurrentTime;
+                _playback.Advance(feel.HitStopSeconds * 0.5f);
+                Assert.That(_playback.Player.CurrentTime, Is.EqualTo(atHit), "frozen");
+
+                _playback.Advance(feel.HitStopSeconds * 0.5f + 0.49f); // over a second of real time: 0.99 s of turn plus the freeze
+                Assert.That(_finished, Is.EqualTo(0), "the freeze took real time, so the turn is not over yet");
+                _playback.Advance(0.02f);
+                Assert.That(_finished, Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(feel);
+            }
+        }
+
+        [Test]
+        public void AHitOnTheLastFrame_StillGetsItsFreeze_BeforeTheTurnFinishes()
+        {
+            FeelConfig feel = ScriptableObject.CreateInstance<FeelConfig>();
+            try
+            {
+                var director = new FeelDirector(feel);
+                _playback.Pacer = director;
+                _playback.AddReactor(director);
+                _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, PlayedTurn.Hit(Side.Right, PlayedTurn.Seconds, 10f)));
+
+                _playback.Advance((float)PlayedTurn.Seconds);
+                Assert.That(_playback.Player.IsFinished, Is.True);
+                Assert.That(_finished, Is.EqualTo(0), "held by the hitstop");
+
+                _playback.Advance(feel.HitStopSeconds);
+                Assert.That(_finished, Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(feel);
+            }
+        }
+
+        private sealed class RecordingReactor : IMatchEventReactor
+        {
+            private readonly List<MatchEvent> _heard;
+
+            public RecordingReactor(List<MatchEvent> heard)
+            {
+                _heard = heard;
+            }
+
+            public void OnMatchEvent(MatchEvent matchEvent) => _heard.Add(matchEvent);
         }
 
         private sealed class TestEvent : MatchEvent

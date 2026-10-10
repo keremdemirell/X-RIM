@@ -6,6 +6,7 @@ using UnityEngine.UIElements;
 using XRim.Core.Gdd;
 using XRim.Rules;
 using XRim.Rules.Planning;
+using static XRim.Presentation.UI.HudElements;
 
 namespace XRim.Presentation.UI
 {
@@ -24,7 +25,6 @@ namespace XRim.Presentation.UI
     [GddTbd("§6", "Remaining-ink UI", Proposal = "Show ink while drawing (D7)")]
     public sealed class PlanningHud : MonoBehaviour, IPlanningHudView
     {
-        private const string BuiltinFontName = "LegacyRuntime.ttf";
         private const float Margin = 16f;
         private const float TopMargin = 12f;
         private const float ButtonWidth = 170f;
@@ -37,13 +37,8 @@ namespace XRim.Presentation.UI
         private const float WholeSecondsAbove = 10f;
         private const int SortingOrder = 100;
 
-        private static readonly Color PanelColor = new Color(0f, 0f, 0f, 0.55f);
-        private static readonly Color TextColor = new Color(1f, 1f, 1f, 0.95f);
-        private static readonly Color DimTextColor = new Color(1f, 1f, 1f, 0.6f);
         private static readonly Color SelectedColor = new Color(1f, 0.85f, 0.1f, 1f);
         private static readonly Color SelectedTextColor = new Color(0.1f, 0.1f, 0.1f, 1f);
-        private static readonly Color ButtonColor = new Color(0.12f, 0.12f, 0.12f, 0.8f);
-        private static readonly Color EdgeColor = new Color(1f, 1f, 1f, 0.3f);
         private static readonly Color ReadyColor = new Color(0.2f, 0.7f, 0.3f, 1f);
         private static readonly Color CancelColor = new Color(0.9f, 0.55f, 0.1f, 1f);
         private static readonly Color LockedColor = new Color(0.35f, 0.35f, 0.35f, 1f);
@@ -89,21 +84,11 @@ namespace XRim.Presentation.UI
         /// </summary>
         public static PlanningHud Create(Vector2Int referenceResolution)
         {
-            var gameObject = new GameObject("PlanningHud");
-            gameObject.SetActive(false);
-            var document = gameObject.AddComponent<UIDocument>();
-            PanelSettings settings = ScriptableObject.CreateInstance<PanelSettings>();
-            settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
-            settings.referenceResolution = referenceResolution;
-            settings.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
-            settings.match = 1f; // by height, so a wider screen shows more but nothing grows (like the arena view)
-            settings.sortingOrder = SortingOrder;
-            document.panelSettings = settings;
-
-            var hud = gameObject.AddComponent<PlanningHud>();
+            UIDocument document = CreateDocument("PlanningHud", referenceResolution, SortingOrder, out PanelSettings settings);
+            var hud = document.gameObject.AddComponent<PlanningHud>();
             hud._document = document;
             hud._ownedPanelSettings = settings;
-            gameObject.SetActive(true);
+            document.gameObject.SetActive(true);
             return hud;
         }
 
@@ -268,19 +253,9 @@ namespace XRim.Presentation.UI
 
         private void Build(VisualElement root)
         {
-            root.Clear();
+            PrepareRoot(root);
             _root = root;
-            _root.pickingMode = PickingMode.Ignore;
-            Absolute(_root);
-            _root.style.left = 0;
-            _root.style.top = 0;
-            _root.style.right = 0;
-            _root.style.bottom = 0;
             _root.style.display = _visible ? DisplayStyle.Flex : DisplayStyle.None;
-
-            // Without a theme the panel has no default font: set one, inherited by every label and button below.
-            Font font = Resources.GetBuiltinResource<Font>(BuiltinFontName);
-            if (font != null) _root.style.unityFontDefinition = FontDefinition.FromFont(font);
 
             BuildBodyStrip();
             BuildSelectorColumn();
@@ -449,59 +424,6 @@ namespace XRim.Presentation.UI
                 button.style.opacity = _switchLocked && !selected ? DisabledOpacity : 1f;
                 button.SetEnabled(!_switchLocked);
             }
-        }
-
-        // ----- small helpers -----
-
-        private static void Absolute(VisualElement element) => element.style.position = Position.Absolute;
-
-        /// <summary>A layout container that never catches a touch.</summary>
-        private static VisualElement Plain(VisualElement parent)
-        {
-            var element = new VisualElement { pickingMode = PickingMode.Ignore };
-            parent.Add(element);
-            return element;
-        }
-
-        private static Label Text(VisualElement parent, string text, int size, Color color)
-        {
-            var label = new Label(text) { pickingMode = PickingMode.Ignore };
-            label.style.fontSize = size;
-            label.style.color = color;
-            label.style.whiteSpace = WhiteSpace.NoWrap;
-            parent.Add(label);
-            return label;
-        }
-
-        private static void SetText(Label label, string text)
-        {
-            if (label != null && label.text != text) label.text = text;
-        }
-
-        private static void StyleButton(Button button, float width, float height, int fontSize)
-        {
-            IStyle style = button.style;
-            style.width = width;
-            style.height = height;
-            style.fontSize = fontSize;
-            style.unityFontStyleAndWeight = FontStyle.Bold;
-            style.unityTextAlign = TextAnchor.MiddleCenter;
-            style.color = TextColor;
-            style.backgroundColor = ButtonColor;
-            style.borderTopLeftRadius = 12;
-            style.borderTopRightRadius = 12;
-            style.borderBottomLeftRadius = 12;
-            style.borderBottomRightRadius = 12;
-            style.borderTopWidth = 3;
-            style.borderBottomWidth = 3;
-            style.borderLeftWidth = 3;
-            style.borderRightWidth = 3;
-            style.borderTopColor = EdgeColor;
-            style.borderBottomColor = EdgeColor;
-            style.borderLeftColor = EdgeColor;
-            style.borderRightColor = EdgeColor;
-            style.marginTop = 0;
-            style.marginBottom = 0;
         }
 
         private readonly struct WeaponButton

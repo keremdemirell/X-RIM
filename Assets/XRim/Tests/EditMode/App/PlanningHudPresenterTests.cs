@@ -88,31 +88,6 @@ namespace XRim.Tests.EditMode.App
             public void PressReady() => ReadyPressed?.Invoke();
         }
 
-        private sealed class StubScheme : IInputScheme
-        {
-            public IReadOnlyList<Vec2> ActiveStroke { get; } = new List<Vec2>();
-
-            public void Begin(PlanningWindow window, ScreenLayout layout, IPlanningCommandSink sink)
-            {
-            }
-
-            public void Tick()
-            {
-            }
-
-            public void SetLayout(ScreenLayout layout)
-            {
-            }
-
-            public void CancelGestures()
-            {
-            }
-
-            public void End()
-            {
-            }
-        }
-
         private FakeHud _hud;
         private FakeTurnAuthority _authority;
         private SchemeRig _rig;
@@ -127,7 +102,7 @@ namespace XRim.Tests.EditMode.App
             _authority = new FakeTurnAuthority();
             _rig = new SchemeRig();
             _match = GddStartingValues.CreateRulesSettings().Match;
-            _left = new TouchPlanSource(Side.Left, new StubScheme(), _rig.Layout);
+            _left = new TouchPlanSource(Side.Left, new StubInputScheme(), _rig.Layout);
             _left.OnPlanningStarted(_rig.Window, _rig.Sink);
             _presenter = new PlanningHudPresenter(_hud, _authority, TestData.CreateMatchSetup(), _match) { Source = _left };
         }
@@ -332,7 +307,7 @@ namespace XRim.Tests.EditMode.App
         [Test]
         public void AnotherHuman_GetsTheirOwnLoadoutAndOpponent()
         {
-            var right = new TouchPlanSource(Side.Right, new StubScheme(), new ScreenLayout(SchemeRig.Width, SchemeRig.Height, 0.15f, false, Side.Right));
+            var right = new TouchPlanSource(Side.Right, new StubInputScheme(), new ScreenLayout(SchemeRig.Width, SchemeRig.Height, 0.15f, false, Side.Right));
             right.OnPlanningStarted(_rig.Window, _rig.Sink);
             _presenter.Tick(1.0, null);
             int calls = _hud.LoadoutCalls;

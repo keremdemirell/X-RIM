@@ -14,6 +14,8 @@ namespace XRim.Presentation.Playback
     /// <see cref="TimelinePlayer"/> (ARCHITECTURE §1: simulated up front, then played). <see cref="Finished"/> fires once
     /// per play, when playback reaches its end, so the client can let the next planning phase start. While the player loops
     /// or is paused the turn never finishes, so the match waits on it (debug Playback tab).
+    /// Reactors (<see cref="AddReactor"/>: feel, later VFX, audio, camera) hear each event as playback passes it, and a
+    /// <see cref="Pacer"/> may bend the pace (hitstop); a turn does not finish while the pacer holds it.
     /// </summary>
     public sealed class TurnPlayback
     {
@@ -29,12 +31,20 @@ namespace XRim.Presentation.Playback
 
         public bool IsPlaying { get; private set; }
 
+        /// <summary>Bends the pace of playback (hitstop); null plays at the player's speed.</summary>
+        public IPlaybackPacer Pacer { get; set; }
+
         public TurnPlayback(PerSide<DummyView> views, ArenaSpace space)
         {
             _views = Guard.NotNull(views, nameof(views));
             _space = space;
             Player.PoseChanged += ShowPose;
         }
+
+        /// <summary>The reactor hears every event as playback passes it, in time order.</summary>
+        public void AddReactor(IMatchEventReactor reactor) => Player.EventReached += Guard.NotNull(reactor, nameof(reactor)).OnMatchEvent;
+
+        public void RemoveReactor(IMatchEventReactor reactor) => Player.EventReached -= Guard.NotNull(reactor, nameof(reactor)).OnMatchEvent;
 
         /// <summary>Swaps the drawn dummies (for example after the ragdoll segmentation changed).</summary>
         public void SetViews(PerSide<DummyView> views) => _views = Guard.NotNull(views, nameof(views));
@@ -50,6 +60,7 @@ namespace XRim.Presentation.Playback
             Current = Guard.NotNull(result, nameof(result));
             ShowWeapons(result.FinalBoard.State);
             IsPlaying = true;
+            Pacer?.Reset();
             Player.Play(result.Timeline);
             FinishIfDone();
         }
@@ -69,13 +80,15 @@ namespace XRim.Presentation.Playback
         public void Advance(float realDeltaSeconds)
         {
             if (!IsPlaying) return;
-            Player.Advance(realDeltaSeconds);
+            float delta = Pacer != null && !Player.IsPaused ? Pacer.Pace(realDeltaSeconds) : realDeltaSeconds;
+            Player.Advance(delta);
             FinishIfDone();
         }
 
         private void FinishIfDone()
         {
             if (!IsPlaying || Player.IsPaused || Player.Loop || !Player.IsFinished) return;
+            if (Pacer != null && Pacer.IsHolding) return; // a hit on the last frame still gets its freeze
             IsPlaying = false;
             Finished?.Invoke(Current);
         }

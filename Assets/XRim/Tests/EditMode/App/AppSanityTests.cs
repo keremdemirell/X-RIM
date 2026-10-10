@@ -73,11 +73,12 @@ namespace XRim.Tests.EditMode.App
             Assert.That(settings.BodyMoves, Is.Not.SameAs(live), "the match's snapshot is untouched");
         }
 
-        private static TurnResult CreateResult(RulesSettings settings)
+        /// <summary>A turn where nothing happened, reported as turn <paramref name="turnIndex"/>.</summary>
+        internal static TurnResult CreateResult(RulesSettings settings, int turnIndex = 0)
         {
             BoardSnapshot board = TestData.CreateInitialBoard(settings);
             var report = new ExecutionReport(board.State, new PerSide<SimTime?>(null, null), false);
-            return new TurnResult(0, new TimelineRecorder().Build(), board, report);
+            return new TurnResult(turnIndex, new TimelineRecorder().Build(), board, report);
         }
     }
 }
