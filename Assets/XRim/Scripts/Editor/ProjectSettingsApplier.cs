@@ -1,12 +1,14 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
 namespace XRim.Editor
 {
     /// <summary>
-    /// Menu XRim/Setup/Apply Project Settings. Landscape only (GDD §4: landscape is assumed, TBD) and Physics 2D in
-    /// Script mode: gameplay physics runs in its own manually stepped scene, and cosmetic physics is stepped by
-    /// playback so slow motion slows it too. Safe to run again.
+    /// Menu XRim/Setup/Apply Project Settings. Landscape only (GDD §4: landscape is assumed, TBD), Physics 2D in
+    /// Script mode (gameplay physics runs in its own manually stepped scene, and cosmetic physics is stepped by
+    /// playback so slow motion slows it too) and the Android player settings of a device build
+    /// (<see cref="AndroidPlayerSettingsApplier"/>, Session 10). Safe to run again.
     /// </summary>
     public static class ProjectSettingsApplier
     {
@@ -18,9 +20,12 @@ namespace XRim.Editor
         {
             ApplyLandscapeOrientation();
             bool physicsApplied = ApplyScriptPhysics2DStepping();
+            List<string> androidChanges = AndroidPlayerSettingsApplier.Apply();
             AssetDatabase.SaveAssets();
             Debug.Log("[XRim] Project settings applied: landscape left/right only; Physics 2D simulation mode " +
-                      (physicsApplied ? "= Script." : "NOT changed (see warning)."));
+                      (physicsApplied ? "= Script" : "NOT changed (see warning)") + "; Android: " +
+                      (androidChanges.Count == 0 ? "already set (IL2CPP, ARM64, fullscreen, outside the safe area, frame pacing, package name)."
+                          : string.Join("; ", androidChanges) + "."));
         }
 
         private static void ApplyLandscapeOrientation()

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using XRim.Core;
 using static XRim.Presentation.UI.HudElements;
 
 namespace XRim.Presentation.UI
@@ -28,6 +29,7 @@ namespace XRim.Presentation.UI
 
         private PanelSettings _ownedPanelSettings;
         private VisualElement _root;
+        private HudSafeArea _safeArea;
         private VisualElement _picker;
         private Label _pickerTitle;
         private Label _pickerNote;
@@ -47,12 +49,13 @@ namespace XRim.Presentation.UI
         public event Action ChangeModePressed;
 
         /// <summary>Makes the screens on a new GameObject of their own (see <see cref="PlanningHud.Create"/>); all hidden.</summary>
-        public static MatchScreens Create(Vector2Int referenceResolution)
+        public static MatchScreens Create(Vector2Int referenceResolution, PanelSettings panelSettingsTemplate = null)
         {
-            UIDocument document = CreateDocument("MatchScreens", referenceResolution, SortingOrder, out PanelSettings settings);
+            UIDocument document = CreateDocument("MatchScreens", referenceResolution, SortingOrder, panelSettingsTemplate, out PanelSettings settings);
             var screens = document.gameObject.AddComponent<MatchScreens>();
             screens._document = document;
             screens._ownedPanelSettings = settings;
+            screens._safeArea = new HudSafeArea(referenceResolution);
             document.gameObject.SetActive(true);
             return screens;
         }
@@ -66,6 +69,11 @@ namespace XRim.Presentation.UI
             }
 
             Build(_document.rootVisualElement);
+        }
+
+        private void Update()
+        {
+            if (_root != null && _safeArea.Changed(out ScreenInsets insets)) PadScreens(insets);
         }
 
         private void OnDestroy()
@@ -132,6 +140,16 @@ namespace XRim.Presentation.UI
             BuildCover();
             BuildMatchOver();
             Hide();
+            if (_safeArea.Changed(out ScreenInsets insets)) PadScreens(insets);
+        }
+
+        /// <summary>Each screen's background still reaches every edge (the cover must hide everything); its content stays inside the safe area.</summary>
+        private void PadScreens(ScreenInsets insets)
+        {
+            foreach (VisualElement screen in new VisualElement[] { _picker, _cover, _matchOver })
+            {
+                if (screen != null) PadBy(screen, insets);
+            }
         }
 
         private void BuildPicker()

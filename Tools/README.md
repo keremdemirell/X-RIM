@@ -5,6 +5,7 @@
 ```
 python Tools/check.py                       # all three passes, the guard and the tests
 python Tools/check.py --pass editor         # one pass: editor | player | dev | all (default all)
+python Tools/check.py --player windows      # player passes against: auto (default) | android | windows
 python Tools/check.py --no-tests            # compile and guard only
 python Tools/check.py --filter Resampler    # run only tests whose full name contains the text
 python Tools/check.py --verbose             # response files, dropped references, define changes, every test
@@ -41,8 +42,10 @@ Run it from the project root in Git Bash or PowerShell, after every batch of cha
 | Pass | Defines | Engine DLLs | Assemblies |
 |---|---|---|---|
 | `editor` | Unity's `.rsp` defines, as is | `Editor/Data/Managed/UnityEngine` | all |
-| `player` | editor defines minus the Editor-only and development-only lists below, plus the player's platform defines | the player variation's `Data/Managed` (non-development) | no Editor-only or test asmdefs; define constraints evaluated (`XRim.DebugTools` is excluded) |
-| `dev` | the `player` defines plus `DEVELOPMENT_BUILD`, keeping the development-only list | the development variation's `Data/Managed` | as `player`, so `XRim.DebugTools` is included |
+| `player` | editor defines minus the Editor-only and development-only lists below, plus the player's platform defines | the proxy player's managed engine DLLs (Android: `AndroidPlayer/Variations/il2cpp/Managed`; Windows: the non-development `Data/Managed`) | no Editor-only or test asmdefs; define constraints evaluated (`XRim.DebugTools` is excluded) |
+| `dev` | the `player` defines plus `DEVELOPMENT_BUILD`, keeping the development-only list | the same Android folder (development and release share it; only the defines differ), or the Windows development `Data/Managed` | as `player`, so `XRim.DebugTools` is included |
+
+**Which player.** `--player auto` (the default) uses the Android playback engine when `Editor/Data/PlaybackEngines/AndroidPlayer` has a managed folder, preferring the IL2CPP variation (ARM64 is IL2CPP-only; the Mono variation ships only 32-bit libraries), and falls back to the Windows 64-bit Mono player when it does not. `--player android` and `--player windows` force one and fail if it is not installed; `--player windows` is how the fallback is tested. The header prints which one was used (`player proxy:`).
 
 In both player passes:
 - **Dropped references.** `UnityEditor*` references, Editor tooling DLLs, package assemblies whose asmdef is Editor-only or whose define constraints fail, and precompiled plugins whose `.meta` does not enable them for the player (for example `Mono.Cecil.dll`).
@@ -51,8 +54,9 @@ In both player passes:
 **Removed in both player passes (Editor-only):**
 - every define starting with `UNITY_EDITOR`
 - `UNITY_INCLUDE_TESTS`, `UNITY_TEAM_LICENSE`, `UNITY_PRO_LICENSE`
-- `ENABLE_EDITOR_GAME_SERVICES`, `ENABLE_CLOUD_LICENSE`, `ENABLE_EDITOR_HUB_LICENSE`
-- `ENABLE_UNITY_COLLECTIONS_CHECKS`, `ENABLE_ACCELERATOR_CLIENT_DEBUGGING`, `ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API`, `EDITOR_ONLY_NAVMESH_BUILDER_DEPRECATED`
+- `ENABLE_UNITY_COLLECTIONS_CHECKS`, `ENABLE_BURST_AOT`
+
+(Not removed, although their names sound Editor-only: `ENABLE_EDITOR_GAME_SERVICES`, `ENABLE_CLOUD_LICENSE`, `ENABLE_EDITOR_HUB_LICENSE`, `ENABLE_ACCELERATOR_CLIENT_DEBUGGING`, `ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API`, `EDITOR_ONLY_NAVMESH_BUILDER_DEPRECATED`. A real Android development player has them. The first version of this list removed them and kept `ENABLE_BURST_AOT`; the real player build showed both were wrong.)
 
 **Removed in `player`, kept in `dev` (development only):** `ENABLE_PROFILER`, `DEBUG`, `TRACE`, `UNITY_ASSERTIONS`.
 
@@ -62,14 +66,14 @@ In both player passes:
   - **Windows proxy:** `UNITY_STANDALONE`, `UNITY_STANDALONE_WIN`, `PLATFORM_STANDALONE`, `PLATFORM_STANDALONE_WIN`.
   - **Android proxy:** `UNITY_ANDROID` and `PLATFORM_ANDROID`, plus `ENABLE_IL2CPP` in place of `ENABLE_MONO` for an IL2CPP variation.
 
-**How these lists were derived.** They come from comparing Unity's Editor `.rsp` defines with Unity's documented player defines (`UNITY_EDITOR*` only in the Editor, `DEVELOPMENT_BUILD` only in development players) and with the order in which Unity's native define table emits them. There, `ENABLE_PROFILER`, `DEBUG`/`TRACE` and `UNITY_ASSERTIONS` sit in the development-or-Editor group, and the license, services and collections-check defines are Editor-only. No player build exists yet to confirm this against a real player `.rsp`; Session 10 will produce one.
+**How these lists were derived.** They come from comparing Unity's Editor `.rsp` defines with Unity's documented player defines (`UNITY_EDITOR*` only in the Editor, `DEVELOPMENT_BUILD` only in development players) and with the order in which Unity's native define table emits them. There, `ENABLE_PROFILER`, `DEBUG`/`TRACE` and `UNITY_ASSERTIONS` sit in the development-or-Editor group, and the license, services and collections-check defines are Editor-only. **Verified against a real build (Session 10, 2026-10-10):** Unity writes the compile of a device build to `Library/Bee/artifacts/<hash>PDev.dag/XRim.*.rsp`. After the first Android development build, the dev pass's derived define list (for `XRim.Core`) equals that file's exactly (145 defines) once the two corrections above were made. Every run now compares again when such a file exists and prints `dev defines against a real player build`: `OK` when they are equal, a `NOTE` naming the differences when not (informational, never a failed check: update the lists at the top of `check.py`). Without a device build it says the lists are derived, not verified. Only the development player is verified; the non-development lists (no `ENABLE_PROFILER`, `DEBUG`, `TRACE`, `UNITY_ASSERTIONS`) follow Unity's documentation and stay derived until a release build exists.
 
 ### Limits
 
-- **Windows is the stand-in for mobile players.** Only the Windows standalone playback engine is installed, so the player passes compile against the Windows 64-bit Mono player DLLs.
-  - When an Android playback engine is installed (`Editor/Data/PlaybackEngines/AndroidPlayer`), the tool uses it automatically. That path is untested until then.
-  - Code inside `#if UNITY_ANDROID` or `#if UNITY_IOS` is not compiled while Windows is the proxy.
-  - iOS cannot be checked from this Windows machine.
+- **Android is the stand-in for mobile players; iOS is not checked.** With Android Build Support installed (since 2026-10-10) the player passes compile against the Android IL2CPP player DLLs, with `UNITY_ANDROID`, `PLATFORM_ANDROID` and `ENABLE_IL2CPP` set.
+  - Without it, the Windows 64-bit Mono player stands in, and code inside `#if UNITY_ANDROID` or `#if UNITY_IOS` is not compiled.
+  - Code inside `#if UNITY_IOS` is never compiled: iOS cannot be checked from this Windows machine.
+  - The tool compiles; it does not build. IL2CPP-only failures (for example code that the AOT compiler cannot generate) show up only in a real build.
 - **Package references are Editor builds.** Package assemblies (for example `UnityEngine.UI.ref.dll` and `Unity.InputSystem.ref.dll`) exist only as reference DLLs built for the Editor. The player passes compile against those Editor builds, so a package API that exists only in the Editor is not caught.
 - **The `.rsp` files are a snapshot.** Defines, language settings and package references are those of Unity's last compile. The tool rebuilds source lists and XRim references itself, adds package references that an asmdef gained since then, and notes when an asmdef is newer than its `.rsp`.
   - It does not notice a package reference that was *removed* from an asmdef, or `versionDefines` of a module Unity has not compiled yet.

@@ -27,6 +27,7 @@ namespace XRim.Presentation.UI
 
         private PanelSettings _ownedPanelSettings;
         private VisualElement _root;
+        private HudSafeArea _safeArea;
         private FighterBlock _screenLeft;
         private FighterBlock _screenRight;
         private Label _turnLabel;
@@ -36,12 +37,13 @@ namespace XRim.Presentation.UI
         private bool _visible = true;
 
         /// <summary>Makes the HUD on a new GameObject of its own (see <see cref="PlanningHud.Create"/>).</summary>
-        public static MatchHud Create(Vector2Int referenceResolution)
+        public static MatchHud Create(Vector2Int referenceResolution, PanelSettings panelSettingsTemplate = null)
         {
-            UIDocument document = CreateDocument("MatchHud", referenceResolution, SortingOrder, out PanelSettings settings);
+            UIDocument document = CreateDocument("MatchHud", referenceResolution, SortingOrder, panelSettingsTemplate, out PanelSettings settings);
             var hud = document.gameObject.AddComponent<MatchHud>();
             hud._document = document;
             hud._ownedPanelSettings = settings;
+            hud._safeArea = new HudSafeArea(referenceResolution);
             document.gameObject.SetActive(true);
             return hud;
         }
@@ -55,6 +57,11 @@ namespace XRim.Presentation.UI
             }
 
             Build(_document.rootVisualElement);
+        }
+
+        private void Update()
+        {
+            if (_root != null && _safeArea.Changed(out ScreenInsets insets)) InsetEdges(_root, insets);
         }
 
         private void OnDestroy()
@@ -101,6 +108,7 @@ namespace XRim.Presentation.UI
             PrepareRoot(root);
             _root = root;
             _root.style.display = _visible ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_safeArea.Changed(out ScreenInsets insets)) InsetEdges(_root, insets); // nothing here may hide under a notch
 
             VisualElement row = Plain(_root);
             Absolute(row);

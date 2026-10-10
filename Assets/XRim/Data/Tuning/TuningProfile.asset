@@ -42,3 +42,4 @@ MonoBehaviour:
   _arenaSpace: {fileID: 11400000, guid: f2fa716adf639a44d8d29c213e46672d, type: 2}
   _feel: {fileID: 11400000, guid: 194ccb5518b5ff64c9c987a6115ba7ab, type: 2}
   _balanceTargets: {fileID: 11400000, guid: 26f8fdbc648ea834fa5e2f098fc381e8, type: 2}
+  _display: {fileID: 11400000, guid: 96778fafffa132b45b24be5e3e022dd4, type: 2}

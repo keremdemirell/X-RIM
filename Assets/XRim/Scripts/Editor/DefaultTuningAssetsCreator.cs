@@ -41,6 +41,7 @@ namespace XRim.Editor
             Assign<ArenaSpaceConfig>(profileObject, TuningProfile.FieldNames.ArenaSpace, "ArenaSpace", created);
             Assign<FeelConfig>(profileObject, TuningProfile.FieldNames.Feel, "Feel", created);
             Assign<BalanceTargetsConfig>(profileObject, TuningProfile.FieldNames.BalanceTargets, "BalanceTargets", created);
+            Assign<DisplayConfig>(profileObject, TuningProfile.FieldNames.Display, "Display", created);
 
             foreach (WeaponStats stats in GddStartingValues.CreateWeapons())
             {

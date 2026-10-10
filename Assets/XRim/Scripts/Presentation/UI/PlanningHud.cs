@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 using UnityEngine.UIElements;
+using XRim.Core;
 using XRim.Core.Gdd;
 using XRim.Rules;
 using XRim.Rules.Planning;
@@ -52,6 +53,8 @@ namespace XRim.Presentation.UI
         private readonly List<WeaponButton> _weaponButtons = new List<WeaponButton>();
         private PanelSettings _ownedPanelSettings;
         private VisualElement _root;
+        private VisualElement _safe;
+        private HudSafeArea _safeArea;
         private VisualElement _bodyStrip;
         private VisualElement _selectorColumn;
         private VisualElement _selectorRow;
@@ -79,15 +82,17 @@ namespace XRim.Presentation.UI
         public VisualElement SignatureSlot { get; private set; }
 
         /// <summary>
-        /// Makes a HUD on a new GameObject of its own, with the panel settings it needs created in code (scales with the screen
-        /// height from <paramref name="referenceResolution"/>). The object starts inactive so the document is ready when the HUD builds.
+        /// Makes a HUD on a new GameObject of its own, with its own panel settings (a copy of <paramref name="panelSettingsTemplate"/>,
+        /// scaling with the screen height from <paramref name="referenceResolution"/>; see <see cref="HudElements.CreateDocument"/>).
+        /// The object starts inactive so the document is ready when the HUD builds.
         /// </summary>
-        public static PlanningHud Create(Vector2Int referenceResolution)
+        public static PlanningHud Create(Vector2Int referenceResolution, PanelSettings panelSettingsTemplate = null)
         {
-            UIDocument document = CreateDocument("PlanningHud", referenceResolution, SortingOrder, out PanelSettings settings);
+            UIDocument document = CreateDocument("PlanningHud", referenceResolution, SortingOrder, panelSettingsTemplate, out PanelSettings settings);
             var hud = document.gameObject.AddComponent<PlanningHud>();
             hud._document = document;
             hud._ownedPanelSettings = settings;
+            hud._safeArea = new HudSafeArea(referenceResolution);
             document.gameObject.SetActive(true);
             return hud;
         }
@@ -101,6 +106,11 @@ namespace XRim.Presentation.UI
             }
 
             Build(_document.rootVisualElement);
+        }
+
+        private void Update()
+        {
+            if (_safe != null && _safeArea.Changed(out ScreenInsets insets)) ApplyInsets(insets);
         }
 
         private void OnDestroy()
@@ -257,13 +267,25 @@ namespace XRim.Presentation.UI
             _root = root;
             _root.style.display = _visible ? DisplayStyle.Flex : DisplayStyle.None;
 
+            // The body strip is the touch zone made visible, so it stays at the screen edge whatever covers it; the selector column starts
+            // at the zone's edge, clear of any side notch. Everything else sits inside the safe area.
             BuildBodyStrip();
             BuildSelectorColumn();
+            _safe = Plain(_root);
+            Absolute(_safe);
             BuildTimer();
             BuildOpponent();
             BuildMessage();
             BuildBottomCorner();
             ApplyLayout();
+            if (_safeArea.Changed(out ScreenInsets insets)) ApplyInsets(insets);
+        }
+
+        /// <summary>Moves what sits near a screen edge in from a notch, a cut-out or rounded corners (<see cref="HudSafeArea"/>).</summary>
+        private void ApplyInsets(ScreenInsets insets)
+        {
+            InsetEdges(_safe, insets);
+            _selectorColumn.style.top = TopMargin + insets.Top;
         }
 
         private void BuildBodyStrip()
@@ -321,7 +343,7 @@ namespace XRim.Presentation.UI
 
         private void BuildTimer()
         {
-            VisualElement row = Plain(_root);
+            VisualElement row = Plain(_safe);
             Absolute(row);
             row.style.left = 0;
             row.style.right = 0;
@@ -334,7 +356,7 @@ namespace XRim.Presentation.UI
 
         private void BuildOpponent()
         {
-            _opponentBox = Plain(_root);
+            _opponentBox = Plain(_safe);
             Absolute(_opponentBox);
             _opponentBox.style.top = TopMargin;
             _opponentBox.style.backgroundColor = PanelColor;
@@ -349,7 +371,7 @@ namespace XRim.Presentation.UI
 
         private void BuildMessage()
         {
-            VisualElement row = Plain(_root);
+            VisualElement row = Plain(_safe);
             Absolute(row);
             row.style.left = 0;
             row.style.right = 0;
@@ -367,7 +389,7 @@ namespace XRim.Presentation.UI
 
         private void BuildBottomCorner()
         {
-            _bottomCorner = Plain(_root);
+            _bottomCorner = Plain(_safe);
             Absolute(_bottomCorner);
             _bottomCorner.style.bottom = 24;
             _bottomCorner.style.flexDirection = FlexDirection.Row;

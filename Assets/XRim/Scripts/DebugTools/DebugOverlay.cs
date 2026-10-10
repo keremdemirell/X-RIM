@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using XRim.App;
 using XRim.Config;
@@ -9,7 +10,9 @@ namespace XRim.DebugTools
 {
     /// <summary>
     /// In-game debug panel (IMGUI, works with touch on device). Tabs: live tuning, execution playback
-    /// (slow motion, frame step, re-simulate last turn), and cheats.
+    /// (slow motion, frame step, re-simulate last turn), cheats, and the device (what it is, its screen, frame rate, what the
+    /// simulation costs per turn, the fingers on the screen). On a phone the whole panel is scaled up from the screen's dpi, so its
+    /// button and text are big enough to touch, and it keeps clear of a notch or cut-out.
     /// </summary>
     public sealed class DebugOverlay : MonoBehaviour
     {
@@ -18,10 +21,18 @@ namespace XRim.DebugTools
         private const float ToggleHeight = 44f;
         private const float PanelWidth = 460f;
 
-        private static readonly string[] Tabs = { "Tuning", "Playback", "Cheats" };
+        /// <summary>A phone's dpi divided by this is how much the panel is enlarged (a desktop screen, near 96 dpi, is not).</summary>
+        private const float ReferenceDpi = 200f;
+
+        private const float MaxScale = 3f;
+        private const int FrameWindow = 120;
+
+        private static readonly string[] Tabs = { "Tuning", "Playback", "Cheats", "Device" };
 
         private readonly TuningPanel _tuningPanel = new TuningPanel();
         private readonly PlaybackPanel _playbackPanel = new PlaybackPanel();
+        private readonly DevicePanel _devicePanel = new DevicePanel();
+        private readonly RollingStatistics _frameMilliseconds = new RollingStatistics(FrameWindow);
         private MatchBootstrap _bootstrap;
         private GameplayGizmos _gizmos;
         private bool _open;
@@ -39,30 +50,73 @@ namespace XRim.DebugTools
             else _bootstrap.AddTouchBlocker(new OverlayTouchBlocker(this)); // a tap on the Debug button is not a body-zone tap
         }
 
-        /// <summary>True when a screen point (GUI coordinates, y down) is on the Debug button or the open panel.</summary>
+        private void Update() => _frameMilliseconds.Add(Time.unscaledDeltaTime * 1000.0);
+
+        /// <summary>True when a screen point (screen pixels, y down) is on the Debug button or the open panel.</summary>
         internal bool Covers(Vector2 guiPoint)
         {
-            if (ToggleRect.Contains(guiPoint)) return true;
-            return _open && PanelRect.Contains(guiPoint);
+            float scale = Scale();
+            Vector2 inGuiUnits = guiPoint / scale;
+            if (ToggleRect(scale).Contains(inGuiUnits)) return true;
+            return _open && PanelRect(scale).Contains(inGuiUnits);
         }
 
-        private static Rect ToggleRect => new Rect(Margin, Margin, ToggleWidth, ToggleHeight);
+        /// <summary>How much bigger than a desktop screen the panel is drawn: a phone's pixels are small, its fingers are not.</summary>
+        private static float Scale() => Screen.dpi > 0f ? Mathf.Clamp(Screen.dpi / ReferenceDpi, 1f, MaxScale) : 1f;
 
-        private static Rect PanelRect
+        /// <summary>What the screen's notch, cut-out and rounded corners cover now (pixels), so the button is never under one.</summary>
+        private static ScreenInsets UnsafeEdges()
         {
-            get
-            {
-                float top = Margin * 2f + ToggleHeight;
-                return new Rect(Margin, top, PanelWidth, Screen.height - top - Margin);
-            }
+            Rect safe = Screen.safeArea;
+            return ScreenInsets.FromSafeArea(safe.x, safe.y, safe.width, safe.height, Screen.width, Screen.height);
+        }
+
+        // Both rectangles are in GUI units (screen pixels divided by the scale).
+        private static Rect ToggleRect(float scale)
+        {
+            ScreenInsets edges = UnsafeEdges();
+            return new Rect(Margin + edges.Left / scale, Margin + edges.Top / scale, ToggleWidth, ToggleHeight);
+        }
+
+        private static Rect PanelRect(float scale)
+        {
+            ScreenInsets edges = UnsafeEdges();
+            float top = Margin * 2f + ToggleHeight + edges.Top / scale;
+            float width = Math.Min(PanelWidth, Screen.width / scale - Margin * 2f - (edges.Left + edges.Right) / scale);
+            return new Rect(Margin + edges.Left / scale, top, width, Screen.height / scale - top - Margin - edges.Bottom / scale);
+        }
+
+        /// <summary>One line of what this device reports, for the GDD §18 record: screen, refresh rate, frame-rate target, unsafe edges.</summary>
+        private static string DisplayLine()
+        {
+            string target = Application.targetFrameRate < 0 ? "default" : Application.targetFrameRate.ToString();
+            ScreenInsets edges = UnsafeEdges();
+            return $"Display {Screen.width}x{Screen.height} · {Screen.currentResolution.refreshRateRatio.value:0.#} Hz · target {target} fps · " +
+                   $"unsafe edges (px) {(edges.IsNone ? "none" : edges.ToString())}";
         }
 
         private void OnGUI()
         {
-            if (GUI.Button(ToggleRect, _open ? "Close" : "Debug")) _open = !_open;
+            Matrix4x4 previous = GUI.matrix;
+            float scale = Scale();
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            try
+            {
+                DrawOverlay(scale);
+            }
+            finally
+            {
+                GUI.matrix = previous;
+            }
+        }
+
+        private void DrawOverlay(float scale)
+        {
+            if (GUI.Button(ToggleRect(scale), _open ? "Close" : "Debug")) _open = !_open;
             if (!_open) return;
 
-            GUILayout.BeginArea(PanelRect, GUI.skin.box);
+            GUILayout.BeginArea(PanelRect(scale), GUI.skin.box);
+            GUILayout.Label(DisplayLine());
             _tab = GUILayout.Toolbar(_tab, Tabs);
             _scroll = GUILayout.BeginScrollView(_scroll);
             switch (_tab)
@@ -73,8 +127,11 @@ namespace XRim.DebugTools
                 case 1:
                     DrawPlayback();
                     break;
-                default:
+                case 2:
                     DrawCheats();
+                    break;
+                default:
+                    _devicePanel.Draw(_bootstrap, _frameMilliseconds);
                     break;
             }
 

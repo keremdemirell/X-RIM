@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements;
 using XRim.App;
 using XRim.Config;
 using XRim.Input;
@@ -63,6 +64,7 @@ namespace XRim.Editor
             Ragdoll sixBodies = LoadDummy(RagdollSegmentation.SixBodies);
             Ragdoll tenBodies = LoadDummy(RagdollSegmentation.TenBodies);
             Sprite square = PlaceholderSprites.LoadOrCreate().Square;
+            PanelSettings hudPanelSettings = HudPanelSettingsCreator.LoadOrCreate();
 
             var cameraObject = new GameObject("Main Camera") { tag = MainCameraTag };
             var camera = cameraObject.AddComponent<Camera>();
@@ -84,6 +86,7 @@ namespace XRim.Editor
             SetReference(bootstrap, MatchBootstrap.FieldNames.TenBodies, tenBodies);
             SetReference(bootstrap, MatchBootstrap.FieldNames.ArenaRoot, arenaRoot.transform);
             SetReference(bootstrap, MatchBootstrap.FieldNames.Square, square);
+            SetReference(bootstrap, MatchBootstrap.FieldNames.HudPanelSettings, hudPanelSettings);
             SetReference(bootstrap, MatchBootstrap.FieldNames.Camera, camera);
             SetReference(bootstrap, MatchBootstrap.FieldNames.CameraDirector, cameraDirector);
             var serialized = new SerializedObject(bootstrap);

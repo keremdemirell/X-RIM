@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UIElements;
+using XRim.Core;
 
 namespace XRim.Presentation.UI
 {
@@ -24,21 +25,18 @@ namespace XRim.Presentation.UI
         public static readonly Color BadColor = new Color(0.85f, 0.2f, 0.15f);
 
         /// <summary>
-        /// A UI document on a new, inactive GameObject, with panel settings created in code: they scale with the screen height from
-        /// <paramref name="referenceResolution"/>, so a wider screen shows more but nothing grows (like the arena view). The caller adds
-        /// its component, keeps <paramref name="settings"/> to destroy it later, then activates the object.
+        /// A UI document on a new, inactive GameObject, with panel settings from <see cref="HudPanelSettings.Create"/> (a copy of
+        /// <paramref name="template"/>, the PanelSettings asset that carries UI Toolkit's text data; scaling with the screen height from
+        /// <paramref name="referenceResolution"/>). The caller adds its component, keeps <paramref name="settings"/> to destroy it later,
+        /// then activates the object.
         /// </summary>
-        public static UIDocument CreateDocument(string name, Vector2Int referenceResolution, int sortingOrder, out PanelSettings settings)
+        public static UIDocument CreateDocument(string name, Vector2Int referenceResolution, int sortingOrder, PanelSettings template,
+            out PanelSettings settings)
         {
             var gameObject = new GameObject(name);
             gameObject.SetActive(false);
             var document = gameObject.AddComponent<UIDocument>();
-            settings = ScriptableObject.CreateInstance<PanelSettings>();
-            settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
-            settings.referenceResolution = referenceResolution;
-            settings.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
-            settings.match = 1f; // by height
-            settings.sortingOrder = sortingOrder;
+            settings = HudPanelSettings.Create(referenceResolution, sortingOrder, template);
             document.panelSettings = settings;
             return document;
         }
@@ -108,6 +106,24 @@ namespace XRim.Presentation.UI
             style.borderRightColor = EdgeColor;
             style.marginTop = 0;
             style.marginBottom = 0;
+        }
+
+        /// <summary>Puts an absolutely placed element's four edges in from the screen's by the insets (a notch, rounded corners).</summary>
+        public static void InsetEdges(VisualElement element, ScreenInsets insets)
+        {
+            element.style.left = insets.Left;
+            element.style.top = insets.Top;
+            element.style.right = insets.Right;
+            element.style.bottom = insets.Bottom;
+        }
+
+        /// <summary>Inner space on each side by the insets, so centred content stays inside the safe area while the background reaches the edges.</summary>
+        public static void PadBy(VisualElement element, ScreenInsets insets)
+        {
+            element.style.paddingLeft = insets.Left;
+            element.style.paddingTop = insets.Top;
+            element.style.paddingRight = insets.Right;
+            element.style.paddingBottom = insets.Bottom;
         }
 
         /// <summary>Inner space on all four sides.</summary>

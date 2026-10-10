@@ -41,6 +41,11 @@ PACKAGE_ROOTS = (PROJECT_ROOT + "/Library/PackageCache", PROJECT_ROOT + "/Packag
 DEFAULT_UNITY_EDITOR_DIR = "S:/Unity_Editor/Editor"
 UNITY_EDITOR_DIR_ENV = "XRIM_UNITY_EDITOR"
 
+# --player: which installed playback engine the player passes compile against.
+PLAYER_AUTO = "auto"
+PLAYER_ANDROID = "android"
+PLAYER_WINDOWS = "windows"
+
 XRIM_ASSEMBLY_PREFIX = "XRim."
 TEST_DEFINE = "UNITY_INCLUDE_TESTS"
 EDITOR_PLATFORM = "Editor"
@@ -64,17 +69,17 @@ TYPE_NOT_FOUND_CODES = {"CS0246", "CS0234"}
 
 # Defines Unity sets only in the Editor; both player passes remove them. Every define starting with
 # UNITY_EDITOR (UNITY_EDITOR, UNITY_EDITOR_64, UNITY_EDITOR_WIN, ...) is removed as well.
+#
+# Checked against the real Android development player's response file (Session 10): of the defines the first version of this list
+# guessed were Editor-only, six (ENABLE_EDITOR_GAME_SERVICES, ENABLE_CLOUD_LICENSE, ENABLE_EDITOR_HUB_LICENSE,
+# ENABLE_ACCELERATOR_CLIENT_DEBUGGING, ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API, EDITOR_ONLY_NAVMESH_BUILDER_DEPRECATED)
+# are in the real player too, and ENABLE_BURST_AOT, which was kept, is not. Every run compares again when such a file exists.
 EDITOR_ONLY_DEFINES = {
     "UNITY_INCLUDE_TESTS",
     "UNITY_TEAM_LICENSE",
     "UNITY_PRO_LICENSE",
-    "ENABLE_EDITOR_GAME_SERVICES",
-    "ENABLE_CLOUD_LICENSE",
-    "ENABLE_EDITOR_HUB_LICENSE",
     "ENABLE_UNITY_COLLECTIONS_CHECKS",
-    "ENABLE_ACCELERATOR_CLIENT_DEBUGGING",
-    "ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API",
-    "EDITOR_ONLY_NAVMESH_BUILDER_DEPRECATED",
+    "ENABLE_BURST_AOT",
 }
 EDITOR_DEFINE_PREFIX = "UNITY_EDITOR"
 # Defines Unity sets in the Editor and in development players, but not in release players.
@@ -297,6 +302,10 @@ def _find_android_proxy(android_dir: str) -> Optional[PlayerProxy]:
 
     development = sorted((path for path in managed_dirs if is_development(path)), key=preference)
     release = sorted((path for path in managed_dirs if not is_development(path)), key=preference)
+    if not development:
+        # The Android engine keeps one Variations/<backend>/Managed folder per backend: development and release players
+        # share the same engine DLLs and differ only by their defines (DEVELOPMENT_BUILD, DEBUG, ...).
+        development = release
     if not development or not release:
         return None
     backend = "ENABLE_IL2CPP" if "il2cpp" in release[0].lower() else "ENABLE_MONO"
@@ -307,25 +316,38 @@ def _find_android_proxy(android_dir: str) -> Optional[PlayerProxy]:
         identity_defines=["UNITY_ANDROID", "PLATFORM_ANDROID"], backend_define=backend)
 
 
-def find_player_proxy(toolchain: Toolchain) -> PlayerProxy:
+def _find_windows_proxy(windows_dir: str) -> Optional[PlayerProxy]:
+    variations = windows_dir + "/Variations"
+    release = variations + "/win64_player_nondevelopment_mono/Data/Managed"
+    development = variations + "/win64_player_development_mono/Data/Managed"
+    if not (os.path.isdir(release) and os.path.isdir(development)):
+        return None
+    return PlayerProxy(
+        label="Windows 64-bit Mono player, standing in for Android and iOS",
+        asmdef_platform="WindowsStandalone64", plugin_platform=("Standalone", "Win64"),
+        plugin_exclude_key="Win64", release_managed_dir=release, development_managed_dir=development,
+        identity_defines=["UNITY_STANDALONE", "UNITY_STANDALONE_WIN", "PLATFORM_STANDALONE",
+                          "PLATFORM_STANDALONE_WIN"],
+        backend_define="ENABLE_MONO")
+
+
+def find_player_proxy(toolchain: Toolchain, choice: str = PLAYER_AUTO) -> PlayerProxy:
+    """The player the two player passes compile against: Android when its playback engine is usable, else Windows."""
     engines = toolchain.unity_dir + "/Data/PlaybackEngines"
     entries = {name.lower(): f"{engines}/{name}" for name in os.listdir(engines)} if os.path.isdir(engines) else {}
-    if "androidplayer" in entries:
-        proxy = _find_android_proxy(entries["androidplayer"])
+    if choice in (PLAYER_AUTO, PLAYER_ANDROID):
+        proxy = _find_android_proxy(entries["androidplayer"]) if "androidplayer" in entries else None
         if proxy is not None:
             return proxy
-    if "windowsstandalonesupport" in entries:
-        variations = entries["windowsstandalonesupport"] + "/Variations"
-        release = variations + "/win64_player_nondevelopment_mono/Data/Managed"
-        development = variations + "/win64_player_development_mono/Data/Managed"
-        if os.path.isdir(release) and os.path.isdir(development):
-            return PlayerProxy(
-                label="Windows 64-bit Mono player, standing in for Android and iOS",
-                asmdef_platform="WindowsStandalone64", plugin_platform=("Standalone", "Win64"),
-                plugin_exclude_key="Win64", release_managed_dir=release, development_managed_dir=development,
-                identity_defines=["UNITY_STANDALONE", "UNITY_STANDALONE_WIN", "PLATFORM_STANDALONE",
-                                  "PLATFORM_STANDALONE_WIN"],
-                backend_define="ENABLE_MONO")
+        if choice == PLAYER_ANDROID:
+            raise CheckError(f"--player android: no usable Android playback engine under {engines}/AndroidPlayer "
+                             f"(install Android Build Support through Unity Hub).")
+    if choice in (PLAYER_AUTO, PLAYER_WINDOWS):
+        proxy = _find_windows_proxy(entries["windowsstandalonesupport"]) if "windowsstandalonesupport" in entries else None
+        if proxy is not None:
+            return proxy
+        if choice == PLAYER_WINDOWS:
+            raise CheckError(f"--player windows: no usable Windows win64 Mono playback engine under {engines}.")
     raise CheckError(f"No usable player playback engine under {engines} (looked for AndroidPlayer and "
                      f"WindowsStandaloneSupport win64 Mono variations).")
 
@@ -615,6 +637,7 @@ class BeeSnapshot:
             raise CheckError("Library/Bee/artifacts does not exist. Open the project in Unity once so it compiles "
                              "the scripts and writes its compiler response files.")
         candidates = []
+        player_candidates = []
         for entry in os.listdir(BEE_ARTIFACTS_ROOT):
             dag = f"{BEE_ARTIFACTS_ROOT}/{entry}"
             if not entry.endswith(".dag") or not os.path.isdir(dag):
@@ -626,10 +649,13 @@ class BeeSnapshot:
             newest = max(rsps, key=os.path.getmtime)
             if "UNITY_EDITOR" in parse_response_file(newest).defines:
                 candidates.append((os.path.getmtime(newest), dag))
+            else:
+                player_candidates.append((os.path.getmtime(newest), dag))   # a real player build's compile
         if not candidates:
             raise CheckError("No Editor compile of the XRim assemblies was found under Library/Bee/artifacts. "
                              "Open the project in Unity once so it writes XRim.*.rsp.")
         self.mtime, self.dag = max(candidates)
+        self.player_dag: Optional[str] = max(player_candidates)[1] if player_candidates else None
         self._cache: Dict[str, ResponseFile] = {}
 
     def response_file(self, assembly_name: str) -> Optional[ResponseFile]:
@@ -639,6 +665,13 @@ class BeeSnapshot:
         if assembly_name not in self._cache:
             self._cache[assembly_name] = parse_response_file(path)
         return self._cache[assembly_name]
+
+    def real_player_response_file(self, assembly_name: str) -> Optional[ResponseFile]:
+        """The response file of the same assembly from the newest real player build (a device build), if one exists."""
+        if self.player_dag is None:
+            return None
+        path = f"{self.player_dag}/{assembly_name}.rsp"
+        return parse_response_file(path) if os.path.isfile(path) else None
 
     def reference_dll(self, assembly_name: str) -> Optional[str]:
         path = f"{self.dag}/{assembly_name}.ref.dll"
@@ -870,7 +903,7 @@ class Checker:
         self.arguments = arguments
         self.verbose: bool = arguments.verbose
         self.toolchain = find_toolchain()
-        self.proxy = find_player_proxy(self.toolchain)
+        self.proxy = find_player_proxy(self.toolchain, arguments.player)
         self.packages = PackageIndex()
         self.scan = ProjectScan(self.packages)
         self.bee = BeeSnapshot()
@@ -1249,6 +1282,40 @@ class Checker:
         print(f"  defines removed: {' '.join(removed) or '-'}")
         print(f"  defines added:   {' '.join(added) or '-'}")
 
+    def verify_dev_defines(self) -> None:
+        """
+        Compares the define list the dev pass derived with the one in a real development player's response file, when a device build
+        has been made (Library/Bee/artifacts/*PDev.dag). Informational: a difference means the derived lists at the top of this file
+        need updating (or the build is older than the last Unity change), never a failed check.
+        """
+        name = next((candidate for candidate in self.order if self.bee.response_file(candidate)), None)
+        print("\ndev defines against a real player build")
+        if name is None:
+            print("  no Editor response file to derive from: not compared")
+            return
+        real = self.bee.real_player_response_file(name)
+        if real is None:
+            print("  no device build compile under Library/Bee/artifacts (run XRim/Build/Android Development Build once): the define "
+                  "lists are derived, not verified")
+            return
+
+        actual = set(real.defines)
+        where = project_relative(os.path.dirname(real.path))
+        if self.proxy.identity_defines[0] not in actual or DEVELOPMENT_BUILD_DEFINE not in actual:
+            print(f"  {where} is not a development build for {self.proxy.label}: not compared")
+            return
+
+        derived = set(transform_defines(self.bee.response_file(name).defines, PASS_SPECS["dev"], self.proxy, self.active_target))
+        only_real, only_derived = sorted(actual - derived), sorted(derived - actual)
+        if not only_real and not only_derived:
+            print(f"  OK: the derived list equals the real development player's ({len(actual)} defines of {name}, {where})")
+            return
+        print(f"  NOTE: the derived list differs from the real development player's ({where}); update EDITOR_ONLY_DEFINES and friends")
+        if only_real:
+            print(f"    only in the real player (the tool removes or never adds them): {' '.join(only_real)}")
+        if only_derived:
+            print(f"    only derived (the real player does not have them): {' '.join(only_derived)}")
+
     # -- engine-free guard ---------------------------------------------------------------------------
 
     def run_guard(self, spec: PassSpec, results: Dict[str, Tuple[Optional[CompileUnit], CompileResult]]) -> None:
@@ -1450,6 +1517,8 @@ class Checker:
             self.print_pass(spec, results)
             if key == "editor":
                 editor_results = results
+            if key == "dev":
+                self.verify_dev_defines()
             if not guarded:
                 self.run_guard(spec, results)
                 guarded = True
@@ -1471,6 +1540,9 @@ def parse_arguments(argv: List[str]) -> argparse.Namespace:
                     "and run the engine-free EditMode tests. See Tools/README.md.")
     parser.add_argument("--pass", dest="pass_name", choices=("editor", "player", "dev", "all"), default="all",
                         help="which compile pass to run (default: all)")
+    parser.add_argument("--player", choices=(PLAYER_AUTO, PLAYER_ANDROID, PLAYER_WINDOWS), default=PLAYER_AUTO,
+                        help="playback engine the player passes compile against: android, windows, or auto "
+                             "(Android when installed, else Windows; default)")
     parser.add_argument("--no-tests", action="store_true", help="compile only; do not run tests")
     parser.add_argument("--filter", metavar="TEXT", default="",
                         help="run only tests whose full name contains TEXT")

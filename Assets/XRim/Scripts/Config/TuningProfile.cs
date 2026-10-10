@@ -38,6 +38,7 @@ namespace XRim.Config
         [SerializeField] private ArenaSpaceConfig _arenaSpace;
         [SerializeField] private FeelConfig _feel;
         [SerializeField] private BalanceTargetsConfig _balanceTargets;
+        [SerializeField] private DisplayConfig _display;
 
         public InputConfig InputConfig => _input;
 
@@ -45,6 +46,9 @@ namespace XRim.Config
         public SimulationConfig SimulationConfig => _simulation;
         public FeelConfig Feel => _feel;
         public BalanceTargetsConfig BalanceTargets => _balanceTargets;
+
+        /// <summary>Frame-rate target and other device display settings; null in a profile made before Session 10 (run Create Default Tuning Assets).</summary>
+        public DisplayConfig Display => _display;
 
         public ArenaSpace ArenaSpace =>
             _arenaSpace != null ? _arenaSpace.CreateSpace() : new ArenaSpace(ArenaSpaceConfig.DefaultWorldUnitsPerArenaUnit);
@@ -104,10 +108,10 @@ namespace XRim.Config
             }
         }
 
-        /// <summary>Unity-only tuning assets (input, scale, feel, targets).</summary>
+        /// <summary>Unity-only tuning assets (input, scale, feel, targets, display).</summary>
         public IEnumerable<ScriptableObject> ClientConfigs()
         {
-            ScriptableObject[] configs = { _input, _arenaSpace, _feel, _balanceTargets };
+            ScriptableObject[] configs = { _input, _arenaSpace, _feel, _balanceTargets, _display };
             foreach (ScriptableObject config in configs)
             {
                 if (config != null) yield return config;
@@ -164,6 +168,7 @@ namespace XRim.Config
             public const string ArenaSpace = nameof(_arenaSpace);
             public const string Feel = nameof(_feel);
             public const string BalanceTargets = nameof(_balanceTargets);
+            public const string Display = nameof(_display);
         }
     }
 }

@@ -7,6 +7,7 @@ namespace XRim.Editor
     {
         public const string MenuSetup = "XRim/Setup/";
         public const string MenuReports = "XRim/Reports/";
+        public const string MenuBuild = "XRim/Build/";
 
         public const string XRimRoot = "Assets/XRim";
         public const string DataFolder = XRimRoot + "/Data";
@@ -14,10 +15,12 @@ namespace XRim.Editor
         public const string WeaponsFolder = DataFolder + "/Weapons";
         public const string BodyMovesFolder = DataFolder + "/BodyMoves";
         public const string ScenesFolder = XRimRoot + "/Scenes";
+        public const string UiFolder = XRimRoot + "/UI";
         public const string PlaceholderArtFolder = XRimRoot + "/Art/Placeholder";
         public const string DummyPrefabsFolder = XRimRoot + "/Prefabs/Dummies";
 
         public const string TuningProfilePath = TuningFolder + "/TuningProfile.asset";
+        public const string HudPanelSettingsPath = UiFolder + "/HudPanelSettings.asset";
         public const string SandboxScenePath = ScenesFolder + "/Sandbox.unity";
         public const string MatchScenePath = ScenesFolder + "/Match.unity";
 

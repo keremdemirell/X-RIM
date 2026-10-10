@@ -16,13 +16,22 @@ namespace XRim.App
     /// </summary>
     public sealed class RecordingTurnSimulator : ITurnSimulator
     {
+        /// <summary>How many of the latest turns the default timing window holds.</summary>
+        public const int DefaultTimingWindowTurns = 100;
+
         private readonly ITurnSimulator _inner;
         private readonly Stopwatch _watch = new Stopwatch();
 
-        public RecordingTurnSimulator(ITurnSimulator inner)
+        /// <param name="inner">The simulator that does the work.</param>
+        /// <param name="timing">Where each turn's simulation time (milliseconds) is recorded, so the numbers can outlive this simulator (one per match); a window of its own when none is given.</param>
+        public RecordingTurnSimulator(ITurnSimulator inner, RollingStatistics timing = null)
         {
             _inner = Guard.NotNull(inner, nameof(inner));
+            Timing = timing ?? new RollingStatistics(DefaultTimingWindowTurns);
         }
+
+        /// <summary>The simulation time of every turn run through this simulator, in milliseconds (GDD §18 performance budget).</summary>
+        public RollingStatistics Timing { get; }
 
         /// <summary>The last turn's board, plans and settings; null before the first turn.</summary>
         public TurnInput LastInput { get; private set; }
@@ -57,6 +66,7 @@ namespace XRim.App
             TurnResult result = _inner.Simulate(input);
             _watch.Stop();
             LastSimulationMilliseconds = _watch.Elapsed.TotalMilliseconds;
+            Timing.Add(LastSimulationMilliseconds);
             return result;
         }
     }

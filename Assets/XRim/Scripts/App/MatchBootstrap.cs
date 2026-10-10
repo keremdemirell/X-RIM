@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using XRim.Config;
 using XRim.Core;
@@ -23,6 +24,7 @@ using XRim.Simulation.Physics;
 using XRim.Simulation.Recording;
 using XRim.Simulation.Settings;
 using XRim.Simulation.Unity2D;
+using PanelSettings = UnityEngine.UIElements.PanelSettings;
 
 namespace XRim.App
 {
@@ -46,6 +48,9 @@ namespace XRim.App
         private const string LeftDummyName = "LeftDummy";
         private const string RightDummyName = "RightDummy";
 
+        /// <summary>How many of the latest turns' simulation times the debug overlay's statistics keep (all-time numbers keep everything).</summary>
+        private const int SimulationTimingWindowTurns = 200;
+
         /// <summary>The human plays the left dummy against the bot.</summary>
         private const Side HumanSide = Side.Left;
 
@@ -62,6 +67,10 @@ namespace XRim.App
         [SerializeField] private Ragdoll _sixBodies;
 
         [SerializeField] private Ragdoll _tenBodies;
+
+        [Tooltip("The HUDs' panel settings asset (XRim/Setup/Create HUD Panel Settings; Create Match Scene wires it). UI Toolkit's text needs " +
+                 "the data an asset carries: panel settings made in code have none, so in a build without this no HUD text would draw.")]
+        [SerializeField] private PanelSettings _hudPanelSettings;
 
         [Tooltip("Parent of every arena visual (the camera director flips it to mirror the view).")]
         [SerializeField] private Transform _arenaRoot;
@@ -83,6 +92,7 @@ namespace XRim.App
         [SerializeField] private float _botWatchPauseSeconds = 1f;
 
         private readonly ManualClock _clock = new ManualClock();
+        private readonly RollingStatistics _simulationTiming = new RollingStatistics(SimulationTimingWindowTurns);
         private readonly TouchBlockerSet _touchBlockers = new TouchBlockerSet();
         private readonly IHandednessLayoutPolicy _handedness = new MirrorWhenLeftHanded();
         private readonly List<TouchSample> _discardedTouches = new List<TouchSample>();
@@ -94,6 +104,10 @@ namespace XRim.App
         private InputConfig _input;
         private ScriptableObject _ownedInput;
         private ScriptableObject _ownedFeel;
+        private ScriptableObject _ownedDisplay;
+        private int _previousTargetFrameRate;
+        private int _previousVSyncCount;
+        private bool _displayApplied;
         private TouchInputReader _touchReader;
         private Material _lineMaterial;
         private PerSide<DummyView> _views;
@@ -159,6 +173,12 @@ namespace XRim.App
         /// <summary>Wall-clock time the last simulation took (debug).</summary>
         public double LastSimulationMilliseconds => _simulator != null ? _simulator.LastSimulationMilliseconds : 0.0;
 
+        /// <summary>
+        /// Every simulated turn's wall-clock cost in milliseconds since the scene started, across matches (GDD §18: the hidden simulation's
+        /// time per turn on this device). Measured by a stopwatch here in the App layer, never inside the rules.
+        /// </summary>
+        public RollingStatistics SimulationTiming => _simulationTiming;
+
         /// <summary>The last turn re-simulated with the current tuning (display only); null if none.</summary>
         public TurnResult LastResimulation { get; private set; }
 
@@ -181,9 +201,10 @@ namespace XRim.App
         /// Wires a scene built in code (tests, tools) before its first frame, as XRim/Setup/Create Match Scene does in the Editor.
         /// </summary>
         public void Configure(TuningProfile tuning, Ragdoll sixBodies, Ragdoll tenBodies, Transform arenaRoot, Sprite square,
-            MatchMode mode, bool pickModeAtStart)
+            MatchMode mode, bool pickModeAtStart, PanelSettings hudPanelSettings = null)
         {
             if (_composed) throw new InvalidOperationException("Configure the match scene before it starts.");
+            _hudPanelSettings = hudPanelSettings;
             _tuning = tuning;
             _sixBodies = sixBodies;
             _tenBodies = tenBodies;
@@ -259,6 +280,8 @@ namespace XRim.App
             if (_matchHud != null) Destroy(_matchHud.gameObject);
             if (_ownedInput != null) Destroy(_ownedInput);
             if (_ownedFeel != null) Destroy(_ownedFeel);
+            if (_ownedDisplay != null) Destroy(_ownedDisplay);
+            RestoreDisplay();
             if (_lineMaterial != null) Destroy(_lineMaterial);
             _world?.Dispose();
             _world = null;
@@ -320,7 +343,7 @@ namespace XRim.App
             BuildViews(SimulationSettings.Segmentation);
 
             _setup = CreateSetup(RulesSettings);
-            _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies));
+            _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies), _simulationTiming);
             if (mode == MatchMode.Sandbox)
             {
                 _simulator.SimulationSettingsOverride = LiveSimulationSettings;
@@ -477,6 +500,7 @@ namespace XRim.App
             _playback.Finished += OnPlaybackFinished;
 
             _input = _tuning.InputConfig != null ? _tuning.InputConfig : OwnedDefault<InputConfig>(ref _ownedInput, "Input");
+            ApplyDisplay(_tuning.Display != null ? _tuning.Display : OwnedDefault<DisplayConfig>(ref _ownedDisplay, "Display"));
             if (_camera == null) _camera = Camera.main;
             if (_cameraDirector == null && _camera != null) _cameraDirector = _camera.GetComponent<FixedSideCameraDirector>();
             _touchReader = GetComponent<TouchInputReader>();
@@ -487,6 +511,34 @@ namespace XRim.App
             return true;
         }
 
+        /// <summary>
+        /// The frame-rate target (GDD §18, a client setting: it never changes an outcome). Vertical sync is switched off, because it
+        /// pins the frame rate to the screen's own and the target only applies without it. What was set before is put back when the
+        /// scene goes, so the Editor is left as it was. Logs what the device reports, for the §18 record.
+        /// </summary>
+        private void ApplyDisplay(DisplayConfig display)
+        {
+            _previousTargetFrameRate = Application.targetFrameRate;
+            _previousVSyncCount = QualitySettings.vSyncCount;
+            _displayApplied = true;
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = display.TargetFrameRate;
+
+            Rect safe = Screen.safeArea;
+            ScreenInsets insets = ScreenInsets.FromSafeArea(safe.x, safe.y, safe.width, safe.height, Screen.width, Screen.height);
+            string target = display.TargetFrameRate == DisplayConfig.PlatformDefaultFrameRate ? "the platform default" : display.TargetFrameRate.ToString();
+            Debug.Log($"[XRim] Display: {Screen.width}x{Screen.height} at {Screen.currentResolution.refreshRateRatio.value:0.#} Hz, frame-rate target " +
+                      $"{target}, unsafe screen edges (pixels) {(insets.IsNone ? "none" : insets.ToString())}.", this);
+        }
+
+        private void RestoreDisplay()
+        {
+            if (!_displayApplied) return;
+            _displayApplied = false;
+            Application.targetFrameRate = _previousTargetFrameRate;
+            QualitySettings.vSyncCount = _previousVSyncCount;
+        }
+
         /// <summary>The HUDs and screens of a real match (the sandbox has its own panels).</summary>
         private void ComposeMatchUi()
         {
@@ -494,13 +546,20 @@ namespace XRim.App
             _touchReader.MouseActsAsTouch = Application.isEditor || !Application.isMobilePlatform; // a mouse plays as a finger
             _lineMaterial = ArenaLines.CreateMaterial();
 
+            // Without the asset a player build draws no HUD text (UI Toolkit has no ICU data for panel settings made in code).
+            if (_hudPanelSettings == null && !Application.isEditor)
+            {
+                Debug.LogError("[XRim] The match scene has no HUD panel settings asset, so no HUD text will draw on this device. " +
+                               "Run XRim/Setup/Create Match Scene (it creates and wires it), then build again.", this);
+            }
+
             Vector2Int reference = _input.ReferenceResolution;
-            _planningHud = PlanningHud.Create(reference);
+            _planningHud = PlanningHud.Create(reference, _hudPanelSettings);
             _planningHud.SetVisible(false);
             _touchBlockers.Add(new HudTouchBlocker(_planningHud));
-            _matchHud = MatchHud.Create(reference);
+            _matchHud = MatchHud.Create(reference, _hudPanelSettings);
             _matchHud.SetVisible(false);
-            _screens = MatchScreens.Create(reference);
+            _screens = MatchScreens.Create(reference, _hudPanelSettings);
             _screens.ModePicked += OnModePicked;
             _screens.CoverConfirmed += OnCoverConfirmed;
             _screens.RematchPressed += Rematch;
@@ -702,12 +761,27 @@ namespace XRim.App
                     ShowBoard(_flow.CurrentWindow.Board);
                     break;
                 case ClientPhase.Playback:
+                    LogSimulatedTurn(_flow.CurrentResult);
                     Play(_flow.CurrentResult);
                     break;
                 case ClientPhase.MatchOver:
                     ShowMatchOver(_flow.Outcome);
                     break;
             }
+        }
+
+        /// <summary>
+        /// One log line per turn with what the simulation cost on this device (the numbers the GDD §18 performance budget needs; the debug
+        /// tools keep the log lines in a file on the device). Culture-invariant, so it reads the same on every phone.
+        /// </summary>
+        private void LogSimulatedTurn(TurnResult turn)
+        {
+            TurnTimeline timeline = turn.Timeline;
+            int steps = timeline.Frames.Count > 0 ? timeline.Frames[timeline.Frames.Count - 1].Step : 0;
+            Debug.Log(string.Format(CultureInfo.InvariantCulture,
+                "[XRim] Turn {0} ({1}) simulated in {2:0.0} ms: {3} steps, {4:0.000} s of playback, {5}. Simulation so far: {6}",
+                turn.TurnIndex + 1, _mode, LastSimulationMilliseconds, steps, timeline.Duration.Seconds, turn.EndReason,
+                _simulationTiming.Describe("ms")), this);
         }
 
         private void OnPlaybackFinished(TurnResult result)
@@ -785,6 +859,7 @@ namespace XRim.App
             public const string TenBodies = nameof(_tenBodies);
             public const string ArenaRoot = nameof(_arenaRoot);
             public const string Square = nameof(_square);
+            public const string HudPanelSettings = nameof(_hudPanelSettings);
             public const string Camera = nameof(_camera);
             public const string CameraDirector = nameof(_cameraDirector);
         }

@@ -15,6 +15,7 @@ namespace XRim.DebugTools
         {
             var root = new GameObject(RootName);
             Object.DontDestroyOnLoad(root);
+            root.AddComponent<DeviceLogWriter>();
             root.AddComponent<DebugOverlay>();
         }
     }
