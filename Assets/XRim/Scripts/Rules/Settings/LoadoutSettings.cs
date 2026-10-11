@@ -11,7 +11,12 @@ namespace XRim.Rules.Settings
         [GddTbd("§6", "Must one loadout slot be a shield?")]
         public bool RequireShieldSlot = false;
 
-        [GddTbd("§12", "Severed limb stats and slot", Proposal = "Temporary extra option")]
+        /// <summary>
+        /// True: the severed-limb club is a temporary extra option beyond the 3 slots while a free limb lies on the floor. False
+        /// (S4): it takes a slot, so picking it up gives up the weapon held before it for the rest of the match.
+        /// </summary>
+        [GddTbd("§12", "Severed limb stats and slot",
+            Proposal = "Designer 2026-10-10 (recommended default): a temporary extra option, with the placeholder stats")]
         public bool SeveredLimbIsExtraOption = true;
 
         [GddTbd("§6", "Starting weapons and default loadout")]

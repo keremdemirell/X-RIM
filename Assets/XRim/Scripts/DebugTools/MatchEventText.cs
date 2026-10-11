@@ -8,15 +8,16 @@ using XRim.Rules.Events;
 namespace XRim.DebugTools
 {
     /// <summary>
-    /// One line per rules outcome for the debug panels (Sessions 06 and 07): a landed hit with its damage, a clash with its angle,
-    /// powers and outcome, a shield block, a cancelled attack, a stun or stagger, a death. Raw contacts and body moves are not
+    /// One line per rules outcome for the debug panels (Sessions 06, 07 and 11): a landed hit with its damage, a clash with its angle,
+    /// powers and outcome, a shield block, a cancelled attack, a stun or stagger, a severed limb, a dropped weapon, a death. Raw contacts and body moves are not
     /// outcomes, so they get no line here.
     /// </summary>
     internal static class MatchEventText
     {
         public static bool IsOutcome(MatchEvent matchEvent) =>
             matchEvent is HitLandedEvent || matchEvent is WeaponClashEvent || matchEvent is ShieldBlockEvent ||
-            matchEvent is AttackInterruptedEvent || matchEvent is StatusAppliedEvent || matchEvent is FighterDiedEvent;
+            matchEvent is AttackInterruptedEvent || matchEvent is StatusAppliedEvent || matchEvent is FighterDiedEvent ||
+            matchEvent is LimbSeveredEvent || matchEvent is WeaponDroppedEvent;
 
         public static string Describe(MatchEvent matchEvent)
         {
@@ -34,7 +35,11 @@ namespace XRim.DebugTools
                 case StatusAppliedEvent status:
                     return time + $"{status.Side} is {status.Kind.ToString().ToLowerInvariant()} for the next turn";
                 case FighterDiedEvent died:
-                    return time + $"{died.Side} is KO";
+                    return time + $"{died.Side} is KO: the torso splits";
+                case LimbSeveredEvent severed:
+                    return time + $"{severed.Side}'s {severed.Part} is SEVERED";
+                case WeaponDroppedEvent dropped:
+                    return time + $"{dropped.Side} drops the {dropped.Weapon.Value}";
                 default:
                     return time + matchEvent.GetType().Name;
             }
@@ -83,7 +88,7 @@ namespace XRim.DebugTools
             if (damage.WasClampedByNoInstantKo)
                 notes.Add(string.Format(CultureInfo.InvariantCulture, "no instant KO: {0:0.#} kept to {1:0.#}", damage.Damage, damage.HpDamage));
             if (damage.Stuns) notes.Add("STUN");
-            if (damage.SeversLimb) notes.Add("limb at 0: would sever (Session 11)");
+            if (damage.SeversLimb) notes.Add("limb at 0: severs");
             string extra = notes.Count > 0 ? " (" + string.Join(", ", notes) + ")" : string.Empty;
             return string.Format(CultureInfo.InvariantCulture, "{0} {1} → {2} {3}: {4:0.#} HP{5}", hit.Hit.Attacker, hit.Hit.Weapon.Value,
                 hit.Hit.Victim, hit.Hit.Part, damage.HpDamage, extra);

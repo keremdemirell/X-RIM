@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules.Damage;
 using XRim.Rules.Events;
+using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Rules.Status;
@@ -29,6 +30,9 @@ namespace XRim.Rules.Combat
     /// <item><b>Damage</b> through <see cref="DamageCalculator"/>; a strong head hit stuns the victim's next turn
     /// (<see cref="IStatusEffectFactory"/>). A killing hit always stops the dead dummy's attack, even through swing armour,
     /// and a killed dummy is not stunned.</item>
+    /// <item><b>Severing</b> (GDD §11, §12): a hit that brings a limb to its durability severs it through <see cref="SeverRules"/>. When
+    /// the lost arm held the victim's weapon, shield or club, it drops and the victim's attack ends after the instant
+    /// (<see cref="AttackStop.WeaponDropped"/>).</item>
     /// </list>
     /// </summary>
     public sealed class HitResolver
@@ -39,6 +43,7 @@ namespace XRim.Rules.Combat
         private readonly RulesSettings _settings;
         private readonly RulePolicies _policies;
         private readonly DamageCalculator _calculator;
+        private readonly SeverRules _severRules = new SeverRules();
         private readonly PerSide<SimTime?> _firstHitTime = new PerSide<SimTime?>(null, null);
 
         /// <param name="state">The match state being resolved this turn; the resolver changes HP, limb damage and statuses.</param>
@@ -76,7 +81,9 @@ namespace XRim.Rules.Combat
             PerSide<bool> deadBefore = PerSide<bool>.Create(side => _state.Fighters[side].IsDead);
             var cancel = new PerSide<bool>(false, false);
             var died = new PerSide<bool>(false, false);
+            var dropped = new PerSide<bool>(false, false);
             var landed = new List<LandedHit>();
+            var severed = new List<SeverOutcome>();
             var events = new List<MatchEvent>();
 
             foreach (HitFacts hit in hits)
@@ -88,6 +95,19 @@ namespace XRim.Rules.Combat
                 Side victim = hit.Victim;
                 if (result.KillsVictim) died[victim] = true;
                 if (weaponsTravelling[victim] && (result.KillsVictim || Interrupts(hit, result.Damage))) cancel[victim] = true;
+                if (!result.Damage.SeversLimb) continue;
+
+                SeverOutcome sever = _severRules.Sever(_state, victim, hit.Part, hit.Time, HoldsItem(victim) && !dropped[victim],
+                    _settings.Damage.LimbLoss);
+                if (sever == null) continue;
+                severed.Add(sever);
+                events.AddRange(sever.Events);
+                if (sever.DropsHeldItem) dropped[victim] = true;
+            }
+
+            foreach (Side side in BothSides)
+            {
+                if (dropped[side]) Attacks[side].StopWith(AttackStop.WeaponDropped);
             }
 
             var interrupted = new List<Side>();
@@ -109,7 +129,7 @@ namespace XRim.Rules.Combat
                 events.Add(new FighterDiedEvent(time, side));
             }
 
-            return new HitResolution(time, landed, interrupted, dead, events);
+            return new HitResolution(time, landed, interrupted, dead, severed, events);
         }
 
         private bool CanLand(HitFacts hit, PerSide<bool> deadBefore, PerSide<bool> weaponsTravelling)
@@ -147,14 +167,18 @@ namespace XRim.Rules.Combat
             return new LandedHit(hit, damage, speedAtHit, attack.SpeedFraction, attack.IsStopped, kills);
         }
 
+        /// <summary>The side holds its weapon, shield or club at this instant: it had one this turn and has not dropped it.</summary>
+        private bool HoldsItem(Side side) => Attacks[side].Weapon != null && Attacks[side].Stop != AttackStop.WeaponDropped;
+
         private bool Interrupts(HitFacts hit, DamageResult damage)
         {
             FighterState victim = _state.Fighters[hit.Victim];
-            BodyPart weaponArm = victim.HasDominantArm ? BodyParts.DominantArm(victim.Handedness) : BodyParts.OffArm(victim.Handedness);
+            BodyPart? weaponArm = victim.HeldItemArm;
             TurnAttack victimAttack = Attacks[hit.Victim];
             if (victimAttack.Weapon == null) return false;
 
-            var check = new InterruptCheck(hit, damage, victimAttack.Weapon, hit.Part == weaponArm, _settings.Damage);
+            bool onWeaponArm = weaponArm.HasValue && hit.Part == weaponArm.Value;
+            var check = new InterruptCheck(hit, damage, victimAttack.Weapon, onWeaponArm, _settings.Damage);
             return _policies.Interrupt.Interrupts(check);
         }
     }

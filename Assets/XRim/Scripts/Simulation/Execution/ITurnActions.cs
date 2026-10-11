@@ -14,8 +14,11 @@ namespace XRim.Simulation.Execution
     {
         SimTime Now { get; }
 
-        /// <summary>The weapon a side holds this turn, its own stats; null when it holds nothing.</summary>
+        /// <summary>The weapon a side holds this turn, its own stats; null when it holds nothing (or dropped it, or died).</summary>
         WeaponStats HeldWeapon(Side side);
+
+        /// <summary>The body part an armless side strikes with (GDD §12, the head by default); null when it is not body-blowing.</summary>
+        BodyPart? StrikingPart(Side side);
 
         /// <summary>The weapon's path speed this turn, with a body move's speed bonus (D13). 0 when it holds nothing.</summary>
         float WeaponSpeedUnitsPerSecond(Side side);
@@ -39,5 +42,14 @@ namespace XRim.Simulation.Execution
 
         /// <summary>Moves the dummy's standing point by this much over the knockback time; it stays there (E1).</summary>
         void KnockBack(Side side, Vec2 displacementUnits);
+
+        /// <summary>The rules severed a limb (GDD §11, §12): its joint breaks by logic and a severed leg is no longer posed.</summary>
+        void SeverLimb(Side side, BodyPart part);
+
+        /// <summary>The arm holding the side's item was severed (GDD §12): the item drops and its attack ends.</summary>
+        void DropHeldItem(Side side);
+
+        /// <summary>The side's dummy died (GDD §11): it drops what it holds, goes limp and its torso splits in two.</summary>
+        void Die(Side side);
     }
 }

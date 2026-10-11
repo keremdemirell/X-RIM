@@ -5,7 +5,7 @@ using XRim.Core.Gdd;
 namespace XRim.Rules.Settings
 {
     /// <summary>
-    /// One weapon, shield or severed-limb club (GDD §6). Identity comes from the ink budget
+    /// One weapon, shield, severed-limb club or armless body blow (GDD §6, §12). Identity comes from the ink budget
     /// (length × thickness) plus mass, speed and damage. Every number is Tunable.
     /// </summary>
     [Serializable]
@@ -25,7 +25,8 @@ namespace XRim.Rules.Settings
         public float InkThicknessUnits;
 
         /// <summary>
-        /// Weapon length from the hand to the tip, arena units. Adds to the arm length for the reach limit (GDD §6).
+        /// Weapon length from the hand to the tip, arena units. Adds to the arm length for the reach limit (GDD §6). A body blow
+        /// has no arm: its length is its whole reach from the shoulder.
         /// </summary>
         [Placeholder("§6 weapon lengths are not given")]
         public float LengthUnits;

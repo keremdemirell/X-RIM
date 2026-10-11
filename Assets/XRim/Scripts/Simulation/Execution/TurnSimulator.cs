@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules;
 using XRim.Rules.Arena;
 using XRim.Rules.Combat;
 using XRim.Rules.Events;
+using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
@@ -33,6 +35,13 @@ namespace XRim.Simulation.Execution
     /// The turn ends once both paths, body moves and knockbacks are done and physics has stayed settled for
     /// <see cref="SimulationSettings.SettleStepsRequired"/> steps, or at the execution hard cap (§3). The last pose is
     /// the next turn's frozen board.
+    /// <para>
+    /// Lost limbs (GDD §11, §12): <see cref="TurnBoard"/> prepares the board before it loads (clubs retrieved and dropped, the item
+    /// each dummy holds placed) and finishes it after. During the turn a severed leg is no longer posed, a dummy without legs sits on
+    /// its pelvis, a dropped item is no longer driven and lands nothing, a dead dummy is left limp, and an armless dummy's body blow
+    /// drives the striking part (<see cref="IArmlessAttackMode"/>, the head by default) along its path while the body leans into it
+    /// (<see cref="HeadbuttLean"/>).
+    /// </para>
     /// </summary>
     public sealed class TurnSimulator : ITurnSimulator
     {
@@ -81,19 +90,27 @@ namespace XRim.Simulation.Execution
             _segmentation = simulation.Segmentation;
             _body = simulation.Ragdoll;
             _pendingContacts.Clear();
-            _world.Load(input.Board.Pose, state, rules, simulation, _edges);
+            PoseSnapshot board = TurnBoard.Prepare(input.Board.Pose, state, rules, simulation, Policies, _aim, _shieldAim);
+            PerSide<SeveredLimbRef?> wieldedAtStart = PerSide<SeveredLimbRef?>.Create(side => state.Fighters[side].HeldLimb);
+            _world.Load(board, state, rules, simulation, _edges);
 
             var clock = new SimClock(simulation.StepRateHz);
             var recorder = new TimelineRecorder();
             PerSide<BodyMove> moves = PerSide<BodyMove>.Create(side => PlannedMove(input.Plans[side]));
-            PerSide<Fighter> fighters = PerSide<Fighter>.Create(side => CreateFighter(side, moves[side], input, state));
+            PerSide<Fighter> fighters = PerSide<Fighter>.Create(side => CreateFighter(side, moves[side], input, board, state));
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                BodyPart? striking = fighters[side].StrikingPart;
+                if (striking.HasValue) _world.StrikeWithBodyPart(side, striking.Value);
+            }
+
             var actions = new FighterActions(_world, fighters, clock, simulation.HitReaction);
             var context = new TurnContactContext(state, rules, Policies, simulation,
                 PerSide<BodyMoveStats>.Create(side => rules.FindBodyMove(moves[side])), actions, recorder);
             _contactHandler.BeginTurn(context);
             RecordBodyMoves(moves, recorder);
 
-            PoseSnapshot pose = _world.CapturePose();
+            PoseSnapshot pose = Capture(state);
             recorder.RecordFrame(clock.Step, clock.Now, pose);
             int lastRecordedStep = clock.Step;
             Remember(fighters, clock.Now, pose);
@@ -111,7 +128,7 @@ namespace XRim.Simulation.Execution
                 _world.Step(clock.StepSeconds);
                 clock.Advance();
 
-                pose = _world.CapturePose();
+                pose = Capture(state);
                 Remember(fighters, clock.Now, pose);
                 if (clock.Step % simulation.RecordEveryNthStep == 0)
                 {
@@ -136,13 +153,32 @@ namespace XRim.Simulation.Execution
             ReleaseContacts(null, context);
             if (lastRecordedStep != clock.Step) recorder.RecordFrame(clock.Step, clock.Now, pose);
 
-            var finalBoard = new BoardSnapshot(state.Clone(), pose.Clone());
+            PoseSnapshot finalPose = pose.Clone();
+            TurnBoard.Finish(finalPose, state, wieldedAtStart, rules, simulation);
+            var finalBoard = new BoardSnapshot(state.Clone(), finalPose);
             PerSide<SimTime?> firstHits = context.FirstValidHitTime;
             var report = new ExecutionReport(state, new PerSide<SimTime?>(firstHits.Left, firstHits.Right), OnTheSameStep(firstHits, clock));
             return new TurnResult(state.TurnIndex, recorder.Build(), finalBoard, report, endReason);
         }
 
         private static BodyMove PlannedMove(TurnPlan plan) => plan != null ? plan.BodyMove : BodyMove.None;
+
+        /// <summary>The world's pose, marked with the limbs each dummy has lost by now (GDD §12), so views know what to draw where.</summary>
+        private PoseSnapshot Capture(MatchState state)
+        {
+            PoseSnapshot pose = _world.CapturePose();
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                FighterPose fighter = pose.Get(side);
+                fighter.SeveredParts = 0;
+                foreach (BodyPart part in BodyParts.All)
+                {
+                    if (state.Fighters[side].IsSevered(part)) fighter.MarkSevered(part);
+                }
+            }
+
+            return pose;
+        }
 
         /// <summary>Both first hits landed during the motion of one simulation step (the §14 exact-tie case).</summary>
         private static bool OnTheSameStep(PerSide<SimTime?> firstHits, SimClock clock) =>
@@ -161,9 +197,9 @@ namespace XRim.Simulation.Execution
             }
         }
 
-        private Fighter CreateFighter(Side side, BodyMove move, TurnInput input, MatchState state)
+        private Fighter CreateFighter(Side side, BodyMove move, TurnInput input, PoseSnapshot board, MatchState state)
         {
-            FighterPose start = input.Board.Pose.Get(side);
+            FighterPose start = board.Get(side);
             TurnPlan plan = input.Plans[side];
             FighterState fighterState = state.Fighters[side];
             BodyMoveStats moveStats = input.Rules.FindBodyMove(move);
@@ -171,31 +207,58 @@ namespace XRim.Simulation.Execution
             IBodyMoveDriver bodyMove = _bodyMoves.Create(move, input.Rules, input.Simulation);
             var moveStart = BodyMoveStart.Of(side, start, fighterState.Handedness, input.Simulation.Ragdoll);
             bodyMove.Begin(moveStats, moveStart);
-            var legs = new Legs(fighterState, LegGeometry.FrontLeg(fighterState.Handedness), LegGeometry.BackLeg(fighterState.Handedness));
+            var legs = new Legs(LegGeometry.FrontLeg(fighterState.Handedness), LegGeometry.BackLeg(fighterState.Handedness));
             float startRotation = moveStart.Root.RotationDegrees;
 
-            // The world loads the weapon the rules state holds (the plan's weapon, set when planning locked). A side
-            // without a path still drives its weapon: an empty path holds it, so a free (motor) weapon does not drop.
+            // The world loads the item the prepared board holds (the plan's weapon, set when planning locked; TurnBoard decided
+            // whether and where it is held). A side without a path still drives its weapon: an empty path holds it, so a free
+            // (motor) weapon does not drop.
             WeaponStats weapon = input.Rules.FindWeapon(fighterState.CurrentWeapon);
-            if (weapon == null || !start.HasHeldItem) return new Fighter(side, bodyMove, legs, startRotation, null, 0f, null);
+            if (weapon == null || !start.HasHeldItem) return new Fighter(side, fighterState, bodyMove, legs, startRotation, null, 0f, null, null);
 
             // D13 (TBD §5, default 0): a body move may speed the weapon along its path for the whole turn.
             float speedMultiplier = 1f + (moveStats != null ? moveStats.WeaponSpeedBonusFraction : 0f);
             WeaponStats pathWeapon = weapon.WithSpeedMultiplier(speedMultiplier);
-            IWeaponAimModel aim = weapon.Kind == WeaponKind.Shield ? _shieldAim : _aim;
-            IWeaponDriver driver = WeaponDriverFactory.Create(input.Simulation, input.Rules.Paths, aim);
-            driver.Begin(side, plan != null ? plan.Path : WeaponPath.Empty, pathWeapon);
-            return new Fighter(side, bodyMove, legs, startRotation, weapon, pathWeapon.SpeedUnitsPerSecond, driver);
+            WeaponPath path = plan != null ? plan.Path : WeaponPath.Empty;
+            BodyPart? striking = weapon.Kind == WeaponKind.BodyBlow ? StrikingPartOf(fighterState, path) : (BodyPart?)null;
+            IWeaponDriver driver = WeaponDriverFactory.Create(input.Simulation, input.Rules.Paths, AimFor(weapon));
+            driver.Begin(side, path, pathWeapon);
+            return new Fighter(side, fighterState, bodyMove, legs, startRotation, weapon, pathWeapon.SpeedUnitsPerSecond, driver, striking);
+        }
+
+        private IWeaponAimModel AimFor(WeaponStats weapon)
+        {
+            switch (weapon.Kind)
+            {
+                case WeaponKind.Shield: return _shieldAim;
+                case WeaponKind.BodyBlow: return new HeadStrikeAimModel(HeldItemShape.Of(weapon).HalfThicknessUnits, _body.TorsoHeightUnits);
+                default: return _aim;
+            }
+        }
+
+        /// <summary>
+        /// The part an armless dummy strikes with (GDD §12, <see cref="IArmlessAttackMode"/>). Only the default, the head steered by the
+        /// path, is built; another option needs its own layout first.
+        /// </summary>
+        private BodyPart StrikingPartOf(FighterState fighter, WeaponPath path)
+        {
+            BodyPart part = Policies.ArmlessAttack != null ? Policies.ArmlessAttack.ChooseStrikingPart(fighter, path) : BodyPart.Head;
+            if (part != BodyPart.Head)
+                throw new NotSupportedException($"Only the headbutt is built (§12 default); striking with the {part} needs its own layout.");
+            return part;
         }
 
         private void Drive(Fighter fighter, SimTime stepStart, SimTime stepEnd)
         {
+            if (fighter.IsDead) return; // limp (GDD §11): nothing holds it up any more
+
             BodyMoveFrame frame = fighter.BodyMove.Evaluate(stepEnd);
             Vec2 knock = fighter.KnockOffsetAt(stepEnd);
-            BodyPose root = KeepInside(Shifted(frame.Root, knock));
-            _world.SetRootTarget(fighter.Side, root);
-            PoseLegs(fighter, root, frame, knock);
-            if (fighter.WeaponDriver == null) return;
+            BodyPose root = RootAt(fighter, frame, knock);
+            BodyPose body = fighter.StrikingPart.HasValue && !fighter.HasDropped ? LeanIntoHeadbutt(fighter, root, stepEnd) : root;
+            _world.SetRootTarget(fighter.Side, body);
+            PoseLegs(fighter, body, frame, knock);
+            if (fighter.WeaponDriver == null || fighter.HasDropped) return;
 
             HeldItemCommand command = fighter.WeaponDriver.Drive(stepStart, stepEnd, PathFrameAt(fighter, stepStart),
                 PathFrame(fighter, root), _world.GetHeldItemState(fighter.Side));
@@ -221,11 +284,38 @@ namespace XRim.Simulation.Execution
             new BodyPose(new Vec2(_edges.ClampX(root.PositionUnits.X, _rootMarginUnits), root.PositionUnits.Y), root.RotationDegrees);
 
         /// <summary>
+        /// Where the dummy's root goes: the body move's, shifted by its knockbacks, kept inside solid edges; a dummy without legs sits
+        /// with its pelvis on the floor (GDD §12: it cannot use them).
+        /// </summary>
+        private BodyPose RootAt(Fighter fighter, BodyMoveFrame frame, Vec2 knock)
+        {
+            BodyPose root = KeepInside(Shifted(frame.Root, knock));
+            if (fighter.State.RemainingLegs > 0) return root;
+            return new BodyPose(new Vec2(root.PositionUnits.X, LegGeometry.FloorYUnits), root.RotationDegrees);
+        }
+
+        /// <summary>
+        /// An armless dummy's body during its headbutt (GDD §12): from where the driver puts its head this step, the pelvis leans toward it
+        /// and shifts along the floor so the head arrives on the drawn point (<see cref="HeadbuttLean"/>, the same solution the aim model
+        /// used). Only the body's root moves: the path's frame stays where the body move puts it.
+        /// </summary>
+        private BodyPose LeanIntoHeadbutt(Fighter fighter, BodyPose root, SimTime time)
+        {
+            BodyPose pathFrame = PathFrame(fighter, root);
+            BodyPose head = TorsoFrame.ToLocal(fighter.WeaponDriver.EvaluateTarget(time, pathFrame), pathFrame, fighter.Side);
+            float radius = HeldItemShape.Of(fighter.Weapon).HalfThicknessUnits;
+            Vec2 centre = head.PositionUnits + Vec2.FromAngleDegrees(head.RotationDegrees) * radius;
+            HeadbuttLean.Solve(centre, _body.TorsoHeightUnits, radius, out float lean, out float shift);
+            Vec2 shiftArena = TorsoFrame.ToArena(new Vec2(shift, 0f), new BodyPose(Vec2.Zero, pathFrame.RotationDegrees), fighter.Side);
+            return KeepInside(new BodyPose(root.PositionUnits + shiftArena, root.RotationDegrees - fighter.Side.FacingSign() * lean));
+        }
+
+        /// <summary>
         /// The frame the path is drawn in, at a time: it travels with the root, knockback included (§6, Decided), and keeps the
         /// angle the path was drawn at, unless <see cref="PathSettings.PathTiltsWithTorsoLean"/> lets a move's lean tilt it.
         /// </summary>
         private BodyPose PathFrameAt(Fighter fighter, SimTime time) =>
-            PathFrame(fighter, KeepInside(Shifted(fighter.BodyMove.Evaluate(time).Root, fighter.KnockOffsetAt(time))));
+            PathFrame(fighter, RootAt(fighter, fighter.BodyMove.Evaluate(time), fighter.KnockOffsetAt(time)));
 
         private BodyPose PathFrame(Fighter fighter, BodyPose root) =>
             _pathTiltsWithLean ? root : new BodyPose(root.PositionUnits, fighter.StartRotationDegrees);
@@ -237,8 +327,8 @@ namespace XRim.Simulation.Execution
         private void PoseLegs(Fighter fighter, BodyPose root, BodyMoveFrame frame, Vec2 knock)
         {
             Legs legs = fighter.Legs;
-            if (legs.HasFront) PoseLeg(fighter.Side, legs.Front, true, root, frame.FrontSoleUnits + knock);
-            if (legs.HasBack) PoseLeg(fighter.Side, legs.Back, false, root, frame.BackSoleUnits + knock);
+            if (!fighter.State.IsSevered(legs.Front)) PoseLeg(fighter.Side, legs.Front, true, root, frame.FrontSoleUnits + knock);
+            if (!fighter.State.IsSevered(legs.Back)) PoseLeg(fighter.Side, legs.Back, false, root, frame.BackSoleUnits + knock);
         }
 
         private void PoseLeg(Side side, BodyPart leg, bool isFront, BodyPose root, Vec2 soleUnits)
@@ -316,33 +406,32 @@ namespace XRim.Simulation.Execution
                 ContactAngle.Degrees(facts.Normal, facts.RelativeVelocityUnitsPerSecond));
         }
 
+        /// <summary>The fighter whose held item this is, or whose armless striking part (GDD §12); null for anything else.</summary>
         private static Fighter WeaponOf(BodyTag tag, PerSide<Fighter> fighters)
         {
-            if (tag.Role != BodyRole.HeldItem || !tag.Owner.HasValue) return null;
+            if (!tag.Owner.HasValue) return null;
             Fighter fighter = fighters[tag.Owner.Value];
-            return fighter.WeaponDriver != null ? fighter : null;
+            if (fighter.WeaponDriver == null) return null;
+            bool isStriker = tag.Role == BodyRole.HeldItem || (tag.Role == BodyRole.BodyPart && fighter.StrikingPart == tag.Part);
+            return isStriker ? fighter : null;
         }
 
-        /// <summary>Which leg leads a stride, and which legs the dummy still has (a severed leg is not posed).</summary>
+        /// <summary>Which leg leads a stride. A leg is posed only while the dummy still has it (a severed leg is not, GDD §12).</summary>
         private readonly struct Legs
         {
             public BodyPart Front { get; }
             public BodyPart Back { get; }
-            public bool HasFront { get; }
-            public bool HasBack { get; }
 
-            public Legs(FighterState fighter, BodyPart front, BodyPart back)
+            public Legs(BodyPart front, BodyPart back)
             {
                 Front = front;
                 Back = back;
-                HasFront = !fighter.IsSevered(front);
-                HasBack = !fighter.IsSevered(back);
             }
         }
 
         /// <summary>
-        /// One side during the turn: its body move and legs, its weapon and driver, its blade's recent poses and the knockbacks
-        /// it has taken.
+        /// One side during the turn: its rules state, body move and legs, its weapon and driver (or the part it strikes with while
+        /// armless), its blade's recent poses, the knockbacks it has taken, and whether it dropped its item or died.
         /// </summary>
         private sealed class Fighter
         {
@@ -350,6 +439,10 @@ namespace XRim.Simulation.Execution
             private readonly List<Knock> _knocks = new List<Knock>();
 
             public Side Side { get; }
+
+            /// <summary>The fighter's rules state this turn: the rules change it as limbs are severed.</summary>
+            public FighterState State { get; }
+
             public IBodyMoveDriver BodyMove { get; }
             public Legs Legs { get; }
 
@@ -364,20 +457,35 @@ namespace XRim.Simulation.Execution
 
             public IWeaponDriver WeaponDriver { get; }
 
-            public Fighter(Side side, IBodyMoveDriver bodyMove, Legs legs, float startRotationDegrees, WeaponStats weapon,
-                float pathSpeedUnitsPerSecond, IWeaponDriver weaponDriver)
+            /// <summary>The body part an armless dummy strikes with (GDD §12); null otherwise.</summary>
+            public BodyPart? StrikingPart { get; }
+
+            /// <summary>The arm holding its item was severed: the item dropped and is no longer driven (§12).</summary>
+            public bool HasDropped { get; set; }
+
+            /// <summary>The dummy died this turn: it is left limp (§11).</summary>
+            public bool IsDead { get; set; }
+
+            /// <summary>Its item while it still holds it: null once dropped, or once the dummy died.</summary>
+            public WeaponStats HeldItem => HasDropped || IsDead ? null : Weapon;
+
+            public Fighter(Side side, FighterState state, IBodyMoveDriver bodyMove, Legs legs, float startRotationDegrees, WeaponStats weapon,
+                float pathSpeedUnitsPerSecond, IWeaponDriver weaponDriver, BodyPart? strikingPart)
             {
                 Side = side;
+                State = state;
                 BodyMove = bodyMove;
                 Legs = legs;
                 StartRotationDegrees = startRotationDegrees;
                 Weapon = weapon;
                 PathSpeedUnitsPerSecond = pathSpeedUnitsPerSecond;
                 WeaponDriver = weaponDriver;
+                StrikingPart = strikingPart;
             }
 
             public bool IsDone(SimTime time) =>
-                BodyMove.IsComplete(time) && (WeaponDriver == null || WeaponDriver.IsComplete(time)) && AreKnocksOver(time);
+                IsDead || (BodyMove.IsComplete(time) && (HeldItem == null || WeaponDriver == null || WeaponDriver.IsComplete(time)) &&
+                           AreKnocksOver(time));
 
             public void Remember(SimTime time, FighterPose pose)
             {
@@ -475,14 +583,16 @@ namespace XRim.Simulation.Execution
 
             public SimTime Now => _clock.Now;
 
-            public WeaponStats HeldWeapon(Side side) => _fighters[side].Weapon;
+            public WeaponStats HeldWeapon(Side side) => _fighters[side].HeldItem;
+
+            public BodyPart? StrikingPart(Side side) => _fighters[side].StrikingPart;
 
             public float WeaponSpeedUnitsPerSecond(Side side) => _fighters[side].PathSpeedUnitsPerSecond;
 
             public bool IsWeaponTravelling(Side side, SimTime time)
             {
-                IWeaponDriver driver = _fighters[side].WeaponDriver;
-                return driver != null && driver.IsTravelling(time);
+                Fighter fighter = _fighters[side];
+                return fighter.HeldItem != null && fighter.WeaponDriver != null && fighter.WeaponDriver.IsTravelling(time);
             }
 
             public void SlowWeapon(Side side, float speedFraction) => _fighters[side].WeaponDriver?.SlowTo(Now, speedFraction);
@@ -496,6 +606,25 @@ namespace XRim.Simulation.Execution
 
             public void KnockBack(Side side, Vec2 displacementUnits) =>
                 _fighters[side].KnockBack(Now, displacementUnits, _reaction.KnockbackSeconds);
+
+            public void SeverLimb(Side side, BodyPart part) => _world.BreakJoint(side, part);
+
+            public void DropHeldItem(Side side)
+            {
+                Fighter fighter = _fighters[side];
+                if (fighter.HasDropped) return;
+                fighter.HasDropped = true;
+                _world.DropHeldItem(side);
+            }
+
+            public void Die(Side side)
+            {
+                Fighter fighter = _fighters[side];
+                if (fighter.IsDead) return;
+                if (fighter.HeldItem != null) DropHeldItem(side); // S2: a dead dummy lets go of what it holds
+                fighter.IsDead = true;
+                _world.SplitTorso(side);
+            }
         }
     }
 }

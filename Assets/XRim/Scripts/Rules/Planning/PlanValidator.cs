@@ -11,7 +11,7 @@ namespace XRim.Rules.Planning
     /// enforces all of this as commands arrive; this is the second line of defence for plans that did not come
     /// through a session, such as a plan sent whole by a remote client.
     /// <list type="bullet">
-    /// <item>The weapon is in the loadout and has stats.</item>
+    /// <item>The weapon has stats and the constraints allow it this turn (the loadout or a §12 extra option).</item>
     /// <item>Timing, from the <see cref="PlanningAudit"/>: nothing happened after the deadline, the last weapon switch
     /// was outside the lock-out, and drawing was outside it when drawing is locked out.</item>
     /// <item>The body move is allowed by the constraints, and no signature move is used (Session 15).</item>
@@ -53,7 +53,7 @@ namespace XRim.Rules.Planning
             Guard.NotNull(constraints, nameof(constraints));
 
             WeaponStats weapon = _settings.FindWeapon(plan.Weapon);
-            if (weapon == null || !InLoadout(loadout, plan.Weapon))
+            if (weapon == null || !constraints.IsWeaponAvailable(plan.Weapon, loadout))
             {
                 return CommandResult.Reject(CommandRejection.WeaponNotInLoadout);
             }
@@ -125,15 +125,5 @@ namespace XRim.Rules.Planning
 
         private static bool IsLate(double? happenedAtSeconds, double deadlineSeconds) =>
             happenedAtSeconds.HasValue && !PlanningTiming.IsOpen(happenedAtSeconds.Value, deadlineSeconds);
-
-        private static bool InLoadout(IReadOnlyList<WeaponId> loadout, WeaponId weapon)
-        {
-            for (int i = 0; i < loadout.Count; i++)
-            {
-                if (loadout[i] == weapon) return true;
-            }
-
-            return false;
-        }
     }
 }

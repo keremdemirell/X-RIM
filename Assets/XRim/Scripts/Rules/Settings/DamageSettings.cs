@@ -5,7 +5,7 @@ using XRim.Rules.Status;
 
 namespace XRim.Rules.Settings
 {
-    /// <summary>HP, limb durability, damage modifiers, the head stun, interrupts and hits per weapon (GDD §9, §11, §12).</summary>
+    /// <summary>HP, limb durability and loss, damage modifiers, the head stun, interrupts and hits per weapon (GDD §9, §11, §12).</summary>
     [Serializable]
     public sealed class DamageSettings
     {
@@ -26,6 +26,9 @@ namespace XRim.Rules.Settings
 
         /// <summary>GDD §12, Tunable: damage multiplier when fighting with the off hand.</summary>
         public float OffHandDamageMultiplier = 0.8f;
+
+        /// <summary>What losing a limb changes (GDD §12): leg loss, whose limbs can be wielded, whether a dropped weapon is lost.</summary>
+        public LimbLossSettings LimbLoss = new LimbLossSettings();
 
         /// <summary>
         /// GDD §11 (Decided): a single head hit whose damage is above this stuns. The damage compared is the hit's, after its

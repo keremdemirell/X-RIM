@@ -1,10 +1,15 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using XRim.App;
 using XRim.Config;
 using XRim.Core;
 using XRim.Input;
 using XRim.DebugTools.Sandbox;
+using XRim.Networking;
+using XRim.Rules;
+using XRim.Rules.Limbs;
+using XRim.Rules.Match;
 
 namespace XRim.DebugTools
 {
@@ -28,6 +33,8 @@ namespace XRim.DebugTools
         private const int FrameWindow = 120;
 
         private static readonly string[] Tabs = { "Tuning", "Playback", "Cheats", "Device" };
+        private static readonly string[] SideNames = { "Left", "Right" };
+        private static readonly BodyPart[] Limbs = { BodyPart.LeftArm, BodyPart.RightArm, BodyPart.LeftLeg, BodyPart.RightLeg };
 
         private readonly TuningPanel _tuningPanel = new TuningPanel();
         private readonly PlaybackPanel _playbackPanel = new PlaybackPanel();
@@ -37,6 +44,7 @@ namespace XRim.DebugTools
         private GameplayGizmos _gizmos;
         private bool _open;
         private int _tab;
+        private int _cheatSide;
         private Vector2 _scroll;
 
         private void Start()
@@ -166,11 +174,50 @@ namespace XRim.DebugTools
             public bool Blocks(Vec2 screenPixels) => _overlay != null && _overlay.Covers(new Vector2(screenPixels.X, Screen.height - screenPixels.Y));
         }
 
-        private static void DrawCheats()
+        /// <summary>
+        /// Cheats act through public seams (the turn's contact handler, the clock, the settings snapshot), never through rule code. Force
+        /// sever (Session 11): the chosen limb is cut at the start of the next turn through the real sever path.
+        /// </summary>
+        private void DrawCheats()
         {
-            // Placeholder: cheats act through public seams (clock, settings snapshot), never through rule code.
-            GUILayout.Label("Planned: freeze planning timer, infinite ink, force stun or sever, hot-seat toggle,\n" +
-                            "save/load scenario (board + both plans).");
+            if (_bootstrap == null || _bootstrap.Authority == null)
+            {
+                GUILayout.Label("Start a match to use the cheats.");
+                return;
+            }
+
+            GUILayout.Label("Force sever: cut a limb at the start of the next turn (it falls, a held weapon drops, debris sprays).");
+            _cheatSide = GUILayout.Toolbar(_cheatSide, SideNames);
+            Side side = _cheatSide == 0 ? Side.Left : Side.Right;
+            PlanningWindow window = _bootstrap.Flow != null ? _bootstrap.Flow.CurrentWindow : null;
+            FighterState fighter = window != null ? window.Board.State.Fighters[side] : null;
+            IReadOnlyList<SeveredLimbRef> queued = _bootstrap.QueuedSevers;
+
+            GUILayout.BeginHorizontal();
+            foreach (BodyPart limb in Limbs)
+            {
+                bool gone = fighter != null && fighter.IsSevered(limb);
+                bool waiting = Contains(queued, new SeveredLimbRef(side, limb));
+                GUI.enabled = !gone && !waiting;
+                string label = gone ? $"{limb} (off)" : waiting ? $"{limb} (next turn)" : limb.ToString();
+                if (GUILayout.Button(label)) _bootstrap.QueueSever(side, limb);
+                GUI.enabled = true;
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.Label(queued.Count == 0 ? "Nothing queued." : "Queued: " + string.Join(", ", queued));
+            GUILayout.Space(Margin);
+            GUILayout.Label("Planned: freeze planning timer, infinite ink, force stun, save/load scenario (board + both plans).");
+        }
+
+        private static bool Contains(IReadOnlyList<SeveredLimbRef> limbs, SeveredLimbRef limb)
+        {
+            for (int i = 0; i < limbs.Count; i++)
+            {
+                if (limbs[i] == limb) return true;
+            }
+
+            return false;
         }
     }
 }

@@ -142,7 +142,7 @@ namespace XRim.Presentation.UI
             foreach (WeaponId weapon in loadout)
             {
                 WeaponId chosen = weapon;
-                var button = new Button(() => WeaponChosen?.Invoke(chosen)) { text = weapon.Value.ToUpperInvariant() };
+                var button = new Button(() => WeaponChosen?.Invoke(chosen)) { text = Label(weapon) };
                 StyleButton(button, ButtonWidth, ButtonHeight, 26);
                 button.style.marginRight = RowGap;
                 button.style.marginLeft = RowGap;
@@ -152,6 +152,9 @@ namespace XRim.Presentation.UI
 
             RefreshWeaponButtons();
         }
+
+        /// <summary>A weapon's button text from its id: "severed_limb" reads SEVERED LIMB.</summary>
+        private static string Label(WeaponId weapon) => weapon.Value.Replace('_', ' ').ToUpperInvariant();
 
         public void ShowSelectedWeapon(WeaponId weapon)
         {

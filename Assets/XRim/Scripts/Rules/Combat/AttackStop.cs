@@ -23,5 +23,8 @@ namespace XRim.Rules.Combat
 
         /// <summary>A shield fully blocked it (§7).</summary>
         Blocked = 6,
+
+        /// <summary>The arm holding it was severed, so the weapon dropped (§12).</summary>
+        WeaponDropped = 7,
     }
 }

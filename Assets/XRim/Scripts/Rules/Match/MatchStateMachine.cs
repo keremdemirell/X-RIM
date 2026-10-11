@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using XRim.Core;
+using XRim.Rules.Limbs;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Rules.Status;
@@ -49,8 +50,9 @@ namespace XRim.Rules.Match
         public PerSide<PlanningSession> Sessions { get; private set; }
 
         /// <summary>
-        /// This turn's limits per side, built when the turn starts from the default plus the fighter's status effects
-        /// (stun and stagger), which are used up as they are applied. The authority may adjust them before <see cref="BeginPlanning"/>.
+        /// This turn's limits per side, built when the turn starts from the default plus the weapons limb loss allows (§12), the
+        /// fighter's status effects (stun and stagger, used up as they are applied) and the leg-loss penalty. The authority may adjust
+        /// them before <see cref="BeginPlanning"/>.
         /// </summary>
         public PerSide<PlanningConstraints> Constraints { get; private set; }
 
@@ -207,16 +209,18 @@ namespace XRim.Rules.Match
         }
 
         /// <summary>
-        /// The default limits, then every status effect's edit (a stun or a stagger), then the leg-loss penalty (§12,
-        /// <see cref="RulePolicies.MobilityPenalty"/>).
+        /// The default limits, then the weapons a dummy that lost limbs can hold (§12, <see cref="DesperationOptions"/>: the club,
+        /// the armless body blow; its current weapon follows), then every status effect's edit (a stun or a stagger), then the
+        /// leg-loss penalty (§12, <see cref="RulePolicies.MobilityPenalty"/>).
         /// </summary>
         private void PrepareTurn()
         {
             Constraints = PerSide<PlanningConstraints>.Create(side =>
             {
                 PlanningConstraints constraints = PlanningConstraints.CreateDefault(Settings.Match);
+                DesperationOptions.Apply(State, side, Setup.Fighters[side].Loadout, constraints, Settings);
                 ApplyStatuses(State.Fighters[side], constraints);
-                Policies.MobilityPenalty?.Apply(State.Fighters[side], constraints);
+                Policies.MobilityPenalty?.Apply(State.Fighters[side], constraints, Settings);
                 return constraints;
             });
         }
@@ -257,7 +261,9 @@ namespace XRim.Rules.Match
             // A weapon switch was public the moment it happened, so it stays even when the rest of the plan is dropped.
             foreach (Side side in new[] { Side.Left, Side.Right })
             {
-                State.Fighters[side].CurrentWeapon = LockedPlans[side].Weapon;
+                FighterState fighter = State.Fighters[side];
+                DesperationOptions.OnWeaponLocked(fighter, LockedPlans[side].Weapon, Setup.Fighters[side].Loadout, Settings);
+                fighter.CurrentWeapon = LockedPlans[side].Weapon;
             }
 
             // SESSION 12 HOOK (§13): the electric wall reacts to the locked body moves here (ElectricWallRules.OnPlansLocked).
@@ -271,12 +277,8 @@ namespace XRim.Rules.Match
         private TurnPlan IdlePlanFor(Side side)
         {
             PlanningSession session = Sessions[side];
-            foreach (WeaponId weapon in session.Loadout)
-            {
-                if (weapon == session.Weapon) return TurnPlan.Empty(session.Weapon);
-            }
-
-            return TurnPlan.Empty(State.Fighters[side].CurrentWeapon);
+            bool selectedIsHoldable = session.Constraints.IsWeaponAvailable(session.Weapon, session.Loadout);
+            return TurnPlan.Empty(selectedIsHoldable ? session.Weapon : State.Fighters[side].CurrentWeapon);
         }
 
         private void RequirePhase(string operation, params MatchPhase[] allowed)

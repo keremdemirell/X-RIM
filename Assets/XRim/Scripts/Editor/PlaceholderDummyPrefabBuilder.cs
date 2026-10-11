@@ -49,12 +49,14 @@ namespace XRim.Editor
             // Build in a preview scene so the open scene is never touched.
             Scene preview = EditorSceneManager.NewPreviewScene();
             var saved = new List<string>();
+            int heldItems = 0;
             try
             {
                 foreach (RagdollSegmentation segmentation in Segmentations)
                 {
                     var spec = new RagdollBuildSpec(simulation.Ragdoll, rules.Paths, segmentation, profile.ArenaSpace, rules.Weapons, sprites);
                     Ragdoll ragdoll = PlaceholderRagdollBuilder.Build(spec);
+                    heldItems = ragdoll.HeldItems.Count;
                     SceneManager.MoveGameObjectToScene(ragdoll.gameObject, preview);
                     string path = PrefabPath(segmentation);
                     PrefabUtility.SaveAsPrefabAsset(ragdoll.gameObject, path, out bool success);
@@ -67,9 +69,10 @@ namespace XRim.Editor
                 EditorSceneManager.ClosePreviewScene(preview);
             }
 
+            // No ping: jumping the Project window to the new prefabs renders their previews at once, and twice that preview render was
+            // followed by a Direct3D 12 device loss on the designer's laptop (Session 11).
             AssetDatabase.SaveAssets();
-            if (saved.Count > 0) EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<GameObject>(saved[0]));
-            Debug.Log($"[XRim] Built {saved.Count} placeholder dummies with {rules.Weapons.Count} held items each:\n{string.Join("\n", saved)}");
+            Debug.Log($"[XRim] Built {saved.Count} placeholder dummies with {heldItems} held items each (a body blow holds none):\n{string.Join("\n", saved)}");
         }
     }
 }

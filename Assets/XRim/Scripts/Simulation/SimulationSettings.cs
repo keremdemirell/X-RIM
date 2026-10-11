@@ -55,6 +55,9 @@ namespace XRim.Simulation
         /// <summary>How the clash and block rules move the weapons and the shield holder (Session 07): knock-off, rebound, push back.</summary>
         public ClashReactionSettings ClashReaction = new ClashReactionSettings();
 
+        /// <summary>How a severed limb pops off the body so it always falls (Session 11, GDD §12).</summary>
+        public SeverReactionSettings SeverReaction = new SeverReactionSettings();
+
         /// <summary>Appends a message for every value that cannot work. Placeholders are not errors.</summary>
         public void Validate(ICollection<string> issues)
         {
@@ -67,6 +70,10 @@ namespace XRim.Simulation
             ValidateRagdoll(issues);
             ValidateHitReaction(issues);
             ValidateClashReaction(issues);
+            if (SeverReaction == null) issues.Add("Simulation: the sever reaction settings are missing.");
+            else if (SeverReaction.PopBackSpeedUnitsPerSecond < 0f || SeverReaction.PopUpSpeedUnitsPerSecond < 0f ||
+                     SeverReaction.PopSpinDegreesPerSecond < 0f)
+                issues.Add("Simulation: a severed limb's pop speeds must not be negative.");
         }
 
         private void ValidateClashReaction(ICollection<string> issues)

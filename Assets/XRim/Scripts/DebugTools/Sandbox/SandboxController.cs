@@ -192,10 +192,11 @@ namespace XRim.DebugTools.Sandbox
             if (keyboard.spaceKey.wasPressedThisFrame) Execute();
             TouchPlanSource active = _sources[_activeSide];
             if (keyboard.cKey.wasPressedThisFrame) active.Send(new ClearPathCommand());
-            IReadOnlyList<WeaponId> loadout = _bootstrap.Setup.Fighters[_activeSide].Loadout;
-            if (keyboard.digit1Key.wasPressedThisFrame && loadout.Count > 0) active.Send(new SelectWeaponCommand(loadout[0]));
-            if (keyboard.digit2Key.wasPressedThisFrame && loadout.Count > 1) active.Send(new SelectWeaponCommand(loadout[1]));
-            if (keyboard.digit3Key.wasPressedThisFrame && loadout.Count > 2) active.Send(new SelectWeaponCommand(loadout[2]));
+            IReadOnlyList<WeaponId> weapons = WeaponsOf(_activeSide);
+            if (keyboard.digit1Key.wasPressedThisFrame && weapons.Count > 0) active.Send(new SelectWeaponCommand(weapons[0]));
+            if (keyboard.digit2Key.wasPressedThisFrame && weapons.Count > 1) active.Send(new SelectWeaponCommand(weapons[1]));
+            if (keyboard.digit3Key.wasPressedThisFrame && weapons.Count > 2) active.Send(new SelectWeaponCommand(weapons[2]));
+            if (keyboard.digit4Key.wasPressedThisFrame && weapons.Count > 3) active.Send(new SelectWeaponCommand(weapons[3]));
 
             // Body moves from the keys, as the swipes are (§5): down, up, toward or away from the opponent; N clears it.
             // Like the swipes, the arrows follow the screen: → is toward the opponent when this player sees their dummy facing right
@@ -354,12 +355,20 @@ namespace XRim.DebugTools.Sandbox
             if (_diagnosticsMessage.Length > 0) GUILayout.Label(_diagnosticsMessage);
         }
 
+        /// <summary>What a side can hold this turn: its loadout and the §12 extra options (the severed-limb club, the armless body blow).</summary>
+        private IReadOnlyList<WeaponId> WeaponsOf(Side side)
+        {
+            IReadOnlyList<WeaponId> loadout = _bootstrap.Setup.Fighters[side].Loadout;
+            PlanningWindow window = _bootstrap.Flow != null ? _bootstrap.Flow.CurrentWindow : null;
+            return window != null ? window.Constraints[side].AvailableWeapons(loadout) : loadout;
+        }
+
         private void DrawSide(Side side)
         {
             TouchPlanSource source = _sources[side];
             GUILayout.BeginHorizontal();
             GUILayout.Label(side + ":", GUILayout.Width(44f));
-            foreach (WeaponId weapon in _bootstrap.Setup.Fighters[side].Loadout)
+            foreach (WeaponId weapon in WeaponsOf(side))
             {
                 string label = weapon == source.Draft.Weapon ? $"[{weapon.Value}]" : weapon.Value;
                 if (GUILayout.Button(label)) source.Send(new SelectWeaponCommand(weapon));

@@ -42,7 +42,15 @@ namespace XRim.Simulation.Unity2D
     /// touching after the previous step is a new contact. Floor and edge contacts are not reported and a dummy never collides
     /// with itself. Relative velocity is each body's motion over the step before (Box2D reports a contact one step after
     /// the motion that made it), measured from positions so it is right for kinematic bodies too: the approach, not the bounce.
-    /// Order: by load-time body index, which is stable (Left parts, Left weapon, Right parts, Right weapon, severed limbs).
+    /// Order: by load-time body index, which is stable (Left parts and torso halves, Left weapon, Right parts and torso halves,
+    /// Right weapon, severed limbs).
+    /// </para>
+    /// <para>
+    /// Lost limbs (GDD §11, §12): the weapon is held in the arm <c>FighterState.HeldItemArm</c> names (the other hand once the
+    /// dominant arm is gone); a broken limb falls loose and is captured among the severed limbs from then on; a dropped item falls
+    /// and is captured as the dropped item; an armless dummy's head is driven as its held item (the item convention turns it 90°,
+    /// <see cref="HeldItemShape.HeadAsItem"/>); a dead dummy goes limp and its pre-split torso splits. Severed limbs on the floor are
+    /// rebuilt loose, in two pieces when they kept their lower segment.
     /// </para>
     /// </summary>
     public sealed class Unity2DPhysicsWorld : IPhysicsWorld
@@ -130,6 +138,7 @@ namespace XRim.Simulation.Unity2D
                 _severedLimbs.Add(LoadSeveredLimb(limb, rules.Paths, simulation.Ragdoll, gravityScale));
             }
 
+            IgnoreFormerOwners();
             CreateArenaBounds(edges);
             TrackBodies();
         }
@@ -139,6 +148,7 @@ namespace XRim.Simulation.Unity2D
             Rigidbody2D item = HeldItem(side);
             if (item == null) return;
             if (item.bodyType != RigidbodyType2D.Kinematic) item.bodyType = RigidbodyType2D.Kinematic;
+            if (IsStriking(side)) target = HeldItemShape.HeadFromItem(target);
             item.MovePosition(Space.ToWorld(target.PositionUnits));
             item.MoveRotation(target.RotationDegrees);
         }
@@ -166,7 +176,7 @@ namespace XRim.Simulation.Unity2D
         {
             Rigidbody2D item = HeldItem(side);
             if (item == null) return default;
-            return new BodyState(PoseOf(item), Space.ToArena(item.linearVelocity), item.angularVelocity);
+            return new BodyState(HeldItemPose(side, item), Space.ToArena(item.linearVelocity), item.angularVelocity);
         }
 
         public void SetRootTarget(Side side, BodyPose target)
@@ -201,9 +211,43 @@ namespace XRim.Simulation.Unity2D
             _pendingContacts.Clear();
         }
 
-        public void BreakJoint(Side side, BodyPart part) => _fighters[(int)side]?.Ragdoll.BreakJoint(part);
+        /// <summary>
+        /// Breaks the limb's joint by logic (GDD §18), then pops the limb off backward and up with a backward spin
+        /// (<see cref="SimulationSettings.SeverReaction"/>), so it always falls over instead of standing on its end.
+        /// </summary>
+        public void BreakJoint(Side side, BodyPart part)
+        {
+            Ragdoll ragdoll = _fighters[(int)side]?.Ragdoll;
+            if (ragdoll == null || !ragdoll.BreakJoint(part)) return;
+
+            SeverReactionSettings pop = _simulation.SeverReaction;
+            float facing = side.FacingSign();
+            Vector2 kick = Space.ToWorld(new Vec2(-facing * pop.PopBackSpeedUnitsPerSecond, pop.PopUpSpeedUnitsPerSecond));
+            foreach (Rigidbody2D segment in new[] { ragdoll.GetBody(part), ragdoll.GetLowerBody(part) })
+            {
+                if (segment == null) continue;
+                segment.linearVelocity += kick;
+                segment.angularVelocity += facing * pop.PopSpinDegreesPerSecond;
+            }
+        }
 
         public void DropHeldItem(Side side) => _fighters[(int)side]?.Ragdoll.DropHeldItem();
+
+        public void SplitTorso(Side side)
+        {
+            Ragdoll ragdoll = _fighters[(int)side]?.Ragdoll;
+            if (ragdoll == null || ragdoll.SplitTorso()) return;
+            if (!ragdoll.HasPreSplitTorso)
+                Debug.LogWarning("[XRim] The ragdoll prefab has no torso halves, so the dead dummy only goes limp. Run XRim/Setup/Build Placeholder Dummies.");
+        }
+
+        public void StrikeWithBodyPart(Side side, BodyPart part)
+        {
+            Ragdoll ragdoll = _fighters[(int)side]?.Ragdoll;
+            if (ragdoll == null) return;
+            if (part != BodyPart.Head) throw new NotSupportedException($"Only the head can strike (§12 default), not the {part}.");
+            ragdoll.StrikeWith(part);
+        }
 
         public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse)
         {
@@ -228,7 +272,24 @@ namespace XRim.Simulation.Unity2D
 
             foreach (SeveredLimb limb in _severedLimbs)
             {
-                snapshot.SeveredLimbs.Add(new SeveredLimbPose(limb.Owner, limb.Part, PoseOf(limb.Body)));
+                snapshot.SeveredLimbs.Add(limb.Lower != null
+                    ? new SeveredLimbPose(limb.Owner, limb.Part, PoseOf(limb.Body), PoseOf(limb.Lower))
+                    : new SeveredLimbPose(limb.Owner, limb.Part, PoseOf(limb.Body)));
+            }
+
+            // Limbs severed during this turn still hang off their ragdoll, loose: they lie in the arena from the moment of the cut.
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                Ragdoll ragdoll = _fighters[(int)side]?.Ragdoll;
+                if (ragdoll == null) continue;
+                foreach (BodyPart part in ragdoll.SeveredSinceLoad)
+                {
+                    Rigidbody2D lower = ragdoll.GetLowerBody(part);
+                    BodyPose upper = PoseOf(ragdoll.GetBody(part));
+                    snapshot.SeveredLimbs.Add(lower != null
+                        ? new SeveredLimbPose(side, part, upper, PoseOf(lower))
+                        : new SeveredLimbPose(side, part, upper));
+                }
             }
 
             return snapshot;
@@ -277,10 +338,12 @@ namespace XRim.Simulation.Unity2D
                                  "current settings. Run XRim/Setup/Build Placeholder Dummies.");
             ragdoll.AssignOwner(side);
 
+            // GDD §12: the dominant hand while that arm is intact, then the other; a body blow holds nothing (the head strikes).
             WeaponStats weapon = rules.FindWeapon(state.CurrentWeapon);
-            BodyPart arm = BodyParts.DominantArm(state.Handedness);
+            BodyPart? holdingArm = state.HeldItemArm;
+            BodyPart arm = holdingArm ?? BodyParts.DominantArm(state.Handedness);
             Rigidbody2D item = null;
-            if (pose.HasHeldItem && weapon != null && !state.IsSevered(arm))
+            if (pose.HasHeldItem && weapon != null && weapon.Kind != WeaponKind.BodyBlow && holdingArm.HasValue)
             {
                 item = ragdoll.Hold(weapon.Id, arm);
                 if (item == null)
@@ -318,19 +381,79 @@ namespace XRim.Simulation.Unity2D
             return fighter;
         }
 
-        /// <summary>Session 04 placeholder: a severed limb is a loose body of the limb's shape (Session 11 builds dismemberment).</summary>
+        /// <summary>
+        /// A severed limb lying in the arena (GDD §12): a loose body of the limb's shape, or two hinged ones when it kept its lower
+        /// segment (ten bodies, S1), at rest where it lay.
+        /// </summary>
         private SeveredLimb LoadSeveredLimb(SeveredLimbPose limb, PathSettings paths, RagdollSettings body, float gravityScale)
         {
-            Rigidbody2D rigidbody = PlaceholderRagdollBuilder.BuildSeveredLimb(limb.Owner, limb.Part, body, paths, Space);
+            if (!limb.HasLower || !limb.Part.IsSeverable())
+            {
+                Rigidbody2D whole = PlaceholderRagdollBuilder.BuildSeveredLimb(limb.Owner, limb.Part, body, paths, Space);
+                PlaceLoose(whole, limb.Pose, gravityScale);
+                return new SeveredLimb(whole, null, limb.Owner, limb.Part);
+            }
+
+            Rigidbody2D[] pieces = PlaceholderRagdollBuilder.BuildSeveredLimbSegments(limb.Owner, limb.Part, body, paths, Space);
+            PlaceLoose(pieces[0], limb.Pose, gravityScale);
+            PlaceLoose(pieces[1], limb.Lower, gravityScale);
+            return new SeveredLimb(pieces[0], pieces[1], limb.Owner, limb.Part);
+        }
+
+        private void PlaceLoose(Rigidbody2D rigidbody, BodyPose pose, float gravityScale)
+        {
             rigidbody.transform.SetParent(_container.transform, false);
             rigidbody.gravityScale = gravityScale;
-            Vector2 position = Space.ToWorld(limb.Pose.PositionUnits);
-            rigidbody.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, 0f, limb.Pose.RotationDegrees));
+            Vector2 position = Space.ToWorld(pose.PositionUnits);
+            rigidbody.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, 0f, pose.RotationDegrees));
             rigidbody.position = position;
-            rigidbody.rotation = limb.Pose.RotationDegrees;
+            rigidbody.rotation = pose.RotationDegrees;
             rigidbody.linearVelocity = Vector2.zero;
             rigidbody.angularVelocity = 0f;
-            return new SeveredLimb(rigidbody, limb.Owner, limb.Part);
+        }
+
+        /// <summary>
+        /// A severed limb on the floor never collides with the dummy it came from, as it did not while it fell: it lies through that
+        /// dummy's feet instead of being shoved out of the legs it landed in. The opponent and every weapon still meet it.
+        /// </summary>
+        private void IgnoreFormerOwners()
+        {
+            var ownerColliders = new List<Collider2D>();
+            var limbColliders = new List<Collider2D>();
+            var bodies = new List<Rigidbody2D>();
+            foreach (SeveredLimb limb in _severedLimbs)
+            {
+                Ragdoll owner = _fighters[(int)limb.Owner]?.Ragdoll;
+                if (owner == null) continue;
+                bodies.Clear();
+                owner.GetPartBodies(bodies);
+                owner.GetTorsoHalves(bodies);
+                if (owner.ActiveHeldItem != null) bodies.Add(owner.ActiveHeldItem);
+                ownerColliders.Clear();
+                foreach (Rigidbody2D body in bodies)
+                {
+                    _colliderBuffer.Clear();
+                    body.GetAttachedColliders(_colliderBuffer);
+                    ownerColliders.AddRange(_colliderBuffer);
+                }
+
+                limbColliders.Clear();
+                limb.Body.GetAttachedColliders(limbColliders);
+                if (limb.Lower != null)
+                {
+                    _colliderBuffer.Clear();
+                    limb.Lower.GetAttachedColliders(_colliderBuffer);
+                    limbColliders.AddRange(_colliderBuffer);
+                }
+
+                foreach (Collider2D mine in limbColliders)
+                {
+                    foreach (Collider2D theirs in ownerColliders)
+                    {
+                        Physics2D.IgnoreCollision(mine, theirs, true);
+                    }
+                }
+            }
         }
 
         private Rigidbody2D CreateRootAnchor(Side side, BodyPose torsoPose)
@@ -400,12 +523,14 @@ namespace XRim.Simulation.Unity2D
             {
                 if (fighter == null) continue;
                 fighter.Ragdoll.GetPartBodies(bodies);
+                fighter.Ragdoll.GetTorsoHalves(bodies);
                 if (fighter.Ragdoll.ActiveHeldItem != null) bodies.Add(fighter.Ragdoll.ActiveHeldItem);
             }
 
             foreach (SeveredLimb limb in _severedLimbs)
             {
                 bodies.Add(limb.Body);
+                if (limb.Lower != null) bodies.Add(limb.Lower);
             }
 
             foreach (Rigidbody2D body in bodies)
@@ -517,7 +642,10 @@ namespace XRim.Simulation.Unity2D
             return new ContactFacts(a.Tag, b.Tag, Space.ToArena(point), new Vec2(normal.x, normal.y), Space.ToArena(relative));
         }
 
-        /// <summary>Every body's pose; a part left off (severed) keeps the pose it was loaded with.</summary>
+        /// <summary>
+        /// Every body's pose; a part left off (severed) keeps the pose it was loaded with. The held item (or striking head, in the
+        /// item convention), a dropped item, and a split torso (its bottom half as the torso, its top half beside it).
+        /// </summary>
         private void Capture(Fighter fighter, FighterPose pose)
         {
             Ragdoll ragdoll = fighter.Ragdoll;
@@ -532,8 +660,23 @@ namespace XRim.Simulation.Unity2D
 
             Rigidbody2D item = ragdoll.ActiveHeldItem;
             pose.HasHeldItem = item != null;
-            if (item != null) pose.HeldItem = PoseOf(item);
+            if (item != null) pose.HeldItem = ragdoll.StrikingPart.HasValue ? HeldItemShape.HeadAsItem(PoseOf(item)) : PoseOf(item);
+
+            Rigidbody2D dropped = ragdoll.DroppedItem;
+            pose.HasDroppedItem = dropped != null;
+            if (dropped != null) pose.DroppedItem = PoseOf(dropped);
+
+            pose.IsTorsoSplit = ragdoll.IsTorsoSplit;
+            if (!ragdoll.IsTorsoSplit) return;
+            pose.Set(BodyPart.Torso, PoseOf(ragdoll.TorsoBottom));
+            pose.TorsoTop = PoseOf(ragdoll.TorsoTop);
         }
+
+        private bool IsStriking(Side side) => _fighters[(int)side]?.Ragdoll.StrikingPart != null;
+
+        /// <summary>The held item's pose in the item convention: a striking head turned onto its neck-to-crown axis.</summary>
+        private BodyPose HeldItemPose(Side side, Rigidbody2D item) =>
+            IsStriking(side) ? HeldItemShape.HeadAsItem(PoseOf(item)) : PoseOf(item);
 
         private BodyPose PoseOf(Rigidbody2D body) => new BodyPose(Space.ToArena(body.position), body.rotation);
 
@@ -591,13 +734,19 @@ namespace XRim.Simulation.Unity2D
 
         private readonly struct SeveredLimb
         {
+            /// <summary>The limb, or its upper segment.</summary>
             public Rigidbody2D Body { get; }
+
+            /// <summary>Its forearm or shin when it kept one; null otherwise.</summary>
+            public Rigidbody2D Lower { get; }
+
             public Side Owner { get; }
             public BodyPart Part { get; }
 
-            public SeveredLimb(Rigidbody2D body, Side owner, BodyPart part)
+            public SeveredLimb(Rigidbody2D body, Rigidbody2D lower, Side owner, BodyPart part)
             {
                 Body = body;
+                Lower = lower;
                 Owner = owner;
                 Part = part;
             }

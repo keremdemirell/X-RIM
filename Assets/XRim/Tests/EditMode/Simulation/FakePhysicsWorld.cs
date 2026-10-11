@@ -14,7 +14,8 @@ namespace XRim.Tests.EditMode.Simulation
     /// loop's priority, interrupt and clash handling can be tested without a physics engine. Held items obey their
     /// commands exactly: a move lands on its target at the end of the step, a push is integrated like Box2D does
     /// (semi-implicit Euler). Nothing collides; the root target becomes the torso pose. Physics counts as settled from
-    /// <see cref="SettlesAtStep"/> on.
+    /// <see cref="SettlesAtStep"/> on. Like the real world, a broken joint puts the limb in the captured severed limbs, a dropped
+    /// item is captured as the dropped item, a split torso is captured as split, and a striking body part is the held item.
     /// </summary>
     internal sealed class FakePhysicsWorld : IPhysicsWorld
     {
@@ -46,6 +47,18 @@ namespace XRim.Tests.EditMode.Simulation
         public int SettlesAtStep { get; set; }
         public List<(Side Side, BodyPart Part)> BrokenJoints { get; } = new List<(Side, BodyPart)>();
 
+        /// <summary>Every held item dropped since the last load, in order.</summary>
+        public List<Side> Drops { get; } = new List<Side>();
+
+        /// <summary>Every torso split since the last load, in order.</summary>
+        public List<Side> Splits { get; } = new List<Side>();
+
+        /// <summary>Every body part made the striker since the last load (side, part).</summary>
+        public List<(Side Side, BodyPart Part)> StrikingParts { get; } = new List<(Side, BodyPart)>();
+
+        /// <summary>Every limb joint target set since the last load, with the number of steps taken before it was set.</summary>
+        public List<(Side Side, BodyPart Limb, int Step)> LimbTargetSteps { get; } = new List<(Side, BodyPart, int)>();
+
         /// <summary>Every impulse applied since the last load, in order.</summary>
         public List<(Side Side, BodyPart Part, Vec2 Impulse)> Impulses { get; } = new List<(Side, BodyPart, Vec2)>();
 
@@ -75,8 +88,13 @@ namespace XRim.Tests.EditMode.Simulation
             LoadedEdges = edges;
             RootTargets.Clear();
             LimbTargets.Clear();
+            LimbTargetSteps.Clear();
             Impulses.Clear();
             Releases.Clear();
+            BrokenJoints.Clear();
+            Drops.Clear();
+            Splits.Clear();
+            StrikingParts.Clear();
             LoadedSimulation = simulation;
             LoadCount++;
             StepCount = 0;
@@ -116,7 +134,11 @@ namespace XRim.Tests.EditMode.Simulation
             _pose.Get(side).Set(BodyPart.Torso, target);
         }
 
-        public void SetLimbTarget(Side side, BodyPart limb, LimbAngles target) => LimbTargets.Add((side, limb, target));
+        public void SetLimbTarget(Side side, BodyPart limb, LimbAngles target)
+        {
+            LimbTargets.Add((side, limb, target));
+            LimbTargetSteps.Add((side, limb, StepCount));
+        }
 
         public void Step(float deltaSeconds)
         {
@@ -135,9 +157,34 @@ namespace XRim.Tests.EditMode.Simulation
             _lastStepContacts.Clear();
         }
 
-        public void BreakJoint(Side side, BodyPart part) => BrokenJoints.Add((side, part));
+        public void BreakJoint(Side side, BodyPart part)
+        {
+            BrokenJoints.Add((side, part));
+            FighterPose fighter = _pose.Get(side);
+            _pose.SeveredLimbs.Add(fighter.HasLowerSegments
+                ? new SeveredLimbPose(side, part, fighter.Get(part), fighter.GetLower(part))
+                : new SeveredLimbPose(side, part, fighter.Get(part)));
+        }
 
-        public void DropHeldItem(Side side) => _pose.Get(side).HasHeldItem = false;
+        public void DropHeldItem(Side side)
+        {
+            Drops.Add(side);
+            FighterPose fighter = _pose.Get(side);
+            if (!fighter.HasHeldItem) return;
+            fighter.HasHeldItem = false;
+            fighter.HasDroppedItem = true;
+            fighter.DroppedItem = fighter.HeldItem;
+        }
+
+        public void SplitTorso(Side side)
+        {
+            Splits.Add(side);
+            FighterPose fighter = _pose.Get(side);
+            fighter.IsTorsoSplit = true;
+            fighter.TorsoTop = fighter.Get(BodyPart.Torso);
+        }
+
+        public void StrikeWithBodyPart(Side side, BodyPart part) => StrikingParts.Add((side, part));
 
         public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse) => Impulses.Add((side, part, impulse));
 

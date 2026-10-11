@@ -18,12 +18,17 @@ namespace XRim.Simulation.Unity2D
     /// The weapon arm follows the held weapon: a spring (TargetJoint2D) pulls its hand onto the blade at the point the
     /// arm can reach (<see cref="ArmReach"/>). The weapon feels nothing back, so the arm can never block or yank it.
     /// Severing is driven by game logic (limb durability reached 0), never by HingeJoint2D.breakForce, which the GDD
-    /// rejects because physics-driven breaks are hard to balance (§18).
+    /// rejects because physics-driven breaks are hard to balance (§18). The weapon is held in the dominant hand while that arm is
+    /// intact, then in the other (§12); an armless dummy strikes with its head instead (<see cref="StrikeWith"/>). The torso is
+    /// pre-split: two inactive halves take its place when the dummy dies (§11, <see cref="SplitTorso"/>).
     /// </summary>
     public sealed class Ragdoll : MonoBehaviour
     {
         /// <summary>How far the built reach may differ from the current path settings before it counts as stale.</summary>
         private const float ReachToleranceUnits = 0.5f;
+
+        /// <summary>Each torso half is this share of the torso: the split runs across its middle (GDD §11).</summary>
+        public const float TorsoHalfFraction = 0.5f;
 
         /// <summary>
         /// Whether Unity's HingeJoint2D.jointAngle grows as the jointed limb turns counter-clockwise relative to its
@@ -42,6 +47,12 @@ namespace XRim.Simulation.Unity2D
 
         [SerializeField] private List<HeldItemSlot> _heldItems = new List<HeldItemSlot>();
 
+        [Tooltip("The torso's bottom half (pivot at the pelvis), built inactive: with the top half it replaces the torso at death (GDD §11).")]
+        [SerializeField] private Rigidbody2D _torsoBottom;
+
+        [Tooltip("The torso's top half (pivot at mid-height), built inactive; the head and arms move onto it at death.")]
+        [SerializeField] private Rigidbody2D _torsoTop;
+
         [Header("As built (checked against the live settings at load)")]
         [SerializeField] private float _worldUnitsPerArenaUnit;
         [SerializeField] private Vector2 _shoulderOffsetUnits;
@@ -56,27 +67,56 @@ namespace XRim.Simulation.Unity2D
         private bool _jointsFound;
         private float _elbowMinDegrees;
         private float _elbowMaxDegrees;
+        private readonly List<BodyPart> _severed = new List<BodyPart>();
         private Rigidbody2D _heldItem;
         private TargetJoint2D _handFollow;
         private BodyPart _heldArm;
+        private bool _holding;
+        private BodyPart? _strikingPart;
+        private Rigidbody2D _droppedItem;
 
         public RagdollSegmentation Segmentation => _segmentation;
         public bool HasLowerSegments => _segmentation == RagdollSegmentation.TenBodies;
         public bool IsMirrored { get; private set; }
         public IReadOnlyList<HeldItemSlot> HeldItems => _heldItems;
 
-        /// <summary>The held weapon's body while it is held; null otherwise.</summary>
-        public Rigidbody2D ActiveHeldItem => _handFollow != null ? _heldItem : null;
+        /// <summary>The held weapon's body while it is held, or the striking body part of an armless dummy; null otherwise.</summary>
+        public Rigidbody2D ActiveHeldItem => _holding ? _heldItem : null;
+
+        /// <summary>The arm whose hand holds the weapon; null when nothing is held in a hand.</summary>
+        public BodyPart? HeldArm => _holding && _handFollow != null ? _heldArm : (BodyPart?)null;
+
+        /// <summary>The body part an armless dummy strikes with (GDD §12); null otherwise.</summary>
+        public BodyPart? StrikingPart => _holding ? _strikingPart : null;
+
+        /// <summary>The item this dummy dropped since it was loaded, falling under physics; null when it dropped none.</summary>
+        public Rigidbody2D DroppedItem => _droppedItem;
+
+        /// <summary>The limbs severed since this dummy was loaded (their joints broken by logic), in order.</summary>
+        public IReadOnlyList<BodyPart> SeveredSinceLoad => _severed;
+
+        /// <summary>The prefab has the torso's two halves (prefabs built before Session 11 do not: rebuild the dummies).</summary>
+        public bool HasPreSplitTorso => _torsoBottom != null && _torsoTop != null;
+
+        public bool IsTorsoSplit { get; private set; }
+
+        /// <summary>The torso's bottom half; it carries the pelvis and the legs once the torso split. Null in older prefabs.</summary>
+        public Rigidbody2D TorsoBottom => _torsoBottom;
+
+        /// <summary>The torso's top half; it carries the head and the arms once the torso split. Null in older prefabs.</summary>
+        public Rigidbody2D TorsoTop => _torsoTop;
 
         /// <summary>Called once by <see cref="PlaceholderRagdollBuilder"/>.</summary>
         internal void Configure(RagdollSegmentation segmentation, Rigidbody2D[] upper, Rigidbody2D[] lower, Transform[] hands,
-            List<HeldItemSlot> heldItems, ArenaSpace space, PathSettings paths)
+            List<HeldItemSlot> heldItems, Rigidbody2D torsoBottom, Rigidbody2D torsoTop, ArenaSpace space, PathSettings paths)
         {
             _segmentation = segmentation;
             _upper = upper;
             _lower = lower;
             _hands = hands;
             _heldItems = heldItems;
+            _torsoBottom = torsoBottom;
+            _torsoTop = torsoTop;
             _worldUnitsPerArenaUnit = space.WorldUnitsPerArenaUnit;
             _shoulderOffsetUnits = new Vector2(paths.ShoulderOffsetUnits.X, paths.ShoulderOffsetUnits.Y);
             _armLengthUnits = paths.ArmLengthUnits;
@@ -113,6 +153,13 @@ namespace XRim.Simulation.Unity2D
             }
         }
 
+        /// <summary>The torso's two halves (inactive until the torso splits); none in older prefabs.</summary>
+        public void GetTorsoHalves(List<Rigidbody2D> into)
+        {
+            if (_torsoBottom != null) into.Add(_torsoBottom);
+            if (_torsoTop != null) into.Add(_torsoTop);
+        }
+
         /// <summary>
         /// False when the prefab was built with a different shoulder, arm length or scale than the live settings, so its
         /// reach no longer matches the §6 reach limit. Rebuild it with XRim/Setup/Build Placeholder Dummies.
@@ -138,6 +185,9 @@ namespace XRim.Simulation.Unity2D
             {
                 Tag(slot.Body, side, BodyRole.HeldItem, BodyPart.Torso);
             }
+
+            Tag(_torsoBottom, side, BodyRole.BodyPart, BodyPart.Torso);
+            Tag(_torsoTop, side, BodyRole.BodyPart, BodyPart.Torso);
         }
 
         /// <summary>
@@ -152,6 +202,7 @@ namespace XRim.Simulation.Unity2D
 
             var bodies = new List<Rigidbody2D>();
             GetPartBodies(bodies);
+            GetTorsoHalves(bodies);
             foreach (HeldItemSlot slot in _heldItems)
             {
                 if (slot.Body != null) bodies.Add(slot.Body);
@@ -175,9 +226,9 @@ namespace XRim.Simulation.Unity2D
         }
 
         /// <summary>
-        /// Takes a weapon in an arm's hand (GDD §12: the dominant hand): activates its body at the hand of the built layout
-        /// and makes the hand follow it. Call on an instance still in its built layout, before <see cref="ApplyTuning"/>.
-        /// Returns null when this prefab has no body for the weapon (rebuild the dummies).
+        /// Takes a weapon in an arm's hand (GDD §12: the dominant hand while that arm is intact, then the other): activates its body at
+        /// the hand of the built layout and makes the hand follow it. Call on an instance still in its built layout, before
+        /// <see cref="ApplyTuning"/>. Returns null when this prefab has no body for the weapon (rebuild the dummies).
         /// </summary>
         public Rigidbody2D Hold(string weaponId, BodyPart arm)
         {
@@ -196,12 +247,41 @@ namespace XRim.Simulation.Unity2D
             _handFollow.target = hand.position;
             _heldItem = item;
             _heldArm = arm;
+            _holding = true;
             return item;
         }
 
-        /// <summary>Lets go of the held weapon: it falls under physics and the arm stops following it (GDD §12).</summary>
+        /// <summary>
+        /// An armless body blow (GDD §12): this body part (the head by default) takes the held item's place, to be driven along the
+        /// path. It keeps its own joint and tag. Returns null when the part has no body.
+        /// </summary>
+        public Rigidbody2D StrikeWith(BodyPart part)
+        {
+            Rigidbody2D body = _upper[(int)part];
+            if (body == null) return null;
+            _heldItem = body;
+            _strikingPart = part;
+            _holding = true;
+            body.useFullKinematicContacts = true;
+            return body;
+        }
+
+        /// <summary>
+        /// Lets go of the held weapon (GDD §12, the arm holding it was severed): it falls under physics and the arm stops following
+        /// it. A striking body part simply stops being driven. Nothing is ever thrown: this is the only release.
+        /// </summary>
         public void DropHeldItem()
         {
+            if (!_holding) return;
+            _holding = false;
+            if (_strikingPart.HasValue)
+            {
+                _strikingPart = null;
+                if (_heldItem != null) _heldItem.bodyType = RigidbodyType2D.Dynamic;
+                _heldItem = null;
+                return;
+            }
+
             // A whole turn is simulated within one frame, so the joint is switched off now and destroyed later.
             if (_handFollow != null)
             {
@@ -210,7 +290,53 @@ namespace XRim.Simulation.Unity2D
             }
 
             _handFollow = null;
-            if (_heldItem != null) _heldItem.bodyType = RigidbodyType2D.Dynamic;
+            if (_heldItem == null) return;
+            _heldItem.bodyType = RigidbodyType2D.Dynamic;
+            _droppedItem = _heldItem;
+        }
+
+        /// <summary>
+        /// The dummy died (GDD §11): every joint goes limp, and the torso splits in two by logic (the pre-split halves take its place
+        /// with its motion; the head and arms move onto the top half, the legs onto the bottom half). Call after dropping the held item.
+        /// Returns false when the prefab has no halves (it only goes limp).
+        /// </summary>
+        public bool SplitTorso()
+        {
+            List<JointEntry> joints = Joints();
+            foreach (JointEntry entry in joints)
+            {
+                entry.Joint.useMotor = false;
+            }
+
+            Rigidbody2D torso = _upper[(int)BodyPart.Torso];
+            if (!HasPreSplitTorso || IsTorsoSplit || torso == null || !torso.TryGetComponent(out BoxCollider2D torsoBox)) return false;
+
+            float halfHeight = torsoBox.size.y * TorsoHalfFraction;
+            Vector2 pelvis = torso.position;
+            Vector2 up = Quaternion.Euler(0f, 0f, torso.rotation) * new Vector2(0f, halfHeight);
+            Place(_torsoBottom, pelvis, torso);
+            Place(_torsoTop, pelvis + up, torso);
+
+            foreach (JointEntry entry in joints)
+            {
+                HingeJoint2D joint = entry.Joint;
+                if (joint.connectedBody != torso) continue;
+                if (entry.Part.IsLeg())
+                {
+                    joint.connectedBody = _torsoBottom;
+                }
+                else
+                {
+                    joint.connectedBody = _torsoTop;
+                    joint.connectedAnchor -= new Vector2(0f, halfHeight);
+                }
+            }
+
+            torso.gameObject.SetActive(false);
+            IgnoreCollisionsWithTheRest(_torsoBottom);
+            IgnoreCollisionsWithTheRest(_torsoTop);
+            IsTorsoSplit = true;
+            return true;
         }
 
         /// <summary>
@@ -308,8 +434,12 @@ namespace XRim.Simulation.Unity2D
                 entry.Joint.useMotor = body.JointServoGainPerSecond > 0f && !carriedByWeapon;
             }
 
+            if (_torsoBottom != null) _torsoBottom.mass = body.TorsoMass * TorsoHalfFraction;
+            if (_torsoTop != null) _torsoTop.mass = body.TorsoMass * TorsoHalfFraction;
+
             var bodies = new List<Rigidbody2D>();
             GetPartBodies(bodies);
+            GetTorsoHalves(bodies);
             foreach (HeldItemSlot slot in _heldItems)
             {
                 if (slot.Body != null) bodies.Add(slot.Body);
@@ -376,14 +506,17 @@ namespace XRim.Simulation.Unity2D
             if (upper != null) upper.gameObject.SetActive(false);
         }
 
-        /// <summary>Logic-driven sever: disables the joint that attaches a limb, so it falls and stays on the floor (GDD §12).</summary>
-        public void BreakJoint(BodyPart part)
+        /// <summary>
+        /// Logic-driven sever: disables the joint that attaches a limb, so it falls and stays on the floor (GDD §12). Returns false when it
+        /// was already broken.
+        /// </summary>
+        public bool BreakJoint(BodyPart part)
         {
             Rigidbody2D body = _upper[(int)part];
-            if (body != null && body.TryGetComponent(out HingeJoint2D joint))
-            {
-                joint.enabled = false;
-            }
+            if (body == null || !body.TryGetComponent(out HingeJoint2D joint) || !joint.enabled) return false;
+            joint.enabled = false;
+            _severed.Add(part);
+            return true;
         }
 
         private Rigidbody2D LastSegment(BodyPart arm)
@@ -416,6 +549,39 @@ namespace XRim.Simulation.Unity2D
             Vector2 restOffset = lower.transform.localPosition - upper.transform.localPosition;
             Vec2 offsetUnits = space.ToArena(restOffset).Rotated(upperPose.RotationDegrees);
             return new BodyPose(upperPose.PositionUnits + offsetUnits, upperPose.RotationDegrees);
+        }
+
+        /// <summary>A torso half takes the torso's place: its pivot at a point, the torso's rotation and motion there.</summary>
+        private static void Place(Rigidbody2D half, Vector2 pivot, Rigidbody2D torso)
+        {
+            half.transform.SetPositionAndRotation(pivot, Quaternion.Euler(0f, 0f, torso.rotation));
+            half.position = pivot;
+            half.rotation = torso.rotation;
+            half.gameObject.SetActive(true);
+            half.linearVelocity = torso.GetPointVelocity(pivot);
+            half.angularVelocity = torso.angularVelocity;
+        }
+
+        /// <summary>A torso half collides with nothing of its own dummy but the other half.</summary>
+        private void IgnoreCollisionsWithTheRest(Rigidbody2D half)
+        {
+            var own = new List<Rigidbody2D>();
+            GetPartBodies(own);
+            if (_droppedItem != null) own.Add(_droppedItem);
+            var halfColliders = new List<Collider2D>();
+            half.GetAttachedColliders(halfColliders);
+            foreach (Rigidbody2D body in own)
+            {
+                _colliderBuffer.Clear();
+                body.GetAttachedColliders(_colliderBuffer);
+                foreach (Collider2D mine in halfColliders)
+                {
+                    foreach (Collider2D other in _colliderBuffer)
+                    {
+                        Physics2D.IgnoreCollision(mine, other, true);
+                    }
+                }
+            }
         }
 
         private static void SetBody(Rigidbody2D body, BodyPose pose, ArenaSpace space)

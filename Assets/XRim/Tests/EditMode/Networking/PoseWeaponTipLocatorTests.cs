@@ -44,6 +44,20 @@ namespace XRim.Tests.EditMode.Networking
         }
 
         [Test]
+        public void ABodyBlowsPathPoint_IsTheStrikingHeadsCentre_EvenWithNothingHeld()
+        {
+            BoardSnapshot board = Board(new BodyPose(new Vec2(-350f, 180f), 0f), default, new BodyPose(new Vec2(350f, 180f), 0f), default);
+            board.Pose.Left.HasHeldItem = false;
+            board.Pose.Right.HasHeldItem = false;
+            board.Pose.Left.Set(BodyPart.Head, new BodyPose(new Vec2(-350f, 300f), 0f));
+            board.Pose.Right.Set(BodyPart.Head, new BodyPose(new Vec2(350f, 300f), 0f));
+            float radius = _rules.FindWeapon(WeaponIds.BodyBlow).InkThicknessUnits * 0.5f;
+
+            AssertNear(_locator.ForSide(board, Side.Left).TipLocal(WeaponIds.BodyBlow), new Vec2(0f, 120f + radius), "§12 headbutt");
+            AssertNear(_locator.ForSide(board, Side.Right).TipLocal(WeaponIds.BodyBlow), new Vec2(0f, 120f + radius), "mirrored");
+        }
+
+        [Test]
         public void TheShieldsPathPoint_IsItsCentre_TheGrip()
         {
             BoardSnapshot board = Board(new BodyPose(new Vec2(-350f, 180f), 0f), new BodyPose(new Vec2(-200f, 300f), 25f),

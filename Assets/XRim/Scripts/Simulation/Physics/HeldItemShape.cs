@@ -14,10 +14,16 @@ namespace XRim.Simulation.Physics
     /// tip follows the path.</item>
     /// <item>The shield, held like a shield (designer, 2026-10-03, A3): a box centred on the grip, its ink thickness along the
     /// body's rotation (the way its face looks) and its length across it (the face's height). Its centre follows the path.</item>
+    /// <item>An armless body blow (GDD §12; the headbutt by default): the striking head, from its pivot at the neck out along +X to its
+    /// crown, as wide as the body blow's ink thickness (the head's width). Its centre follows the path. The head's own body is
+    /// upright at rotation 0, so it is held at <see cref="HeadAsItem"/>.</item>
     /// </list>
     /// </summary>
     public readonly struct HeldItemShape
     {
+        /// <summary>The striking head's item rotation is its body's rotation plus this: its +X axis points from the neck to the crown.</summary>
+        public const float HeadItemRotationOffsetDegrees = 90f;
+
         /// <summary>The box's centre in the body's frame, arena units.</summary>
         public Vec2 CentreLocal { get; }
 
@@ -43,10 +49,23 @@ namespace XRim.Simulation.Physics
             Guard.NotNull(item, nameof(item));
             float length = item.LengthUnits;
             float width = item.InkThicknessUnits;
-            return item.Kind == WeaponKind.Shield
-                ? new HeldItemShape(Vec2.Zero, new Vec2(width, length), Vec2.Zero, true)
-                : new HeldItemShape(new Vec2(length * 0.5f, 0f), new Vec2(length, width), new Vec2(length, 0f), false);
+            switch (item.Kind)
+            {
+                case WeaponKind.Shield:
+                    return new HeldItemShape(Vec2.Zero, new Vec2(width, length), Vec2.Zero, true);
+                case WeaponKind.BodyBlow:
+                    var centre = new Vec2(width * 0.5f, 0f);
+                    return new HeldItemShape(centre, new Vec2(width, width), centre, false);
+                default:
+                    return new HeldItemShape(new Vec2(length * 0.5f, 0f), new Vec2(length, width), new Vec2(length, 0f), false);
+            }
         }
+
+        /// <summary>The striking head as a held item: its pivot at the neck, its +X axis from the neck to the crown.</summary>
+        public static BodyPose HeadAsItem(BodyPose head) => new BodyPose(head.PositionUnits, head.RotationDegrees + HeadItemRotationOffsetDegrees);
+
+        /// <summary>The head's own body pose for a striking-head item pose; the inverse of <see cref="HeadAsItem"/>.</summary>
+        public static BodyPose HeadFromItem(BodyPose item) => new BodyPose(item.PositionUnits, item.RotationDegrees - HeadItemRotationOffsetDegrees);
 
         /// <summary>Half the box's smaller side: how far its surface is from its long centre line.</summary>
         public float HalfThicknessUnits => Math.Min(SizeUnits.X, SizeUnits.Y) * 0.5f;

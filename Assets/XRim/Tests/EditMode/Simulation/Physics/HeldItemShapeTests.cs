@@ -55,6 +55,32 @@ namespace XRim.Tests.EditMode.Simulation.Physics
         }
 
         [Test]
+        public void ABodyBlow_IsTheHeadFromNeckToCrown_AndItsCentreFollowsThePath()
+        {
+            WeaponStats bodyBlow = GddStartingValues.BodyBlow();
+            float width = bodyBlow.InkThicknessUnits;
+
+            HeldItemShape shape = HeldItemShape.Of(bodyBlow);
+
+            Assert.That(shape.IsShield, Is.False);
+            Assert.That(shape.SizeUnits, Is.EqualTo(new Vec2(width, width)), "as wide as the head, not as long as its reach");
+            Assert.That(shape.PathPointLocal, Is.EqualTo(new Vec2(width * 0.5f, 0f)));
+            Assert.That(shape.CentreLocal, Is.EqualTo(shape.PathPointLocal));
+        }
+
+        [Test]
+        public void TheStrikingHead_IsHeldUpright_AndConvertsBothWays()
+        {
+            var head = new BodyPose(new Vec2(10f, 120f), 0f);
+
+            BodyPose item = HeldItemShape.HeadAsItem(head);
+
+            Assert.That(item.RotationDegrees, Is.EqualTo(90f), "its axis points from the neck to the crown");
+            Assert.That(HeldItemShape.HeadFromItem(item), Is.EqualTo(head));
+            Assert.That(HeldItemShape.Of(GddStartingValues.BodyBlow()).PathPointAt(item).Y, Is.GreaterThan(head.PositionUnits.Y), "above the neck");
+        }
+
+        [Test]
         public void ThePathPoint_TurnsWithTheBody()
         {
             var body = new BodyPose(new Vec2(10f, 20f), 90f);

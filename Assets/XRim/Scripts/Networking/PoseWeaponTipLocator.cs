@@ -15,7 +15,7 @@ namespace XRim.Networking
     /// from the pose the last turn left the item in, in the upright turn-start frame the turn will run in (<see cref="TurnStartRoot"/>).
     /// A weapon's path point is its tip, the shield's its centre (<see cref="HeldItemShape"/>, A3). An item switched to during
     /// planning appears in the same grip, so its path point follows from the grip and its own shape. A side holding nothing
-    /// (its weapon was dropped) plans from the guard stance.
+    /// (its weapon was dropped) plans from the guard stance. An armless body blow (GDD §12) starts from the striking head's centre.
     /// </summary>
     public sealed class PoseWeaponTipLocator : IWeaponTipLocator
     {
@@ -50,9 +50,11 @@ namespace XRim.Networking
             {
                 WeaponStats stats = _rules.FindWeapon(weapon)
                     ?? throw new InvalidOperationException($"The rules settings have no stats for weapon '{weapon}'.");
-                if (!_pose.HasHeldItem) return GuardStance.TipLocal(stats, _simulation.Ragdoll, _rules.Paths);
+                bool bodyBlow = stats.Kind == WeaponKind.BodyBlow;
+                if (!_pose.HasHeldItem && !bodyBlow) return GuardStance.TipLocal(stats, _simulation.Ragdoll, _rules.Paths);
 
-                Vec2 tip = HeldItemShape.Of(stats).PathPointAt(_pose.HeldItem);
+                BodyPose item = bodyBlow ? HeldItemShape.HeadAsItem(_pose.Get(BodyPart.Head)) : _pose.HeldItem;
+                Vec2 tip = HeldItemShape.Of(stats).PathPointAt(item);
                 return TorsoFrame.ToLocal(tip, TurnStartRoot.Of(_pose), _side);
             }
         }

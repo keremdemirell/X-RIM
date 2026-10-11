@@ -16,7 +16,8 @@ namespace XRim.Simulation.Unity2D
     /// both arms hang from the shoulder (<c>PathSettings.ShoulderOffsetUnits</c>) and are <c>ArmLengthUnits</c> long
     /// so the ragdoll's reach matches the §6 reach limit, and both legs hang from the pelvis. With ten bodies (D2) each
     /// arm and leg is split into upper and lower segments that map to the same hit zone.
-    /// One held-item body is built per weapon (length × ink thickness, the weapon's mass), inactive until held.
+    /// One held-item body is built per weapon (length × ink thickness, the weapon's mass), inactive until held; a body blow holds
+    /// nothing (GDD §12: the head strikes). The torso's two halves are built inactive beside it, for the split at death (§11).
     /// </summary>
     public static class PlaceholderRagdollBuilder
     {
@@ -25,6 +26,8 @@ namespace XRim.Simulation.Unity2D
         private const string MarkerName = "Marker";
         private const string HandName = "Hand";
         private const string HeldItemPrefix = "HeldItem_";
+        private const string TorsoBottomName = "TorsoBottom";
+        private const string TorsoTopName = "TorsoTop";
 
         // Draw order: far limbs behind the torso, near limbs and the weapon in front. Markers draw over their part.
         private const int FarLimbOrder = -20;
@@ -58,6 +61,15 @@ namespace XRim.Simulation.Unity2D
                 body.TorsoHeightUnits, rises: true, body.TorsoMass, TorsoOrder);
             upper[(int)BodyPart.Torso] = torso;
 
+            float halfHeight = body.TorsoHeightUnits * Ragdoll.TorsoHalfFraction;
+            float halfMass = body.TorsoMass * Ragdoll.TorsoHalfFraction;
+            Rigidbody2D torsoBottom = context.Box(root.transform, BodyPart.Torso, TorsoBottomName, Vector2.zero, body.TorsoWidthUnits, halfHeight,
+                rises: true, halfMass, TorsoOrder);
+            Rigidbody2D torsoTop = context.Box(root.transform, BodyPart.Torso, TorsoTopName, new Vector2(0f, halfHeight), body.TorsoWidthUnits,
+                body.TorsoHeightUnits - halfHeight, rises: true, halfMass, TorsoOrder);
+            torsoBottom.gameObject.SetActive(false);
+            torsoTop.gameObject.SetActive(false);
+
             Rigidbody2D head = context.Head(root.transform, new Vector2(0f, body.TorsoHeightUnits), body.HeadDiameterUnits, body.HeadMass);
             context.Join(head, torso, body.NeckMinDegrees, body.NeckMaxDegrees);
             upper[(int)BodyPart.Head] = head;
@@ -85,17 +97,18 @@ namespace XRim.Simulation.Unity2D
             var heldItems = new List<HeldItemSlot>();
             foreach (WeaponStats weapon in spec.Weapons)
             {
+                if (weapon.Kind == WeaponKind.BodyBlow) continue;
                 heldItems.Add(new HeldItemSlot(weapon.Id, context.HeldItem(root.transform, weapon, restGrip)));
             }
 
-            ragdoll.Configure(spec.Segmentation, upper, lower, hands, heldItems, spec.Space, spec.Paths);
+            ragdoll.Configure(spec.Segmentation, upper, lower, hands, heldItems, torsoBottom, torsoTop, spec.Space, spec.Paths);
             return ragdoll;
         }
 
         /// <summary>
-        /// Session 04 placeholder for a severed limb lying in the arena: one loose body of the limb's shape and mass (an arm
-        /// or leg is one piece even with ten bodies), pivoting at the end that was jointed, like the dummy's own limbs, so a
-        /// limb's pose means the same on and off the dummy. Physics only, no drawing (Session 11 builds dismemberment).
+        /// A severed limb lying in the arena as one loose body of the limb's shape and mass, pivoting at the end that was jointed,
+        /// like the dummy's own limbs, so a limb's pose means the same on and off the dummy. Physics only: the dummy's view draws it
+        /// (GDD §12). A limb that kept its lower segment is built by <see cref="BuildSeveredLimbSegments"/>.
         /// </summary>
         public static Rigidbody2D BuildSeveredLimb(Side owner, BodyPart part, RagdollSettings body, PathSettings paths, ArenaSpace space)
         {
@@ -122,6 +135,51 @@ namespace XRim.Simulation.Unity2D
                 rigidbody.mass = part.IsArm() ? body.ArmMass : part.IsLeg() ? body.LegMass : body.TorsoMass;
             }
 
+            gameObject.AddComponent<PhysicsBodyTag>().Configure(owner, BodyRole.SeveredLimb, part);
+            return rigidbody;
+        }
+
+        /// <summary>
+        /// A severed arm or leg of a ten-body dummy as it fell (S1): its upper segment and its forearm or shin, hinged at the elbow or
+        /// knee (limp, bending either way within the joint's range), each pivoting at its jointed end. Returns { upper, lower }; the
+        /// caller places both. Physics only.
+        /// </summary>
+        public static Rigidbody2D[] BuildSeveredLimbSegments(Side owner, BodyPart part, RagdollSettings body, PathSettings paths, ArenaSpace space)
+        {
+            Guard.NotNull(body, nameof(body));
+            Guard.NotNull(paths, nameof(paths));
+            float length = SeveredLimbLayout.LengthUnits(part, body, paths);
+            float upperLength = SeveredLimbLayout.UpperLengthUnits(part, body, paths);
+            float width = part.IsArm() ? body.ArmWidthUnits : body.LegWidthUnits;
+            float mass = part.IsArm() ? body.ArmMass : body.LegMass;
+            Rigidbody2D upper = SeveredPiece($"Severed{owner}{part}Upper", owner, part, width, upperLength, mass * body.UpperSegmentFraction, space);
+            Rigidbody2D lower = SeveredPiece($"Severed{owner}{part}Lower", owner, part, width, length - upperLength,
+                mass * (1f - body.UpperSegmentFraction), space);
+
+            float bend = part.IsArm()
+                ? Mathf.Max(Mathf.Abs(body.ElbowMinDegrees), Mathf.Abs(body.ElbowMaxDegrees))
+                : Mathf.Max(Mathf.Abs(body.KneeMinDegrees), Mathf.Abs(body.KneeMaxDegrees));
+            var joint = lower.gameObject.AddComponent<HingeJoint2D>();
+            joint.connectedBody = upper;
+            joint.autoConfigureConnectedAnchor = false;
+            joint.anchor = Vector2.zero;
+            joint.connectedAnchor = new Vector2(0f, -space.ToWorldLength(upperLength));
+            joint.enableCollision = false;
+            joint.useLimits = true;
+            joint.limits = new JointAngleLimits2D { min = -bend, max = bend };
+            joint.useMotor = false;
+            return new[] { upper, lower };
+        }
+
+        private static Rigidbody2D SeveredPiece(string name, Side owner, BodyPart part, float widthUnits, float lengthUnits, float mass, ArenaSpace space)
+        {
+            var gameObject = new GameObject(name);
+            var rigidbody = gameObject.AddComponent<Rigidbody2D>();
+            rigidbody.useAutoMass = false;
+            rigidbody.mass = mass;
+            var box = gameObject.AddComponent<BoxCollider2D>();
+            box.size = new Vector2(space.ToWorldLength(widthUnits), space.ToWorldLength(lengthUnits));
+            box.offset = new Vector2(0f, -0.5f * box.size.y);
             gameObject.AddComponent<PhysicsBodyTag>().Configure(owner, BodyRole.SeveredLimb, part);
             return rigidbody;
         }

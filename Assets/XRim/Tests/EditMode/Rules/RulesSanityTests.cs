@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using XRim.Core;
 using XRim.Rules;
+using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 
@@ -135,9 +136,15 @@ namespace XRim.Tests.EditMode.Rules
             MatchState copy = original.Clone();
             copy.Fighters[Side.Left].Hp = 1f;
             copy.Fighters[Side.Left].MarkSevered(BodyPart.LeftArm);
+            copy.Fighters[Side.Left].HeldLimb = new SeveredLimbRef(Side.Right, BodyPart.LeftLeg);
+            copy.Fighters[Side.Left].LostWeapons.Add(WeaponIds.Rapier);
 
             Assert.That(original.Fighters[Side.Left].Hp, Is.Not.EqualTo(1f));
             Assert.That(original.Fighters[Side.Left].IsSevered(BodyPart.LeftArm), Is.False);
+            Assert.That(original.Fighters[Side.Left].HeldLimb, Is.Null);
+            Assert.That(original.Fighters[Side.Left].LostWeapons, Is.Empty);
+            Assert.That(copy.Clone().Fighters[Side.Left].HeldLimb, Is.EqualTo(new SeveredLimbRef(Side.Right, BodyPart.LeftLeg)), "copied");
+            Assert.That(copy.Clone().Fighters[Side.Left].LostWeapons, Is.EquivalentTo(new[] { WeaponIds.Rapier }), "copied");
         }
     }
 }

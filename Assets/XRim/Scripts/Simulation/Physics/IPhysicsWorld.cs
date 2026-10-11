@@ -19,8 +19,10 @@ namespace XRim.Simulation.Physics
         /// <summary>
         /// Rebuilds the board from a frozen pose, all at zero velocity (GDD §3 stance persistence): both ragdolls (limbs
         /// the state marks severed are left off), held items, the severed limbs lying in the arena, the floor and the arena
-        /// edges. Each fighter holds <c>state.Fighters[side].CurrentWeapon</c> in its dominant hand (GDD §12) when its pose
-        /// has one. Electric walls come in Session 12.
+        /// edges. When its pose has a held item, each fighter holds <c>state.Fighters[side].CurrentWeapon</c> (a weapon, shield or
+        /// severed-limb club) at that pose, in the arm <c>FighterState.HeldItemArm</c> names: the dominant arm while intact, then
+        /// the other (GDD §12). A body blow holds nothing (see <see cref="StrikeWithBodyPart"/>). A dropped item or a split torso
+        /// in the pose is not rebuilt. Electric walls come in Session 12.
         /// </summary>
         void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation, ArenaEdges edges);
 
@@ -62,10 +64,30 @@ namespace XRim.Simulation.Physics
         /// <summary>Appends contacts that began during the last step, in a stable order.</summary>
         void DrainContacts(List<ContactFacts> into);
 
-        /// <summary>Logic-driven sever: disables the limb's joint. Never physics breakForce (GDD §18; breakForce is Rejected).</summary>
+        /// <summary>
+        /// Logic-driven sever: disables the limb's joint, so the limb falls and stays on the floor. Never physics breakForce (GDD §18;
+        /// breakForce is Rejected). From then on <see cref="CapturePose"/> lists the limb in <c>PoseSnapshot.SeveredLimbs</c>.
+        /// </summary>
         void BreakJoint(Side side, BodyPart part);
 
+        /// <summary>
+        /// The held item drops (the arm holding it was severed, GDD §12): it falls under physics, the hand lets go and it is no longer
+        /// driven. <see cref="CapturePose"/> reports it as the fighter's dropped item. It is never thrown: dropping is the only release.
+        /// </summary>
         void DropHeldItem(Side side);
+
+        /// <summary>
+        /// The dummy died (GDD §11): its joints go limp, its root lets go and its torso splits in two by logic (a pre-split torso, never a
+        /// physics break). <see cref="CapturePose"/> reports the split.
+        /// </summary>
+        void SplitTorso(Side side);
+
+        /// <summary>
+        /// An armless body blow (GDD §12): from now this body part takes the held item's place. It is driven along the path in the held
+        /// item convention (the head: <see cref="HeldItemShape.HeadAsItem"/>) and captured as the held item; its contacts are still its
+        /// own. Call after <see cref="Load"/>, for a fighter whose weapon is a body blow.
+        /// </summary>
+        void StrikeWithBodyPart(Side side, BodyPart part);
 
         void ApplyImpulse(Side side, BodyPart part, Vec2 impulse);
 

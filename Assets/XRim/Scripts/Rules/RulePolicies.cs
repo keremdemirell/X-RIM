@@ -65,11 +65,20 @@ namespace XRim.Rules
         /// </summary>
         public IShieldBlockModel ShieldBlock { get; set; } = new SettingsShieldBlockModel();
 
-        /// <summary>§12 (TBD): no penalty until Session 11 designs the leg-loss options.</summary>
-        public IMobilityPenaltyPolicy MobilityPenalty { get; set; } = new NoMobilityPenaltyPolicy();
+        /// <summary>
+        /// §12 (TBD; designer 2026-10-10, the recommended default): the penalty <c>LimbLossSettings.LegLossPenalty</c> names, no jump
+        /// or lunge on one leg and no body move on none.
+        /// </summary>
+        public IMobilityPenaltyPolicy MobilityPenalty { get; set; } = new SettingsMobilityPenaltyPolicy();
 
-        public IArmlessAttackMode ArmlessAttack { get; set; }
-        public ILimbRetrievalPolicy LimbRetrieval { get; set; }
+        /// <summary>§12 (TBD; designer 2026-10-10, the recommended default): without arms the drawn path steers the head (a headbutt).</summary>
+        public IArmlessAttackMode ArmlessAttack { get; set; } = new HeadbuttArmlessAttackMode();
+
+        /// <summary>
+        /// §12 (TBD; designer 2026-10-10, the recommended default): the rule <c>LimbLossSettings.Retrieval</c> names, picking the club
+        /// retrieves a limb automatically, even out of reach.
+        /// </summary>
+        public ILimbRetrievalPolicy LimbRetrieval { get; set; } = new SettingsLimbRetrievalPolicy();
 
         /// <summary>D22 (§13 stays TBD): width from <c>ArenaSettings</c>, each edge a solid invisible stop.</summary>
         public IArenaEdgePolicy ArenaEdge { get; set; } = new SolidStopArenaEdgePolicy();

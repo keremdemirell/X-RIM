@@ -4,6 +4,7 @@ using XRim.Core;
 using XRim.Rules;
 using XRim.Rules.Combat;
 using XRim.Rules.Events;
+using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Simulation.Drivers;
@@ -31,11 +32,15 @@ namespace XRim.Simulation.Execution
     /// <item><b>A held item touching another dummy's body part</b> becomes <see cref="HitFacts"/> (the zone from the part's tag,
     /// the weapon from what the attacker holds, the time refined from the weapon's motion) and goes to the rules'
     /// <see cref="HitResolver"/>: the weapon slows (D26) or stops and recoils at its last hit; an interrupted weapon stops where it
-    /// is; the struck part gets a share of the weapon's momentum along its motion and the victim is knocked back (E1).</item>
+    /// is; the struck part gets a share of the weapon's momentum along its motion and the victim is knocked back (E1). An armless
+    /// dummy's striking part (the head, GDD §12) touching the other dummy hits the same way, with the body blow. A hit with the
+    /// off hand (the dominant arm is gone, §12) is marked so, for the off-hand damage share.</item>
+    /// <item><b>Severs, drops and deaths</b> the rules decide are applied (GDD §11, §12): the limb's joint breaks by logic, a lost
+    /// holding arm drops its item, a dead dummy goes limp and its torso splits.</item>
     /// </list>
     /// Both resolvers share each side's <see cref="TurnAttack"/>, so a clash or block carries into the hits after it (a crushed
     /// weapon lands nothing, a crush-through or partially blocked weapon hits softer). A dummy's contacts with its own body,
-    /// body-to-body bumps and severed limbs on the floor change nothing.
+    /// body-to-body bumps, severed limbs on the floor and a dropped item change nothing.
     /// </summary>
     public sealed class HitContactHandler : ITurnContactHandler
     {
@@ -80,7 +85,7 @@ namespace XRim.Simulation.Execution
                     {
                         _itemContacts.Add(contact);
                     }
-                    else if (TryReadHit(contact, context.State, out HitFacts hit))
+                    else if (TryReadHit(contact, context, out HitFacts hit))
                     {
                         _hits.Add(hit);
                         _hitContacts.Add(contact);
@@ -211,18 +216,24 @@ namespace XRim.Simulation.Execution
 
         // --- Held item against a body: hits (§9, §11) -----------------------------------------------
 
-        /// <summary>A held item touching another dummy's body part; nothing else is a hit.</summary>
-        private static bool TryReadHit(TurnContact contact, MatchState state, out HitFacts hit)
+        /// <summary>
+        /// A held item, or an armless dummy's striking part, touching another dummy's body part; nothing else is a hit. A side that
+        /// holds nothing (it dropped its item or died) hits nothing.
+        /// </summary>
+        private static bool TryReadHit(TurnContact contact, TurnContactContext context, out HitFacts hit)
         {
             hit = default;
             ContactFacts facts = contact.Facts;
+            if (!facts.A.Owner.HasValue || !facts.B.Owner.HasValue || facts.A.Owner.Value == facts.B.Owner.Value) return false;
+
+            ITurnActions actions = context.Actions;
             BodyTag weapon, body;
-            if (facts.A.Role == BodyRole.HeldItem && facts.B.Role == BodyRole.BodyPart)
+            if (IsStriker(facts.A, actions) && facts.B.Role == BodyRole.BodyPart)
             {
                 weapon = facts.A;
                 body = facts.B;
             }
-            else if (facts.B.Role == BodyRole.HeldItem && facts.A.Role == BodyRole.BodyPart)
+            else if (IsStriker(facts.B, actions) && facts.A.Role == BodyRole.BodyPart)
             {
                 weapon = facts.B;
                 body = facts.A;
@@ -232,12 +243,23 @@ namespace XRim.Simulation.Execution
                 return false;
             }
 
-            if (!weapon.Owner.HasValue || !body.Owner.HasValue || weapon.Owner.Value == body.Owner.Value) return false;
-
             Side attacker = weapon.Owner.Value;
-            FighterState fighter = state.Fighters[attacker];
-            hit = new HitFacts(attacker, body.Part, fighter.CurrentWeapon, contact.Time, !fighter.HasDominantArm);
+            if (actions.HeldWeapon(attacker) == null) return false;
+
+            FighterState fighter = context.State.Fighters[attacker];
+            BodyPart? holdingArm = fighter.HeldItemArm;
+            bool offHand = holdingArm.HasValue && holdingArm.Value != BodyParts.DominantArm(fighter.Handedness);
+            hit = new HitFacts(attacker, body.Part, fighter.CurrentWeapon, contact.Time, offHand);
             return true;
+        }
+
+        /// <summary>The side's held item, or the body part it strikes with while armless (GDD §12).</summary>
+        private static bool IsStriker(BodyTag tag, ITurnActions actions)
+        {
+            if (tag.Role == BodyRole.HeldItem) return true;
+            if (tag.Role != BodyRole.BodyPart) return false;
+            BodyPart? striking = actions.StrikingPart(tag.Owner.Value);
+            return striking.HasValue && striking.Value == tag.Part;
         }
 
         private void ApplyHits(HitResolution resolution, TurnContactContext context)
@@ -257,9 +279,19 @@ namespace XRim.Simulation.Execution
                 else actions.SlowWeapon(attacker, landed.SpeedFractionAfter);
             }
 
+            foreach (SeverOutcome sever in resolution.Severed)
+            {
+                SeverApplier.Apply(sever, actions);
+            }
+
             foreach (Side side in resolution.Interrupted)
             {
                 actions.StopWeapon(side, WeaponStopKind.Interrupted);
+            }
+
+            foreach (Side side in resolution.Died)
+            {
+                actions.Die(side);
             }
 
             Record(resolution.Events, context);

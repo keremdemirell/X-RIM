@@ -22,7 +22,7 @@ namespace XRim.Rules.Settings
 
         public static List<WeaponStats> CreateWeapons() => new List<WeaponStats>
         {
-            Rapier(), Sword(), Mace(), Spear(), Shield(), SeveredLimb(),
+            Rapier(), Sword(), Mace(), Spear(), Shield(), SeveredLimb(), BodyBlow(),
         };
 
         /// <summary>
@@ -82,6 +82,18 @@ namespace XRim.Rules.Settings
             Id = WeaponIds.SeveredLimb.Value, DisplayName = "Severed limb", Kind = WeaponKind.SeveredLimb, DesignIsTbd = true,
             InkLengthUnits = 200f, InkThicknessUnits = 25f, LengthUnits = 200f, Mass = 6f,
             SpeedUnitsPerSecond = 300f, BaseDamage = 10f, SpeedKeptAfterHitFraction = 0.5f,
+        };
+
+        /// <summary>
+        /// GDD §12: body blows once both arms are gone; the drawn path steers the head (designer 2026-10-10, the recommended
+        /// default). Its stats are TBD, so every number is a placeholder (S6): reach 160 from the shoulder (its length, with no arm),
+        /// ink 200 by the head's width, speed 350, damage 8, the head's mass.
+        /// </summary>
+        public static WeaponStats BodyBlow() => new WeaponStats
+        {
+            Id = WeaponIds.BodyBlow.Value, DisplayName = "Body blow", Kind = WeaponKind.BodyBlow, DesignIsTbd = true,
+            InkLengthUnits = 200f, InkThicknessUnits = 50f, LengthUnits = 160f, Mass = 2f,
+            SpeedUnitsPerSecond = 350f, BaseDamage = 8f, SpeedKeptAfterHitFraction = 0.3f,
         };
 
         /// <summary>

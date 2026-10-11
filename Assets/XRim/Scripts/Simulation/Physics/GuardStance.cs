@@ -69,11 +69,29 @@ namespace XRim.Simulation.Physics
 
         /// <summary>
         /// Where a held item's path point (a weapon's tip, the shield's centre) rests in the guard stance, in the torso frame: a
-        /// first stroke's lead-in starts here (D3).
+        /// first stroke's lead-in starts here (D3). A body blow's is the head's centre on top of the torso.
         /// </summary>
-        public static Vec2 TipLocal(WeaponStats weapon, RagdollSettings body, PathSettings paths) =>
-            paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(body.GuardAngleDegrees) *
-            (paths.ArmLengthUnits * body.GuardHandReachFraction + Guard.NotNull(weapon, nameof(weapon)).LengthUnits);
+        public static Vec2 TipLocal(WeaponStats weapon, RagdollSettings body, PathSettings paths)
+        {
+            Guard.NotNull(weapon, nameof(weapon));
+            if (weapon.Kind == WeaponKind.BodyBlow) return new Vec2(0f, body.TorsoHeightUnits + weapon.InkThicknessUnits * 0.5f);
+            return paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(body.GuardAngleDegrees) *
+                (paths.ArmLengthUnits * body.GuardHandReachFraction + weapon.LengthUnits);
+        }
+
+        /// <summary>
+        /// Where a held weapon, shield or club sits in the guard stance, in the arena: a dummy that takes up an item without a grip
+        /// to keep (its other hand after a drop, GDD §12) holds it here. The same grip <see cref="Create"/> places.
+        /// </summary>
+        public static BodyPose HeldItemPose(WeaponStats weapon, BodyPose torso, Side side, RagdollSettings body, PathSettings paths,
+            IWeaponAimModel aim, IWeaponAimModel shieldAim)
+        {
+            Guard.NotNull(weapon, nameof(weapon));
+            Guard.NotNull(aim, nameof(aim));
+            IWeaponAimModel itemAim = weapon.Kind == WeaponKind.Shield ? shieldAim ?? new ShieldFaceAimModel() : aim;
+            BodyPose grip = itemAim.Aim(TipLocal(weapon, body, paths), paths.ShoulderOffsetUnits, paths.ArmLengthUnits, weapon.LengthUnits);
+            return TorsoFrame.ToArena(grip, torso, side);
+        }
 
         /// <summary>Where a part is jointed, in the torso frame as built facing +X.</summary>
         private static Vec2 PivotLocal(BodyPart part, RagdollSettings body, PathSettings paths)

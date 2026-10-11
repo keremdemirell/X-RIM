@@ -402,16 +402,16 @@ namespace XRim.Tests.EditMode.Rules.Match
         }
 
         [Test]
-        public void MobilityPenalty_ByDefaultForbidsNothing()
+        public void MobilityPenalty_ByDefault_OneLegForbidsJumpAndLunge()
         {
             _machine.State.Fighters[Side.Left].MarkSevered(BodyPart.LeftLeg);
             StartPlanning();
 
-            Assert.That(_policies.MobilityPenalty, Is.InstanceOf<NoMobilityPenaltyPolicy>(), "§12 penalty is TBD until Session 11");
-            foreach (BodyMove move in new[] { BodyMove.Crouch, BodyMove.Lunge, BodyMove.StepBack, BodyMove.Jump })
-            {
-                Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(move), Is.True, move.ToString());
-            }
+            Assert.That(_policies.MobilityPenalty, Is.InstanceOf<SettingsMobilityPenaltyPolicy>(), "§12 default, designer 2026-10-10");
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Jump), Is.False);
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Lunge), Is.False);
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Crouch), Is.True);
+            Assert.That(_machine.Constraints[Side.Right].IsBodyMoveAllowed(BodyMove.Jump), Is.True, "the right dummy has both legs");
         }
 
         [Test]
@@ -422,13 +422,14 @@ namespace XRim.Tests.EditMode.Rules.Match
             StartPlanning();
 
             Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Jump), Is.False);
+            Assert.That(_machine.Constraints[Side.Left].IsBodyMoveAllowed(BodyMove.Lunge), Is.True, "the swapped-in policy decides");
             Assert.That(_machine.Constraints[Side.Right].IsBodyMoveAllowed(BodyMove.Jump), Is.True, "the right dummy has both legs");
         }
 
         /// <summary>One of the §12 options, for the seam only: no jump on one leg.</summary>
         private sealed class NoJumpWithoutBothLegsPolicy : IMobilityPenaltyPolicy
         {
-            public void Apply(FighterState fighter, PlanningConstraints constraints)
+            public void Apply(FighterState fighter, PlanningConstraints constraints, RulesSettings settings)
             {
                 if (fighter.IsSevered(BodyPart.LeftLeg) || fighter.IsSevered(BodyPart.RightLeg)) constraints.ForbidBodyMove(BodyMove.Jump);
             }

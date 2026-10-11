@@ -1,6 +1,7 @@
 using XRim.Core.Gdd;
 using XRim.Rules.Match;
 using XRim.Rules.Planning;
+using XRim.Rules.Settings;
 
 namespace XRim.Rules.Limbs
 {
@@ -12,6 +13,6 @@ namespace XRim.Rules.Limbs
     [GddTbd("§5", "How each move changes after losing a leg")]
     public interface IMobilityPenaltyPolicy
     {
-        void Apply(FighterState fighter, PlanningConstraints constraints);
+        void Apply(FighterState fighter, PlanningConstraints constraints, RulesSettings settings);
     }
 }

@@ -127,6 +127,17 @@ namespace XRim.Tests.EditMode.App
         }
 
         [Test]
+        public void TheExtraOptionsOfTheTurn_GetTheirOwnButtons()
+        {
+            _rig.Window.Constraints[Side.Left].AddExtraWeapon(WeaponIds.SeveredLimb);
+
+            _presenter.Tick(0.0, null);
+
+            Assert.That(_hud.Loadout, Is.EqualTo(new[] { WeaponIds.Rapier, WeaponIds.Mace, WeaponIds.Shield, WeaponIds.SeveredLimb }),
+                "§12: the club beyond the 3 slots");
+        }
+
+        [Test]
         public void ANewPlanningPhase_ShowsTheLoadoutTheWeaponInHandAndAFreshBoard()
         {
             _presenter.Tick(0.0, null);

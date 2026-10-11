@@ -31,6 +31,9 @@ namespace XRim.Presentation.Playback
 
         public bool IsPlaying { get; private set; }
 
+        /// <summary>The drawn dummies (reactors read where their parts are, for effects).</summary>
+        public PerSide<DummyView> Views => _views;
+
         /// <summary>Bends the pace of playback (hitstop); null plays at the player's speed.</summary>
         public IPlaybackPacer Pacer { get; set; }
 
@@ -99,10 +102,11 @@ namespace XRim.Presentation.Playback
             ShowWeapon(Side.Right, state.Fighters[Side.Right].CurrentWeapon);
         }
 
+        /// <summary>Both dummies, each drawing its own severed limbs where they lie (GDD §12).</summary>
         private void ShowPose(PoseSnapshot pose)
         {
-            _views.Left.ApplyPose(pose.Left, _space);
-            _views.Right.ApplyPose(pose.Right, _space);
+            _views.Left.ApplyPose(pose.Left, Side.Left, pose.SeveredLimbs, _space);
+            _views.Right.ApplyPose(pose.Right, Side.Right, pose.SeveredLimbs, _space);
         }
     }
 }

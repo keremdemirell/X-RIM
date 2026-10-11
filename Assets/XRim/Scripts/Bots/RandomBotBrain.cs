@@ -9,8 +9,9 @@ using XRim.Rules.Settings;
 namespace XRim.Bots
 {
     /// <summary>
-    /// Debug bot that emits only valid plans, all through the context's seeded <see cref="IRandom"/>: a weapon from
-    /// the loadout (switching only when the constraints allow it), a random allowed body move, one stroke that stays
+    /// Debug bot that emits only valid plans, all through the context's seeded <see cref="IRandom"/>: a weapon it can hold
+    /// this turn (the loadout plus the §12 extra options: the severed-limb club, the armless body blow; switching only when the
+    /// constraints allow it), a random allowed body move, one stroke that stays
     /// inside the weapon's ink and reach, and Ready. It always draws, so it never idles and never forfeits.
     /// Enough to exercise the turn loop offline; not a design for a real AI opponent.
     /// </summary>
@@ -47,9 +48,10 @@ namespace XRim.Bots
         private static WeaponId ChooseWeapon(BotContext context, PlanningConstraints constraints)
         {
             WeaponId current = context.Window.Board.State.Fighters[context.Side].CurrentWeapon;
-            if (!constraints.CanSwitchWeapon || context.Loadout.Count == 0) return current;
+            List<WeaponId> available = constraints.AvailableWeapons(context.Loadout);
+            if (!constraints.CanSwitchWeapon || available.Count == 0) return current;
 
-            return context.Loadout[context.Random.NextInt(0, context.Loadout.Count)];
+            return available[context.Random.NextInt(0, available.Count)];
         }
 
         private static BodyMove ChooseBodyMove(BotContext context, PlanningConstraints constraints)

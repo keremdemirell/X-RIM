@@ -13,8 +13,10 @@ using XRim.Presentation.Dummy;
 using XRim.Presentation.Feel;
 using XRim.Presentation.Playback;
 using XRim.Presentation.UI;
+using XRim.Presentation.Vfx;
 using XRim.Rules;
 using XRim.Rules.Arena;
+using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
@@ -101,6 +103,7 @@ namespace XRim.App
         private Unity2DPhysicsWorld _world;
         private TurnPlayback _playback;
         private FeelDirector _feel;
+        private MatchVfx _vfx;
         private InputConfig _input;
         private ScriptableObject _ownedInput;
         private ScriptableObject _ownedFeel;
@@ -121,6 +124,7 @@ namespace XRim.App
 
         // Match, built per match.
         private RecordingTurnSimulator _simulator;
+        private ScriptedSeverContactHandler _severCheat;
         private LocalTurnAuthority _authority;
         private ClientMatchFlow _flow;
         private PlanSourceBinder _binder;
@@ -161,6 +165,10 @@ namespace XRim.App
         public ITurnAuthority Authority => _authority;
 
         public ClientMatchFlow Flow => _flow;
+
+        /// <summary>The severs the force-sever cheat queued for the next turn (debug); empty between matches.</summary>
+        public IReadOnlyList<SeveredLimbRef> QueuedSevers =>
+            _severCheat != null ? _severCheat.Queued : (IReadOnlyList<SeveredLimbRef>)Array.Empty<SeveredLimbRef>();
         public TurnPlayback Playback => _playback;
         public MatchSetup Setup => _setup;
 
@@ -343,7 +351,10 @@ namespace XRim.App
             BuildViews(SimulationSettings.Segmentation);
 
             _setup = CreateSetup(RulesSettings);
-            _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies), _simulationTiming);
+            // The contact handler is the game's (hits, clashes, blocks), wrapped so the force-sever cheat can cut a limb at a turn's start.
+            _severCheat = new ScriptedSeverContactHandler(new HitContactHandler());
+            var simulatorOptions = new TurnSimulatorOptions { Contacts = _severCheat };
+            _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies, simulatorOptions), _simulationTiming);
             if (mode == MatchMode.Sandbox)
             {
                 _simulator.SimulationSettingsOverride = LiveSimulationSettings;
@@ -413,8 +424,15 @@ namespace XRim.App
             _hotSeat = null;
             _authority = null;
             _simulator = null;
+            _severCheat = null;
             _started = false;
         }
+
+        /// <summary>
+        /// Debug (the Cheats tab's force sever): cuts this arm or leg at the very start of the next turn, through the same path as a third
+        /// hit (it falls, a held weapon drops, the events and debris play). Does nothing between matches.
+        /// </summary>
+        public void QueueSever(Side side, BodyPart part) => _severCheat?.QueueSever(side, part);
 
         // ----- debug -----
 
@@ -494,9 +512,13 @@ namespace XRim.App
             ShowArena();
             BuildViews(SimulationSettings.Segmentation);
             _playback = new TurnPlayback(_views, Space);
-            _feel = new FeelDirector(_tuning.Feel != null ? _tuning.Feel : OwnedDefault<FeelConfig>(ref _ownedFeel, "Feel"));
+            FeelConfig feel = _tuning.Feel != null ? _tuning.Feel : OwnedDefault<FeelConfig>(ref _ownedFeel, "Feel");
+            _feel = new FeelDirector(feel);
             _playback.Pacer = _feel;
             _playback.AddReactor(_feel);
+            _vfx = gameObject.AddComponent<MatchVfx>();
+            _vfx.Configure(_playback, _arenaRoot, Space, feel, () => SimulationSettings.GravityUnitsPerSecondSquared);
+            _playback.AddReactor(_vfx);
             _playback.Finished += OnPlaybackFinished;
 
             _input = _tuning.InputConfig != null ? _tuning.InputConfig : OwnedDefault<InputConfig>(ref _ownedInput, "Input");

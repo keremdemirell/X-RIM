@@ -10,7 +10,8 @@ namespace XRim.Rules.Planning
     /// One player's planning phase. Clients run it for instant feedback (ink meter, lock-out);
     /// the authority runs the same code to validate (GDD §18).
     /// <list type="bullet">
-    /// <item>Weapon switch: only from the loadout, erases the drawn path, refused in the final
+    /// <item>Weapon switch: only to a weapon the constraints allow this turn (the loadout, minus weapons out of hand, plus the §12
+    /// extra options: the severed-limb club, the armless body blow), erases the drawn path, refused in the final
     /// <see cref="MatchSettings.WeaponSwitchLockoutSeconds"/> and public at once (§6).</item>
     /// <item>Path: built through <see cref="PathBuilder"/> (start, reach and ink rules, §6), so a stroke past the
     /// ink budget is cut where the ink runs out, never refused.</item>
@@ -44,6 +45,9 @@ namespace XRim.Rules.Planning
         public WeaponId Weapon => _weapon;
 
         public IReadOnlyList<WeaponId> Loadout => _loadout;
+
+        /// <summary>Every weapon that can be picked this turn: the available loadout weapons, then the extra options (§12).</summary>
+        public IReadOnlyList<WeaponId> AvailableWeapons => Constraints.AvailableWeapons(_loadout);
 
         /// <summary>What <see cref="PathBuilder"/> made of the last accepted stroke, for the preview. Null when no path is set.</summary>
         public BuiltPath CurrentPath => _builtPath;
@@ -127,7 +131,7 @@ namespace XRim.Rules.Planning
 
         private CommandResult SelectWeapon(WeaponId weapon, double nowSeconds)
         {
-            if (!InLoadout(weapon)) return CommandResult.Reject(CommandRejection.WeaponNotInLoadout);
+            if (!Constraints.IsWeaponAvailable(weapon, _loadout)) return CommandResult.Reject(CommandRejection.WeaponNotInLoadout);
 
             // Picking the weapon already held is not a switch: nothing is erased and no lock-out applies.
             if (weapon == _weapon) return CommandResult.Ok;
@@ -205,16 +209,6 @@ namespace XRim.Rules.Planning
         {
             _drawn = WeaponPath.Empty;
             _builtPath = null;
-        }
-
-        private bool InLoadout(WeaponId weapon)
-        {
-            for (int i = 0; i < _loadout.Count; i++)
-            {
-                if (_loadout[i] == weapon) return true;
-            }
-
-            return false;
         }
 
         private WeaponStats FindWeaponStats() =>

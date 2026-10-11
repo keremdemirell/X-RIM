@@ -4,6 +4,7 @@ namespace XRim.Rules.Planning
     {
         None = 0,
         NotInPlanningPhase = 1,
+        /// <summary>Not in the loadout or its extra options, or not available this turn (lost, or no arm left to hold it, §12).</summary>
         WeaponNotInLoadout = 2,
         WeaponSwitchLockedOut = 3,
         BodyMoveNotAllowed = 4,

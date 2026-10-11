@@ -80,6 +80,7 @@ namespace XRim.Rules.Settings
                 issues.Add("Damage: per-hit limb cap must be above 0 and below 0.5, so severing needs at least 3 hits (GDD §11).");
             if (Damage.ArmDurability <= 0f || Damage.LegDurability <= 0f) issues.Add("Damage: limb durability must be positive.");
             if (Damage.OffHandDamageMultiplier < 0f) issues.Add("Damage: the off-hand multiplier must not be negative.");
+            if (Damage.LimbLoss == null) issues.Add("Damage: the limb loss settings are missing.");
             if (Damage.HeadStunThreshold < 0f) issues.Add("Damage: the head stun threshold must not be negative.");
             if (Damage.StunPlanningDurationFraction <= 0f || Damage.StunPlanningDurationFraction > 1f)
                 issues.Add("Damage: a stun's planning fraction must be in (0, 1].");

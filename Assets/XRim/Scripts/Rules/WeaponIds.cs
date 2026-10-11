@@ -9,5 +9,8 @@ namespace XRim.Rules
         public static readonly WeaponId Spear = new WeaponId("spear");
         public static readonly WeaponId Shield = new WeaponId("shield");
         public static readonly WeaponId SeveredLimb = new WeaponId("severed_limb");
+
+        /// <summary>The armless headbutt or kick (GDD §12): the only option once both arms are gone.</summary>
+        public static readonly WeaponId BodyBlow = new WeaponId("body_blow");
     }
 }

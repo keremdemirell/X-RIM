@@ -149,6 +149,49 @@ namespace XRim.Tests.EditMode.Bots
             Assert.That(distinctEnds.Count, Is.GreaterThan(20), "the strokes vary with the seed");
         }
 
+        [Test]
+        public void AnOfferedClub_GetsPicked_AndItsPlansStayValid()
+        {
+            PlanningWindow window = NetworkingSanityTests.CreateWindow(_settings);
+            window.Constraints[Side.Left].AddExtraWeapon(WeaponIds.SeveredLimb);
+            var validator = new PlanValidator(_settings, new RulePolicies());
+            var picked = new HashSet<WeaponId>();
+
+            for (uint seed = 1; seed <= Seeds; seed++)
+            {
+                PlanningSession session = PlanningTestData.CreateSession(_settings, window.Constraints[Side.Left]);
+                foreach (CommandResult result in PlayInto(session, window, _settings, seed))
+                    Assert.That(result.Accepted, Is.True, $"seed {seed}: {result.Rejection}");
+                Assert.That(validator.Validate(session).Accepted, Is.True, $"seed {seed}");
+                picked.Add(session.Weapon);
+            }
+
+            Assert.That(picked, Contains.Item(WeaponIds.SeveredLimb), "§12: the club is a fourth option");
+            Assert.That(picked, Has.Count.EqualTo(PlanningTestData.Loadout.Length + 1));
+        }
+
+        [Test]
+        public void AnArmlessBot_AlwaysBodyBlows_WithinItsReach()
+        {
+            PlanningWindow window = NetworkingSanityTests.CreateWindow(_settings);
+            window.Constraints[Side.Left].CanUseLoadoutWeapons = false;
+            window.Constraints[Side.Left].AddExtraWeapon(WeaponIds.BodyBlow);
+            window.Board.State.Fighters[Side.Left].CurrentWeapon = WeaponIds.BodyBlow;
+
+            for (uint seed = 1; seed <= Seeds; seed++)
+            {
+                // As in a match: the session opens on the body blow the rules made the armless dummy's weapon.
+                var session = new PlanningSession(Side.Left, WeaponIds.BodyBlow, PlanningTestData.Loadout,
+                    new FixedWeaponTipSource(PlanningTestData.Tip), window.Constraints[Side.Left], PlanningTestData.DeadlineSeconds, _settings,
+                    new RulePolicies());
+                foreach (CommandResult result in PlayInto(session, window, _settings, seed))
+                    Assert.That(result.Accepted, Is.True, $"seed {seed}: {result.Rejection}");
+                Assert.That(session.Weapon, Is.EqualTo(WeaponIds.BodyBlow), $"seed {seed}");
+                Assert.That(session.CurrentPath.WasClampedByReach, Is.False, $"seed {seed}: inside its own reach");
+                Assert.That(session.CurrentPath.Inked.WasCut, Is.False, $"seed {seed}");
+            }
+        }
+
         private sealed class SessionSink : IPlanningCommandSink
         {
             private const double PlanningSeconds = 1.0;

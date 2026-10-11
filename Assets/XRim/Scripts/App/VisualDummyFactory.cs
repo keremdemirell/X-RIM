@@ -32,6 +32,8 @@ namespace XRim.App
             }
 
             // Read every reference before stripping: the Ragdoll and the held items' Rigidbody2D are destroyed with it.
+            Transform torsoBottom = copy.TorsoBottom != null ? copy.TorsoBottom.transform : null;
+            Transform torsoTop = copy.TorsoTop != null ? copy.TorsoTop.transform : null;
             var heldItems = new Dictionary<string, Transform>();
             foreach (HeldItemSlot slot in copy.HeldItems)
             {
@@ -47,7 +49,7 @@ namespace XRim.App
             Object.DestroyImmediate(holder);
 
             var view = root.AddComponent<DummyView>();
-            view.Configure(parts, lowerParts);
+            view.Configure(parts, lowerParts, torsoBottom, torsoTop);
             foreach (WeaponStats weapon in weapons)
             {
                 if (!heldItems.TryGetValue(weapon.Id, out Transform item)) continue;

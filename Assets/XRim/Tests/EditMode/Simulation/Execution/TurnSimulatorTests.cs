@@ -344,7 +344,13 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             Run(StraightThrust);
 
             Assert.That(_world.LoadCount, Is.EqualTo(1));
-            Assert.That(_world.LoadedPose, Is.SameAs(_pose));
+            Assert.That(_world.LoadedPose, Is.Not.SameAs(_pose), "a prepared copy (TurnBoard): the frozen board is never changed");
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                Assert.That(_world.LoadedPose.Get(side).Get(BodyPart.Torso), Is.EqualTo(_pose.Get(side).Get(BodyPart.Torso)), side.ToString());
+                Assert.That(_world.LoadedPose.Get(side).HeldItem, Is.EqualTo(_pose.Get(side).HeldItem), side.ToString());
+            }
+
             Assert.That(_world.LoadedSimulation, Is.SameAs(_simulation));
         }
 

@@ -99,7 +99,10 @@ namespace XRim.App
             ShowRefusals(draft);
         }
 
-        /// <summary>A new planning phase (or a different human): the loadout, and nothing carried over from before.</summary>
+        /// <summary>
+        /// A new planning phase (or a different human): the weapons that can be held this turn (the loadout and the §12 extra options:
+        /// the severed-limb club, the armless body blow), and nothing carried over from before.
+        /// </summary>
         private void BeginWindow(TouchPlanSource source, PlanningWindow window)
         {
             _shownWindow = window;
@@ -113,7 +116,7 @@ namespace XRim.App
             _shownInkPercent = -1;
             _shownOpponent = null;
             _shownMirrored = null;
-            _hud.SetLoadout(_setup.Fighters[source.Side].Loadout);
+            _hud.SetLoadout(window.Constraints[source.Side].AvailableWeapons(_setup.Fighters[source.Side].Loadout));
             _hud.ShowMessage(string.Empty);
         }
 
