@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using XRim.Core;
+using XRim.Rules.Arena;
 using XRim.Rules.Limbs;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
@@ -23,19 +24,23 @@ namespace XRim.Rules.Match
     /// <item><b>TurnStart and SuddenDeathSetup</b> are where the authority waits between turns, for example for the
     /// client's playback to finish, then calls <see cref="BeginPlanning"/>. The planning timer starts at that call,
     /// not when the turn resolved, so playback never eats planning time (ARCHITECTURE §5). SuddenDeathSetup is a
-    /// TurnStart whose setup (<see cref="SuddenDeathSetup"/>) was already applied; Session 12 adds the board reset here.</item>
+    /// TurnStart whose setup (<see cref="SuddenDeathSetup"/>: 1 HP, the rules half of the board mode, the walls) was already applied; the
+    /// authority puts the board's pose in place (§14).</item>
     /// <item><b>Planning</b> ends as soon as both players are Ready or the timer ends, whichever comes first
     /// (§3, Decided). Each side's timer is its own constraints' planning duration, normally the same 12 s.</item>
     /// <item><b>Locked:</b> every plan is validated again by <see cref="PlanValidator"/>. A plan that fails runs as an
-    /// idle plan with the same weapon (not in the GDD; it cannot happen with plans built by the sessions).</item>
+    /// idle plan with the same weapon (not in the GDD; it cannot happen with plans built by the sessions). Each side's electric
+    /// wall then reacts to its locked body move (<see cref="ElectricWallRules.OnPlansLocked"/>, §13).</item>
     /// <item><b>Resolving</b> happens inside <see cref="CompleteExecution"/>: the resolved state is adopted, the idle
-    /// counters are updated through <see cref="IIdleTurnPolicy"/>, and <see cref="EndConditionEvaluator"/> decides.</item>
+    /// counters are updated through <see cref="IIdleTurnPolicy"/>, and <see cref="EndConditionEvaluator"/> decides, with the sudden-death
+    /// policies and the match seed. A sudden-death turn without a winner is played again at 1 HP (<see cref="SuddenDeathSetup.Repeat"/>).</item>
     /// </list>
     /// </summary>
     public sealed class MatchStateMachine
     {
         private readonly EndConditionEvaluator _evaluator = new EndConditionEvaluator();
         private readonly SuddenDeathSetup _suddenDeathSetup = new SuddenDeathSetup();
+        private readonly ElectricWallRules _wallRules = new ElectricWallRules();
         private readonly PlanValidator _validator;
 
         public MatchPhase Phase { get; private set; } = MatchPhase.MatchSetup;
@@ -180,7 +185,8 @@ namespace XRim.Rules.Match
             }
 
             EndCheckResult result = _evaluator.Evaluate(
-                new ExecutionReport(State, report.FirstValidHitTime, report.FirstHitsOnSameStep), Settings);
+                new ExecutionReport(State, report.FirstValidHitTime, report.FirstHitsOnSameStep, report.DeathTime), Settings, Policies,
+                Setup.RandomSeed);
 
             switch (result.Resolution)
             {
@@ -189,11 +195,16 @@ namespace XRim.Rules.Match
                     Phase = MatchPhase.MatchOver;
                     break;
                 case TurnResolution.EnterSuddenDeath:
-                    _suddenDeathSetup.Apply(State);
+                    _suddenDeathSetup.Apply(State, Settings, Setup);
                     AdvanceTurn();
                     Phase = MatchPhase.SuddenDeathSetup;
                     break;
-                default: // NextTurn, RepeatSuddenDeathTurn
+                case TurnResolution.RepeatSuddenDeathTurn:
+                    _suddenDeathSetup.Repeat(State);
+                    AdvanceTurn();
+                    Phase = MatchPhase.TurnStart;
+                    break;
+                default: // NextTurn
                     AdvanceTurn();
                     Phase = MatchPhase.TurnStart;
                     break;
@@ -211,7 +222,8 @@ namespace XRim.Rules.Match
         /// <summary>
         /// The default limits, then the weapons a dummy that lost limbs can hold (§12, <see cref="DesperationOptions"/>: the club,
         /// the armless body blow; its current weapon follows), then every status effect's edit (a stun or a stagger), then the
-        /// leg-loss penalty (§12, <see cref="RulePolicies.MobilityPenalty"/>).
+        /// leg-loss penalty (§12, <see cref="RulePolicies.MobilityPenalty"/>), then in sudden death its options (§14 TBD, designer
+        /// 2026-10-11: weapon switching and signature moves stay unless <see cref="SuddenDeathSettings"/> turns them off).
         /// </summary>
         private void PrepareTurn()
         {
@@ -221,6 +233,12 @@ namespace XRim.Rules.Match
                 DesperationOptions.Apply(State, side, Setup.Fighters[side].Loadout, constraints, Settings);
                 ApplyStatuses(State.Fighters[side], constraints);
                 Policies.MobilityPenalty?.Apply(State.Fighters[side], constraints, Settings);
+                if (State.IsSuddenDeath)
+                {
+                    constraints.CanSwitchWeapon &= Settings.SuddenDeath.AllowWeaponSwitching;
+                    constraints.CanUseSignature &= Settings.SuddenDeath.AllowSignatureMoves;
+                }
+
                 return constraints;
             });
         }
@@ -266,7 +284,13 @@ namespace XRim.Rules.Match
                 fighter.CurrentWeapon = LockedPlans[side].Weapon;
             }
 
-            // SESSION 12 HOOK (§13): the electric wall reacts to the locked body moves here (ElectricWallRules.OnPlansLocked).
+            // The electric wall reads each side's locked body move and nothing else (§13: only the input counts, never what happens to
+            // the body), so knockback, a shield and standing still can never trigger it.
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                _wallRules.OnPlansLocked(State.Walls[side], LockedPlans[side].BodyMove, State.IsSuddenDeath, Settings.ElectricWall);
+            }
+
             Phase = MatchPhase.Locked;
         }
 

@@ -158,9 +158,10 @@ namespace XRim.DebugTools.Sandbox
             public float HpAt(Side side)
             {
                 float hp = State.Fighters[side].Hp;
-                foreach (HitLandedEvent hit in HitsStillAhead(side))
+                if (_events == null) return hp;
+                foreach (MatchEvent matchEvent in _events)
                 {
-                    hp += hit.Damage.HpDamage;
+                    if (matchEvent.Time > _now) hp += PlaybackHitPoints.HpLost(matchEvent, side); // hits and wall zaps (§13)
                 }
 
                 return hp;

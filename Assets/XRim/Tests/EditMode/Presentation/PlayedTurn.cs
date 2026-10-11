@@ -23,18 +23,19 @@ namespace XRim.Tests.EditMode.Presentation
             return new HitLandedEvent(time, facts, new DamageResult(hpDamage, hpDamage, 0f, false, false));
         }
 
-        /// <summary>A <see cref="Seconds"/>-long turn whose resolved board has taken every hit's damage.</summary>
-        public static TurnResult Create(RulesSettings settings, int turnIndex, params HitLandedEvent[] hits)
+        /// <summary>A <see cref="Seconds"/>-long turn whose resolved board has taken every hit's and wall zap's damage.</summary>
+        public static TurnResult Create(RulesSettings settings, int turnIndex, params MatchEvent[] events)
         {
             BoardSnapshot board = TestData.CreateInitialBoard(settings);
             board.State.TurnIndex = turnIndex;
             var recorder = new TimelineRecorder();
             recorder.RecordFrame(0, SimTime.Zero, new PoseSnapshot());
             recorder.RecordFrame(1, SimTime.FromSeconds(Seconds), new PoseSnapshot());
-            foreach (HitLandedEvent hit in hits)
+            foreach (MatchEvent matchEvent in events)
             {
-                board.State.Fighters[hit.Hit.Victim].Hp -= hit.Damage.HpDamage;
-                recorder.RecordEvent(hit);
+                if (matchEvent is HitLandedEvent hit) board.State.Fighters[hit.Hit.Victim].Hp -= hit.Damage.HpDamage;
+                if (matchEvent is ElectricWallEvent zap) board.State.Fighters[zap.Side].Hp -= zap.HpDamage;
+                recorder.RecordEvent(matchEvent);
             }
 
             var report = new ExecutionReport(board.State, new PerSide<SimTime?>(null, null), false);

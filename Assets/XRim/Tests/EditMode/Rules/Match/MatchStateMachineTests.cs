@@ -48,24 +48,25 @@ namespace XRim.Tests.EditMode.Rules.Match
         }
 
         /// <summary>The report a simulator would return: the current board, changed the way the test wants.</summary>
-        private ExecutionReport Report(Action<MatchState> tweak = null)
+        private ExecutionReport Report(Action<MatchState> tweak = null, PerSide<SimTime?> hits = null)
         {
             MatchState state = _machine.State.Clone();
             tweak?.Invoke(state);
-            return new ExecutionReport(state, new PerSide<SimTime?>(null, null), false);
+            return new ExecutionReport(state, hits ?? new PerSide<SimTime?>(null, null), false);
         }
 
         /// <summary>
         /// Plays one whole turn through the public flow. By default both sides make a body move, so nobody idles.
         /// </summary>
-        private EndCheckResult PlayTurn(Action<MatchState> tweak = null, bool leftIdle = false, bool rightIdle = false)
+        private EndCheckResult PlayTurn(Action<MatchState> tweak = null, bool leftIdle = false, bool rightIdle = false,
+            PerSide<SimTime?> hits = null)
         {
             _machine.BeginPlanning(Tips);
             if (!leftIdle) _machine.Apply(Side.Left, new SetBodyMoveCommand(BodyMove.Crouch));
             if (!rightIdle) _machine.Apply(Side.Right, new SetBodyMoveCommand(BodyMove.Crouch));
             ReadyBoth();
             _machine.BeginExecution();
-            return _machine.CompleteExecution(Report(tweak));
+            return _machine.CompleteExecution(Report(tweak, hits));
         }
 
         private static void Kill(MatchState state, Side side) => state.Fighters[side].Hp = 0f;
@@ -553,7 +554,7 @@ namespace XRim.Tests.EditMode.Rules.Match
                 Kill(state, Side.Right);
             });
 
-            EndCheckResult result = PlayTurn(state => Kill(state, Side.Left));
+            EndCheckResult result = PlayTurn(state => Kill(state, Side.Left), hits: new PerSide<SimTime?>(null, SimTime.FromMilliseconds(40)));
 
             Assert.That(result.Resolution, Is.EqualTo(TurnResolution.MatchOver));
             Assert.That(_machine.Outcome.Winner, Is.EqualTo(Side.Right));
@@ -572,10 +573,11 @@ namespace XRim.Tests.EditMode.Rules.Match
 
             EndCheckResult result = PlayTurn();
 
-            Assert.That(result.Resolution, Is.EqualTo(TurnResolution.RepeatSuddenDeathTurn), "Session 12 seam");
+            Assert.That(result.Resolution, Is.EqualTo(TurnResolution.RepeatSuddenDeathTurn), "no hit: played again (P6)");
             Assert.That(_machine.Phase, Is.EqualTo(MatchPhase.TurnStart));
             Assert.That(_machine.State.IsSuddenDeath, Is.True);
             Assert.That(_machine.State.TurnIndex, Is.EqualTo(2));
+            Assert.That(_machine.State.SuddenDeathRepeats, Is.EqualTo(1));
         }
 
         [Test]

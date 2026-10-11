@@ -42,17 +42,35 @@ namespace XRim.Simulation.Execution
     /// drives the striking part (<see cref="IArmlessAttackMode"/>, the head by default) along its path while the body leans into it
     /// (<see cref="HeadbuttLean"/>).
     /// </para>
+    /// <para>
+    /// Electric walls (GDD §13; the designer's geometry P1, 2026-10-11), run here because they are Decided rules, through
+    /// <see cref="TurnWalls"/>: a wall the rules have up is built at load; a warning raised this turn springs up behind its dummy when the
+    /// step back ends; the owner's body touching its active wall is handed to <see cref="ElectricWallRules"/> right after the contact
+    /// handler has had that instant, and the zap throws the dummy forward (a knockback that stays) while the wall advances behind it; a
+    /// standing wall keeps its dummy's root and soles in front of it, as a solid edge does. A step back that never reaches its active wall
+    /// still gets the zap (only the input counts), and the turn does not end while one is owed. Contacts reach the handler one instant
+    /// at a time.
+    /// </para>
     /// </summary>
     public sealed class TurnSimulator : ITurnSimulator
     {
         /// <summary>Box2D reports a new contact one step after the motion that made it, so two steps are searched.</summary>
         private const int RefinementWindowSteps = 2;
 
+        /// <summary>
+        /// How long after its step back ends a dummy owed a wall zap gets it without touching the wall: the body trails its root target by
+        /// up to 0.05 s at a move's end (Session 05), so a real touch always comes first.
+        /// </summary>
+        private const double OwedZapDelaySeconds = 0.1;
+
+        private static readonly Side[] BothSides = { Side.Left, Side.Right };
+
         private readonly IPhysicsWorld _world;
         private readonly IWeaponAimModel _aim;
         private readonly IWeaponAimModel _shieldAim;
         private readonly IBodyMoveDriverFactory _bodyMoves;
         private readonly ITurnContactHandler _contactHandler;
+        private readonly TurnWalls _walls;
         private readonly List<ContactFacts> _drained = new List<ContactFacts>();
         private readonly List<TurnContact> _pendingContacts = new List<TurnContact>();
         private readonly List<TurnContact> _releasedContacts = new List<TurnContact>();
@@ -74,6 +92,7 @@ namespace XRim.Simulation.Execution
             _shieldAim = options.ShieldAim ?? new ShieldFaceAimModel();
             _bodyMoves = options.BodyMoves ?? new StanceBodyMoveDriverFactory();
             _contactHandler = options.Contacts ?? new HitContactHandler();
+            _walls = new TurnWalls(_world);
         }
 
         public TurnResult Simulate(TurnInput input)
@@ -93,12 +112,13 @@ namespace XRim.Simulation.Execution
             PoseSnapshot board = TurnBoard.Prepare(input.Board.Pose, state, rules, simulation, Policies, _aim, _shieldAim);
             PerSide<SeveredLimbRef?> wieldedAtStart = PerSide<SeveredLimbRef?>.Create(side => state.Fighters[side].HeldLimb);
             _world.Load(board, state, rules, simulation, _edges);
+            _walls.Begin(state, _edges, rules.ElectricWall, simulation.HitReaction.KnockbackSeconds);
 
             var clock = new SimClock(simulation.StepRateHz);
             var recorder = new TimelineRecorder();
             PerSide<BodyMove> moves = PerSide<BodyMove>.Create(side => PlannedMove(input.Plans[side]));
             PerSide<Fighter> fighters = PerSide<Fighter>.Create(side => CreateFighter(side, moves[side], input, board, state));
-            foreach (Side side in new[] { Side.Left, Side.Right })
+            foreach (Side side in BothSides)
             {
                 BodyPart? striking = fighters[side].StrikingPart;
                 if (striking.HasValue) _world.StrikeWithBodyPart(side, striking.Value);
@@ -110,7 +130,7 @@ namespace XRim.Simulation.Execution
             _contactHandler.BeginTurn(context);
             RecordBodyMoves(moves, recorder);
 
-            PoseSnapshot pose = Capture(state);
+            PoseSnapshot pose = Capture(state, clock.Now);
             recorder.RecordFrame(clock.Step, clock.Now, pose);
             int lastRecordedStep = clock.Step;
             Remember(fighters, clock.Now, pose);
@@ -122,13 +142,15 @@ namespace XRim.Simulation.Execution
             {
                 SimTime stepStart = clock.Now;
                 SimTime stepEnd = clock.TimeAtStep(clock.Step + 1);
+                _walls.Step(stepEnd);
                 Drive(fighters.Left, stepStart, stepEnd);
                 Drive(fighters.Right, stepStart, stepEnd);
 
                 _world.Step(clock.StepSeconds);
                 clock.Advance();
+                RaiseWarnings(fighters, clock.Now, context);
 
-                pose = Capture(state);
+                pose = Capture(state, clock.Now);
                 Remember(fighters, clock.Now, pose);
                 if (clock.Step % simulation.RecordEveryNthStep == 0)
                 {
@@ -136,9 +158,11 @@ namespace XRim.Simulation.Execution
                     lastRecordedStep = clock.Step;
                 }
 
-                HandleContacts(clock, fighters, context);
+                HandleContacts(clock, fighters, actions, context);
+                GiveOwedZaps(clock, fighters, actions, context);
 
-                bool movesDone = fighters.Left.IsDone(clock.Now) && fighters.Right.IsDone(clock.Now);
+                bool movesDone = fighters.Left.IsDone(clock.Now) && fighters.Right.IsDone(clock.Now) &&
+                                 !_walls.IsOwedAZap(Side.Left) && !_walls.IsOwedAZap(Side.Right);
                 settledSteps = movesDone &&
                                _world.IsSettled(simulation.SettleLinearSpeedUnitsPerSecond, simulation.SettleAngularSpeedDegreesPerSecond)
                     ? settledSteps + 1
@@ -150,24 +174,36 @@ namespace XRim.Simulation.Execution
                 }
             }
 
-            ReleaseContacts(null, context);
+            ReleaseContacts(null, context, fighters, actions);
             if (lastRecordedStep != clock.Step) recorder.RecordFrame(clock.Step, clock.Now, pose);
 
             PoseSnapshot finalPose = pose.Clone();
             TurnBoard.Finish(finalPose, state, wieldedAtStart, rules, simulation);
+            foreach (Side side in BothSides)
+            {
+                // The board draws each wall where the next turn builds it, even when the hard cap cut its advance short.
+                finalPose.SetWall(side, ElectricWallPose.Of(state.Walls[side]));
+            }
+
             var finalBoard = new BoardSnapshot(state.Clone(), finalPose);
             PerSide<SimTime?> firstHits = context.FirstValidHitTime;
-            var report = new ExecutionReport(state, new PerSide<SimTime?>(firstHits.Left, firstHits.Right), OnTheSameStep(firstHits, clock));
-            return new TurnResult(state.TurnIndex, recorder.Build(), finalBoard, report, endReason);
+            TurnTimeline timeline = recorder.Build();
+            var report = new ExecutionReport(state, new PerSide<SimTime?>(firstHits.Left, firstHits.Right), OnTheSameStep(firstHits, clock),
+                DeathTimes(timeline));
+            return new TurnResult(state.TurnIndex, timeline, finalBoard, report, endReason);
         }
 
         private static BodyMove PlannedMove(TurnPlan plan) => plan != null ? plan.BodyMove : BodyMove.None;
 
-        /// <summary>The world's pose, marked with the limbs each dummy has lost by now (GDD §12), so views know what to draw where.</summary>
-        private PoseSnapshot Capture(MatchState state)
+        /// <summary>
+        /// The world's pose, marked with the limbs each dummy has lost by now (GDD §12) and where each electric wall stands (§13), so views
+        /// know what to draw where.
+        /// </summary>
+        private PoseSnapshot Capture(MatchState state, SimTime time)
         {
             PoseSnapshot pose = _world.CapturePose();
-            foreach (Side side in new[] { Side.Left, Side.Right })
+            _walls.Mark(pose, time);
+            foreach (Side side in BothSides)
             {
                 FighterPose fighter = pose.Get(side);
                 fighter.SeveredParts = 0;
@@ -180,7 +216,19 @@ namespace XRim.Simulation.Execution
             return pose;
         }
 
-        /// <summary>Both first hits landed during the motion of one simulation step (the §14 exact-tie case).</summary>
+        /// <summary>When each side died this turn: its first <see cref="FighterDiedEvent"/> (a hit, or its own wall), for sudden death (§14, P4).</summary>
+        private static PerSide<SimTime?> DeathTimes(TurnTimeline timeline)
+        {
+            var deaths = new PerSide<SimTime?>(null, null);
+            foreach (MatchEvent matchEvent in timeline.Events)
+            {
+                if (matchEvent is FighterDiedEvent died && !deaths[died.Side].HasValue) deaths[died.Side] = died.Time;
+            }
+
+            return deaths;
+        }
+
+        /// <summary>Both first hits landed during the motion of one simulation step (informational; sudden death compares the times, P4).</summary>
         private static bool OnTheSameStep(PerSide<SimTime?> firstHits, SimClock clock) =>
             firstHits.Left.HasValue && firstHits.Right.HasValue &&
             clock.StepContaining(firstHits.Left.Value) == clock.StepContaining(firstHits.Right.Value);
@@ -191,7 +239,7 @@ namespace XRim.Simulation.Execution
         /// </summary>
         private static void RecordBodyMoves(PerSide<BodyMove> moves, TimelineRecorder recorder)
         {
-            foreach (Side side in new[] { Side.Left, Side.Right })
+            foreach (Side side in BothSides)
             {
                 if (moves[side] != BodyMove.None) recorder.RecordEvent(new BodyMoveStartedEvent(SimTime.Zero, side, moves[side]));
             }
@@ -254,10 +302,10 @@ namespace XRim.Simulation.Execution
 
             BodyMoveFrame frame = fighter.BodyMove.Evaluate(stepEnd);
             Vec2 knock = fighter.KnockOffsetAt(stepEnd);
-            BodyPose root = RootAt(fighter, frame, knock);
+            BodyPose root = RootAt(fighter, frame, knock, stepEnd);
             BodyPose body = fighter.StrikingPart.HasValue && !fighter.HasDropped ? LeanIntoHeadbutt(fighter, root, stepEnd) : root;
             _world.SetRootTarget(fighter.Side, body);
-            PoseLegs(fighter, body, frame, knock);
+            PoseLegs(fighter, body, frame, knock, stepEnd);
             if (fighter.WeaponDriver == null || fighter.HasDropped) return;
 
             HeldItemCommand command = fighter.WeaponDriver.Drive(stepStart, stepEnd, PathFrameAt(fighter, stepStart),
@@ -279,17 +327,32 @@ namespace XRim.Simulation.Execution
 
         private static BodyPose Shifted(BodyPose pose, Vec2 offsetUnits) => new BodyPose(pose.PositionUnits + offsetUnits, pose.RotationDegrees);
 
-        /// <summary>Never planned past a solid edge: the torso stays half its width inside.</summary>
-        private BodyPose KeepInside(BodyPose root) =>
-            new BodyPose(new Vec2(_edges.ClampX(root.PositionUnits.X, _rootMarginUnits), root.PositionUnits.Y), root.RotationDegrees);
+        /// <summary>Never planned past a solid edge or behind the dummy's own standing wall: the torso stays half its width inside.</summary>
+        private BodyPose KeepInside(Side side, BodyPose root, SimTime time) =>
+            new BodyPose(new Vec2(InsideX(side, root.PositionUnits.X, _rootMarginUnits, time), root.PositionUnits.Y), root.RotationDegrees);
 
         /// <summary>
-        /// Where the dummy's root goes: the body move's, shifted by its knockbacks, kept inside solid edges; a dummy without legs sits
-        /// with its pelvis on the floor (GDD §12: it cannot use them).
+        /// An x kept <paramref name="marginUnits"/> inside solid arena edges (D22) and in front of the side's own standing electric wall
+        /// (a warning from when it springs up, an active wall from its zap on, P1), so the wall holds the dummy back and its advance shoves
+        /// it forward.
         /// </summary>
-        private BodyPose RootAt(Fighter fighter, BodyMoveFrame frame, Vec2 knock)
+        private float InsideX(Side side, float xUnits, float marginUnits, SimTime time)
         {
-            BodyPose root = KeepInside(Shifted(frame.Root, knock));
+            float x = _edges.ClampX(xUnits, marginUnits);
+            float? wall = _walls.BackLimitAt(side, time);
+            if (!wall.HasValue) return x;
+            float facing = side.FacingSign();
+            float limit = wall.Value + facing * marginUnits;
+            return facing > 0f ? Math.Max(x, limit) : Math.Min(x, limit);
+        }
+
+        /// <summary>
+        /// Where the dummy's root goes: the body move's, shifted by its knockbacks, kept inside solid edges and in front of its standing
+        /// wall; a dummy without legs sits with its pelvis on the floor (GDD §12: it cannot use them).
+        /// </summary>
+        private BodyPose RootAt(Fighter fighter, BodyMoveFrame frame, Vec2 knock, SimTime time)
+        {
+            BodyPose root = KeepInside(fighter.Side, Shifted(frame.Root, knock), time);
             if (fighter.State.RemainingLegs > 0) return root;
             return new BodyPose(new Vec2(root.PositionUnits.X, LegGeometry.FloorYUnits), root.RotationDegrees);
         }
@@ -307,33 +370,36 @@ namespace XRim.Simulation.Execution
             Vec2 centre = head.PositionUnits + Vec2.FromAngleDegrees(head.RotationDegrees) * radius;
             HeadbuttLean.Solve(centre, _body.TorsoHeightUnits, radius, out float lean, out float shift);
             Vec2 shiftArena = TorsoFrame.ToArena(new Vec2(shift, 0f), new BodyPose(Vec2.Zero, pathFrame.RotationDegrees), fighter.Side);
-            return KeepInside(new BodyPose(root.PositionUnits + shiftArena, root.RotationDegrees - fighter.Side.FacingSign() * lean));
+            return KeepInside(fighter.Side, new BodyPose(root.PositionUnits + shiftArena, root.RotationDegrees - fighter.Side.FacingSign() * lean), time);
         }
 
         /// <summary>
         /// The frame the path is drawn in, at a time: it travels with the root, knockback included (§6, Decided), and keeps the
         /// angle the path was drawn at, unless <see cref="PathSettings.PathTiltsWithTorsoLean"/> lets a move's lean tilt it.
         /// </summary>
-        private BodyPose PathFrameAt(Fighter fighter, SimTime time) =>
-            PathFrame(fighter, RootAt(fighter, fighter.BodyMove.Evaluate(time), fighter.KnockOffsetAt(time)));
+        private BodyPose PathFrameAt(Fighter fighter, SimTime time) => PathFrame(fighter, RootTargetAt(fighter, time));
+
+        /// <summary>Where the dummy's root is driven to at a time.</summary>
+        private BodyPose RootTargetAt(Fighter fighter, SimTime time) =>
+            RootAt(fighter, fighter.BodyMove.Evaluate(time), fighter.KnockOffsetAt(time), time);
 
         private BodyPose PathFrame(Fighter fighter, BodyPose root) =>
             _pathTiltsWithLean ? root : new BodyPose(root.PositionUnits, fighter.StartRotationDegrees);
 
         /// <summary>
         /// Bends each leg the dummy still has so its sole lands on the move's target, carried along by any knockback, kept inside
-        /// solid edges.
+        /// solid edges and in front of its standing wall.
         /// </summary>
-        private void PoseLegs(Fighter fighter, BodyPose root, BodyMoveFrame frame, Vec2 knock)
+        private void PoseLegs(Fighter fighter, BodyPose root, BodyMoveFrame frame, Vec2 knock, SimTime time)
         {
             Legs legs = fighter.Legs;
-            if (!fighter.State.IsSevered(legs.Front)) PoseLeg(fighter.Side, legs.Front, true, root, frame.FrontSoleUnits + knock);
-            if (!fighter.State.IsSevered(legs.Back)) PoseLeg(fighter.Side, legs.Back, false, root, frame.BackSoleUnits + knock);
+            if (!fighter.State.IsSevered(legs.Front)) PoseLeg(fighter.Side, legs.Front, true, root, frame.FrontSoleUnits + knock, time);
+            if (!fighter.State.IsSevered(legs.Back)) PoseLeg(fighter.Side, legs.Back, false, root, frame.BackSoleUnits + knock, time);
         }
 
-        private void PoseLeg(Side side, BodyPart leg, bool isFront, BodyPose root, Vec2 soleUnits)
+        private void PoseLeg(Side side, BodyPart leg, bool isFront, BodyPose root, Vec2 soleUnits, SimTime time)
         {
-            var sole = new Vec2(_edges.ClampX(soleUnits.X, _soleMarginUnits), soleUnits.Y);
+            var sole = new Vec2(InsideX(side, soleUnits.X, _soleMarginUnits, time), soleUnits.Y);
             _world.SetLimbTarget(side, leg, LegPoser.Solve(root, sole, side, isFront, _segmentation, _body));
         }
 
@@ -348,7 +414,7 @@ namespace XRim.Simulation.Execution
         /// is refined at the earliest to this step's start time, so everything strictly before it is settled; contacts at exactly
         /// that time wait, so an instant's contacts are always handed over together.
         /// </summary>
-        private void HandleContacts(SimClock clock, PerSide<Fighter> fighters, TurnContactContext context)
+        private void HandleContacts(SimClock clock, PerSide<Fighter> fighters, FighterActions actions, TurnContactContext context)
         {
             _drained.Clear();
             _world.DrainContacts(_drained);
@@ -357,27 +423,96 @@ namespace XRim.Simulation.Execution
                 _pendingContacts.Add(Measure(facts, clock, fighters));
             }
 
-            ReleaseContacts(clock.TimeAtStep(clock.Step - RefinementWindowSteps + 1), context);
+            ReleaseContacts(HandedOverBefore(clock), context, fighters, actions);
         }
 
+        /// <summary>Every contact earlier than this has been handed over (a later one may still be reported).</summary>
+        private static SimTime HandedOverBefore(SimClock clock) => clock.TimeAtStep(clock.Step - RefinementWindowSteps + 1);
+
+        /// <summary>
+        /// Hands the final contacts over one instant at a time: the contact handler has the instant first (hits, clashes, blocks), then each
+        /// dummy touching its own wall is zapped, so a zap and a hit are always ordered by when they happened.
+        /// </summary>
         /// <param name="before">Hand over the contacts earlier than this; null hands over all of them (the turn is over).</param>
-        private void ReleaseContacts(SimTime? before, TurnContactContext context)
+        private void ReleaseContacts(SimTime? before, TurnContactContext context, PerSide<Fighter> fighters, FighterActions actions)
         {
             if (_pendingContacts.Count == 0) return;
             TurnContactOrder.Sort(_pendingContacts);
 
             int count = 0;
             while (count < _pendingContacts.Count && (!before.HasValue || _pendingContacts[count].Time < before.Value)) count++;
-            if (count == 0) return;
 
-            _releasedContacts.Clear();
-            for (int i = 0; i < count; i++)
+            int start = 0;
+            while (start < count)
             {
-                _releasedContacts.Add(_pendingContacts[i]);
+                SimTime time = _pendingContacts[start].Time;
+                _releasedContacts.Clear();
+                for (; start < count && _pendingContacts[start].Time == time; start++)
+                {
+                    _releasedContacts.Add(_pendingContacts[start]);
+                }
+
+                _contactHandler.Handle(_releasedContacts, context);
+                HandleWallTouches(_releasedContacts, fighters, actions, context);
             }
 
             _pendingContacts.RemoveRange(0, count);
-            _contactHandler.Handle(_releasedContacts, context);
+        }
+
+        /// <summary>Each dummy whose body touched its own wall in this instant (P1: only the owner's body counts).</summary>
+        private void HandleWallTouches(List<TurnContact> contacts, PerSide<Fighter> fighters, FighterActions actions, TurnContactContext context)
+        {
+            foreach (TurnContact contact in contacts)
+            {
+                if (!TurnWalls.TryReadTouch(contact.Facts, out Side owner)) continue;
+                Fighter fighter = fighters[owner];
+                ApplyZap(fighter, _walls.Touch(owner, contact.Time, fighter.LastHitKnockTime), actions, context);
+            }
+        }
+
+        /// <summary>A warning springs up behind each living dummy whose step back has just ended (§13, P1), before the frame is captured.</summary>
+        private void RaiseWarnings(PerSide<Fighter> fighters, SimTime now, TurnContactContext context)
+        {
+            foreach (Side side in BothSides)
+            {
+                Fighter fighter = fighters[side];
+                if (fighter.IsDead || !_walls.IsRaisePending(side) || !fighter.BodyMove.IsComplete(now)) continue;
+                context.Record(_walls.Raise(side, now, RootTargetAt(fighter, now).PositionUnits.X));
+            }
+        }
+
+        /// <summary>
+        /// A dummy whose step back ended a moment ago without reaching its active wall gets the zap it is owed (§13, P1: only the input
+        /// counts), once every touch up to then has been handed over.
+        /// </summary>
+        private void GiveOwedZaps(SimClock clock, PerSide<Fighter> fighters, FighterActions actions, TurnContactContext context)
+        {
+            SimTime owedBy = HandedOverBefore(clock) - SimTime.FromSeconds(OwedZapDelaySeconds);
+            if (owedBy <= SimTime.Zero) return;
+            foreach (Side side in BothSides)
+            {
+                Fighter fighter = fighters[side];
+                if (fighter.IsDead || !_walls.IsOwedAZap(side) || !fighter.BodyMove.IsComplete(owedBy)) continue;
+                ApplyZap(fighter, _walls.Touch(side, clock.Now, fighter.LastHitKnockTime), actions, context);
+            }
+        }
+
+        /// <summary>
+        /// What a zap does to the body (the rules already took the HP): the dummy is thrown forward, toward the opponent, by a knockback
+        /// that stays (none when it was only knocked into the wall), and a zap that killed leaves it limp with its torso split.
+        /// </summary>
+        private static void ApplyZap(Fighter fighter, ElectricWallZap zap, FighterActions actions, TurnContactContext context)
+        {
+            if (zap == null) return;
+            foreach (MatchEvent matchEvent in zap.Events)
+            {
+                context.Record(matchEvent);
+            }
+
+            if (!zap.IsKnockedInto)
+                fighter.KnockBack(actions.Now, new Vec2(fighter.Side.FacingSign() * zap.BounceDistanceUnits, 0f),
+                    context.Simulation.HitReaction.KnockbackSeconds);
+            if (zap.Died) actions.Die(fighter.Side);
         }
 
         /// <summary>When the contact happened (refined from the blade's motion for a weapon) and how far along its path.</summary>
@@ -465,6 +600,9 @@ namespace XRim.Simulation.Execution
 
             /// <summary>The dummy died this turn: it is left limp (§11).</summary>
             public bool IsDead { get; set; }
+
+            /// <summary>When a hit (or a full block's push) last knocked the dummy back this turn; a wall's own bounce does not count.</summary>
+            public SimTime? LastHitKnockTime { get; set; }
 
             /// <summary>Its item while it still holds it: null once dropped, or once the dummy died.</summary>
             public WeaponStats HeldItem => HasDropped || IsDead ? null : Weapon;
@@ -604,8 +742,12 @@ namespace XRim.Simulation.Execution
 
             public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse) => _world.ApplyImpulse(side, part, impulse);
 
-            public void KnockBack(Side side, Vec2 displacementUnits) =>
-                _fighters[side].KnockBack(Now, displacementUnits, _reaction.KnockbackSeconds);
+            public void KnockBack(Side side, Vec2 displacementUnits)
+            {
+                Fighter fighter = _fighters[side];
+                fighter.KnockBack(Now, displacementUnits, _reaction.KnockbackSeconds);
+                fighter.LastHitKnockTime = Now;
+            }
 
             public void SeverLimb(Side side, BodyPart part) => _world.BreakJoint(side, part);
 

@@ -15,7 +15,8 @@ namespace XRim.Tests.EditMode.Simulation
     /// commands exactly: a move lands on its target at the end of the step, a push is integrated like Box2D does
     /// (semi-implicit Euler). Nothing collides; the root target becomes the torso pose. Physics counts as settled from
     /// <see cref="SettlesAtStep"/> on. Like the real world, a broken joint puts the limb in the captured severed limbs, a dropped
-    /// item is captured as the dropped item, a split torso is captured as split, and a striking body part is the held item.
+    /// item is captured as the dropped item, a split torso is captured as split, and a striking body part is the held item. Electric
+    /// walls are only remembered (where Load built them, and every later command): nothing collides with them.
     /// </summary>
     internal sealed class FakePhysicsWorld : IPhysicsWorld
     {
@@ -66,6 +67,12 @@ namespace XRim.Tests.EditMode.Simulation
         public List<(Side Side, Vec2 Velocity, float AngularVelocity)> Releases { get; } = new List<(Side, Vec2, float)>();
         public float TouchDistanceUnits { get; set; }
 
+        /// <summary>Each wall Load built from the state's walls that are up: its face's x per side.</summary>
+        public Dictionary<Side, float> LoadedWalls { get; } = new Dictionary<Side, float>();
+
+        /// <summary>Every wall command since the last load (side, face x or null for none, steps taken before it).</summary>
+        public List<(Side Side, float? XUnits, int Step)> WallCommands { get; } = new List<(Side, float?, int)>();
+
         /// <summary>Contacts to report after the next call to Step (one list per step).</summary>
         public void QueueContactsForNextStep(params ContactFacts[] contacts) => _scriptedContacts.Enqueue(new List<ContactFacts>(contacts));
 
@@ -95,6 +102,14 @@ namespace XRim.Tests.EditMode.Simulation
             Drops.Clear();
             Splits.Clear();
             StrikingParts.Clear();
+            WallCommands.Clear();
+            LoadedWalls.Clear();
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                ElectricWallState wall = state.Walls[side];
+                if (wall.IsUp) LoadedWalls[side] = wall.PositionUnits;
+            }
+
             LoadedSimulation = simulation;
             LoadCount++;
             StepCount = 0;
@@ -185,6 +200,8 @@ namespace XRim.Tests.EditMode.Simulation
         }
 
         public void StrikeWithBodyPart(Side side, BodyPart part) => StrikingParts.Add((side, part));
+
+        public void SetElectricWall(Side owner, float? xUnits) => WallCommands.Add((owner, xUnits, StepCount));
 
         public void ApplyImpulse(Side side, BodyPart part, Vec2 impulse) => Impulses.Add((side, part, impulse));
 

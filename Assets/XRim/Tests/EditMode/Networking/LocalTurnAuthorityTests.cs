@@ -7,6 +7,7 @@ using XRim.Rules;
 using XRim.Rules.Match;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.SuddenDeath;
 using XRim.Simulation;
 using XRim.Simulation.Execution;
 using XRim.Simulation.Physics;
@@ -348,6 +349,97 @@ namespace XRim.Tests.EditMode.Networking
             Assert.That(window.IsSuddenDeath, Is.True);
             Assert.That(window.Board.State.Fighters[Side.Left].Hp, Is.EqualTo(RuleConstants.SuddenDeathHp));
             Assert.That(window.Board.State.Fighters[Side.Right].Hp, Is.EqualTo(RuleConstants.SuddenDeathHp));
+        }
+
+        // --- The sudden-death board (§14, P5) and the debug turn counter (Session 12) ---------------
+
+        /// <summary>A simulator whose turn ends in a double KO, both dummies lying far from their start lines.</summary>
+        private static ScriptedTurnSimulator DoubleKoAwayFromTheStart()
+        {
+            var lying = new PoseSnapshot();
+            lying.Left.Set(BodyPart.Torso, new BodyPose(new Vec2(-123f, 40f), 80f));
+            lying.Right.Set(BodyPart.Torso, new BodyPose(new Vec2(111f, 40f), -80f));
+            return new ScriptedTurnSimulator((turn, state) =>
+            {
+                state.Fighters[Side.Left].Hp = 0f;
+                state.Fighters[Side.Right].Hp = 0f;
+            }) { NextPose = lying };
+        }
+
+        [Test]
+        public void ByDefault_SuddenDeathStartsFromTheBoardTheTurnEndedOn()
+        {
+            LocalTurnAuthority authority = Create(DoubleKoAwayFromTheStart());
+            authority.Start();
+            ReadyBoth(authority);
+
+            authority.Tick();
+
+            Assert.That(_windows[1].IsSuddenDeath, Is.True);
+            Assert.That(_windows[1].Board.Pose.Left.Get(BodyPart.Torso).PositionUnits.X, Is.EqualTo(-123f));
+        }
+
+        [Test]
+        public void TheResetBoard_StartsSuddenDeathOnTheStartLines()
+        {
+            _settings.SuddenDeath.BoardMode = SuddenDeathBoardMode.ResetToMatchStart;
+            LocalTurnAuthority authority = Create(DoubleKoAwayFromTheStart());
+            authority.Start();
+            ReadyBoth(authority);
+
+            authority.Tick();
+
+            float startLine = _settings.Arena.StartingGapUnits * 0.5f;
+            Assert.That(_windows[1].Board.Pose.Left.Get(BodyPart.Torso).PositionUnits.X, Is.EqualTo(-startLine));
+            Assert.That(_windows[1].Board.Pose.Right.Get(BodyPart.Torso).PositionUnits.X, Is.EqualTo(startLine));
+            Assert.That(_results[0].FinalBoard.Pose.Left.Get(BodyPart.Torso).PositionUnits.X, Is.EqualTo(-startLine),
+                "the turn's result carries the board planning starts from");
+        }
+
+        [Test]
+        public void TheDebugTurnCounter_ReachesTheTurnCapAtOnce()
+        {
+            LocalTurnAuthority authority = Create(new ScriptedTurnSimulator());
+            authority.Start();
+
+            authority.SetTurnIndexForDebug(_settings.Match.TurnCap - 1);
+            ReadyBoth(authority);
+            authority.Tick();
+
+            Assert.That(_results[0].TurnIndex, Is.EqualTo(_settings.Match.TurnCap - 1), "the 30th turn was played");
+            Assert.That(_windows[1].IsSuddenDeath, Is.True);
+            Assert.That(_windows[1].TurnIndex, Is.EqualTo(_settings.Match.TurnCap));
+        }
+
+        [Test]
+        public void TheDebugTurnCounter_WorksBetweenTurns_WhileTheAuthorityWaitsForPlayback()
+        {
+            LocalTurnAuthority authority = Create(new ScriptedTurnSimulator(), new PlaybackHoldSettings { Mode = PlaybackHoldMode.ClientReport });
+            authority.Start();
+            ReadyBoth(authority);
+            authority.Tick();
+            Assert.That(authority.Phase, Is.EqualTo(MatchPhase.TurnStart), "holding for the client's playback");
+
+            authority.SetTurnIndexForDebug(10);
+            authority.NotifyPlaybackFinished(0);
+            authority.Tick();
+
+            Assert.That(_windows[1].TurnIndex, Is.EqualTo(10));
+            Assert.That(_windows[1].Board.State.TurnIndex, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void TheDebugTurnCounter_IsRefused_ForANegativeTurn_AndOnceTheMatchIsOver()
+        {
+            LocalTurnAuthority authority = Create(new ScriptedTurnSimulator((turn, state) => state.Fighters[Side.Right].Hp = 0f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => authority.SetTurnIndexForDebug(-1));
+
+            authority.Start();
+            ReadyBoth(authority);
+            authority.Tick();
+
+            Assert.That(authority.Phase, Is.EqualTo(MatchPhase.MatchOver));
+            Assert.Throws<InvalidOperationException>(() => authority.SetTurnIndexForDebug(5));
         }
 
         // --- The playback hold (ARCHITECTURE §5) -----------------------------------------------

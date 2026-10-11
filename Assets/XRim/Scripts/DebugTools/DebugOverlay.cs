@@ -8,6 +8,7 @@ using XRim.Input;
 using XRim.DebugTools.Sandbox;
 using XRim.Networking;
 using XRim.Rules;
+using XRim.Rules.Arena;
 using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 
@@ -175,8 +176,9 @@ namespace XRim.DebugTools
         }
 
         /// <summary>
-        /// Cheats act through public seams (the turn's contact handler, the clock, the settings snapshot), never through rule code. Force
-        /// sever (Session 11): the chosen limb is cut at the start of the next turn through the real sever path.
+        /// Cheats act through public seams (the turn's contact handler, the authority's debug turn counter, the clock, the settings snapshot),
+        /// never through rule code. Force sever (Session 11): the chosen limb is cut at the start of the next turn through the real sever path.
+        /// Session 12: the turn counter (to reach the turn cap at once), force double KO, and each electric wall's phase.
         /// </summary>
         private void DrawCheats()
         {
@@ -207,7 +209,62 @@ namespace XRim.DebugTools
             GUILayout.EndHorizontal();
             GUILayout.Label(queued.Count == 0 ? "Nothing queued." : "Queued: " + string.Join(", ", queued));
             GUILayout.Space(Margin);
+            DrawTurnCounter(window);
+            GUILayout.Space(Margin);
+            DrawDoubleKnockOut();
+            GUILayout.Space(Margin);
+            DrawWalls(window);
+            GUILayout.Space(Margin);
             GUILayout.Label("Planned: freeze planning timer, infinite ink, force stun, save/load scenario (board + both plans).");
+        }
+
+        /// <summary>The turn being planned can become any turn, so the turn cap (sudden death) is a click away (§3, §13).</summary>
+        private void DrawTurnCounter(PlanningWindow window)
+        {
+            int cap = _bootstrap.RulesSettings.Match.TurnCap;
+            if (window == null)
+            {
+                GUILayout.Label("Turn counter: wait for the next planning phase.");
+                return;
+            }
+
+            if (window.IsSuddenDeath)
+            {
+                GUILayout.Label("Turn counter: in sudden death (the turn cap no longer counts).");
+                return;
+            }
+
+            GUILayout.Label($"Turn counter: turn {window.TurnIndex + 1} of {cap}; sudden death starts after turn {cap}.");
+            GUI.enabled = window.TurnIndex + 1 < cap;
+            if (GUILayout.Button($"Make the next turn played turn {cap}")) _bootstrap.SetTurnCounter(cap - 1);
+            GUI.enabled = true;
+        }
+
+        private void DrawDoubleKnockOut()
+        {
+            IReadOnlyList<Side> queued = _bootstrap.QueuedKnockOuts;
+            GUILayout.Label("Force double KO: both dummies die at the start of the next turn (sudden death; inside it, a tie that is replayed).");
+            GUI.enabled = queued.Count == 0;
+            if (GUILayout.Button(queued.Count == 0 ? "Knock both out next turn" : "Queued for the next turn")) _bootstrap.QueueDoubleKnockOut();
+            GUI.enabled = true;
+        }
+
+        /// <summary>Each player's wall as the board being planned (or the turn just played) has it (§13).</summary>
+        private void DrawWalls(PlanningWindow window)
+        {
+            ClientMatchFlow flow = _bootstrap.Flow;
+            bool planning = flow != null && flow.Phase == ClientPhase.Planning && window != null;
+            MatchState state = planning ? window.Board.State : flow?.CurrentResult?.FinalBoard.State ?? window?.Board.State;
+            if (state == null) return;
+            GUILayout.Label("Electric walls:");
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                ElectricWallState wall = state.Walls[side];
+                string text = wall.IsUp
+                    ? $"  {side}: {wall.Phase} at x {wall.PositionUnits:0}, backward swipes in a row {wall.ConsecutiveRetreats}"
+                    : $"  {side}: none";
+                GUILayout.Label(text);
+            }
         }
 
         private static bool Contains(IReadOnlyList<SeveredLimbRef> limbs, SeveredLimbRef limb)

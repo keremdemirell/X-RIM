@@ -83,8 +83,15 @@ namespace XRim.Rules
         /// <summary>D22 (§13 stays TBD): width from <c>ArenaSettings</c>, each edge a solid invisible stop.</summary>
         public IArenaEdgePolicy ArenaEdge { get; set; } = new SolidStopArenaEdgePolicy();
 
-        public ISuddenDeathNoHitPolicy SuddenDeathNoHit { get; set; }
-        public ITiePolicy SuddenDeathTie { get; set; }
+        /// <summary>
+        /// §14 (TBD; designer 2026-10-11, the recommended default): a sudden-death turn without a winner is played again, at most
+        /// <c>SuddenDeathSettings.MaxRepeatsWithoutHit</c> times; then more HP when sudden death began wins, equal HP a seeded coin toss.
+        /// </summary>
+        public ISuddenDeathNoHitPolicy SuddenDeathNoHit { get; set; } = new CappedRepeatNoHitPolicy();
+
+        /// <summary>§14 (TBD; designer 2026-10-11, the recommended default): decisive moments at exactly the same instant replay the turn.</summary>
+        public ITiePolicy SuddenDeathTie { get; set; } = new ReplayTiePolicy();
+
         public ISignatureChargeModel SignatureCharge { get; set; }
     }
 }

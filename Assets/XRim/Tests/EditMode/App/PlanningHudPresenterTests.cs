@@ -7,6 +7,7 @@ using XRim.Input;
 using XRim.Networking;
 using XRim.Presentation.UI;
 using XRim.Rules;
+using XRim.Rules.Arena;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
@@ -152,6 +153,28 @@ namespace XRim.Tests.EditMode.App
             Assert.That(_hud.BodyZoneFraction, Is.EqualTo(SchemeRig.BodyZoneFraction));
             Assert.That(_hud.Opponent.Weapon, Is.EqualTo(WeaponIds.Mace), "what everyone sees until the opponent changes something");
             Assert.That(_hud.Opponent.IsReady, Is.False);
+        }
+
+        [Test]
+        public void AWallStandingBehindThePlayer_IsAnnouncedAsPlanningOpens()
+        {
+            _rig.Window.Board.State.Walls[Side.Left].Phase = ElectricWallPhase.Warning;
+            _rig.Window.Board.State.Walls[Side.Left].IsUp = true;
+
+            _presenter.Tick(0.0, null);
+
+            Assert.That(_hud.Messages[_hud.Messages.Count - 1], Is.EqualTo(PlanningHudPresenter.WallBehindYouMessage));
+        }
+
+        [Test]
+        public void NoWall_NoWarning_AndTheOpponentsWallIsNotTheirs()
+        {
+            _rig.Window.Board.State.Walls[Side.Right].Phase = ElectricWallPhase.Warning;
+            _rig.Window.Board.State.Walls[Side.Right].IsUp = true;
+
+            _presenter.Tick(0.0, null);
+
+            Assert.That(_hud.Messages, Has.None.EqualTo(PlanningHudPresenter.WallBehindYouMessage));
         }
 
         [Test]

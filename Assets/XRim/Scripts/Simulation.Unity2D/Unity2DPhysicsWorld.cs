@@ -35,7 +35,9 @@ namespace XRim.Simulation.Unity2D
     /// when both are kinematic (D1), so two blades meeting is a contact for the clash rules.
     /// </para>
     /// <para>
-    /// Arena: a floor at y = 0 and, when the edge policy says so (D22), a solid invisible wall at each edge.
+    /// Arena: a floor at y = 0 and, when the edge policy says so (D22), a solid invisible wall at each edge. Each player's electric wall
+    /// (GDD §13) is a kinematic barrier of the same size, built at every load and switched on, moved or off by
+    /// <see cref="SetElectricWall"/>; unlike the edges, its contacts are reported, with its owner's body too.
     /// </para>
     /// <para>
     /// Contacts: after each step every body's contacts are polled; a pair of bodies from different owners that was not
@@ -43,7 +45,7 @@ namespace XRim.Simulation.Unity2D
     /// with itself. Relative velocity is each body's motion over the step before (Box2D reports a contact one step after
     /// the motion that made it), measured from positions so it is right for kinematic bodies too: the approach, not the bounce.
     /// Order: by load-time body index, which is stable (Left parts and torso halves, Left weapon, Right parts and torso halves,
-    /// Right weapon, severed limbs).
+    /// Right weapon, severed limbs, Left wall, Right wall).
     /// </para>
     /// <para>
     /// Lost limbs (GDD §11, §12): the weapon is held in the arm <c>FighterState.HeldItemArm</c> names (the other hand once the
@@ -61,6 +63,7 @@ namespace XRim.Simulation.Unity2D
         private const string LeftEdgeName = "ArenaEdgeLeft";
         private const string RightEdgeName = "ArenaEdgeRight";
         private const string RootAnchorName = "RootAnchor";
+        private const string ElectricWallName = "ElectricWall";
         private const int SideCount = 2;
 
         /// <summary>Thickness of the floor below y = 0 and of each edge wall: thick enough that nothing tunnels through.</summary>
@@ -82,6 +85,7 @@ namespace XRim.Simulation.Unity2D
         private readonly List<ContactFacts> _pendingContacts = new List<ContactFacts>();
         private readonly Fighter[] _fighters = new Fighter[SideCount];
         private readonly List<SeveredLimb> _severedLimbs = new List<SeveredLimb>();
+        private readonly Rigidbody2D[] _electricWalls = new Rigidbody2D[SideCount];
         private readonly List<TrackedBody> _tracked = new List<TrackedBody>();
         private readonly Dictionary<Collider2D, int> _indexByCollider = new Dictionary<Collider2D, int>();
         private readonly List<Collider2D> _colliderBuffer = new List<Collider2D>();
@@ -140,7 +144,30 @@ namespace XRim.Simulation.Unity2D
 
             IgnoreFormerOwners();
             CreateArenaBounds(edges);
+            CreateElectricWalls(state);
             TrackBodies();
+        }
+
+        public void SetElectricWall(Side owner, float? xUnits)
+        {
+            Rigidbody2D wall = _electricWalls[(int)owner];
+            if (wall == null) return;
+            if (!xUnits.HasValue)
+            {
+                wall.gameObject.SetActive(false);
+                return;
+            }
+
+            Vector2 centre = ElectricWallCentre(owner, xUnits.Value);
+            if (wall.gameObject.activeSelf)
+            {
+                wall.MovePosition(centre);
+                return;
+            }
+
+            wall.transform.localPosition = centre;
+            wall.gameObject.SetActive(true);
+            wall.position = centre;
         }
 
         public void SetHeldItemTarget(Side side, BodyPose target)
@@ -496,6 +523,42 @@ namespace XRim.Simulation.Unity2D
             CreateStaticBox(RightEdgeName, BodyRole.ArenaEdge, new Vec2(edges.RightXUnits + wall * 0.5f, wallCentreY), wall, wallHeight);
         }
 
+        /// <summary>
+        /// Each player's electric wall (GDD §13): a kinematic barrier as big as an edge wall, tagged as its owner's, standing where the
+        /// state has it up and switched off otherwise. Both always exist, so the tracked bodies never change during a turn.
+        /// </summary>
+        private void CreateElectricWalls(MatchState state)
+        {
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                var gameObject = new GameObject(side + ElectricWallName);
+                gameObject.transform.SetParent(_container.transform, false);
+                var body = gameObject.AddComponent<Rigidbody2D>();
+                body.bodyType = RigidbodyType2D.Kinematic;
+                var box = gameObject.AddComponent<BoxCollider2D>();
+                box.size = new Vector2(Space.ToWorldLength(BoundaryThicknessUnits), Space.ToWorldLength(EdgeWallHeightUnits + BoundaryThicknessUnits));
+                gameObject.AddComponent<PhysicsBodyTag>().Configure(side, BodyRole.ElectricWall, BodyPart.Torso);
+                _electricWalls[(int)side] = body;
+
+                ElectricWallState wall = state.Walls[side];
+                if (wall.IsUp)
+                {
+                    Vector2 centre = ElectricWallCentre(side, wall.PositionUnits);
+                    gameObject.transform.localPosition = centre;
+                    body.position = centre;
+                }
+                else
+                {
+                    gameObject.SetActive(false);
+                }
+            }
+        }
+
+        /// <summary>The wall's face stands at <paramref name="faceXUnits"/>; its body lies behind it, away from its owner's opponent.</summary>
+        private Vector2 ElectricWallCentre(Side owner, float faceXUnits) =>
+            Space.ToWorld(new Vec2(faceXUnits - owner.FacingSign() * BoundaryThicknessUnits * 0.5f,
+                (EdgeWallHeightUnits - BoundaryThicknessUnits) * 0.5f));
+
         private void CreateStaticBox(string name, BodyRole role, Vec2 centreUnits, float widthUnits, float heightUnits)
         {
             var gameObject = new GameObject(name);
@@ -509,8 +572,8 @@ namespace XRim.Simulation.Unity2D
         }
 
         /// <summary>
-        /// Assigns every body a stable index: Left parts, Left weapon, Right parts, Right weapon, severed limbs, then the
-        /// arena (floor and edges).
+        /// Assigns every body a stable index: Left parts, Left weapon, Right parts, Right weapon, severed limbs, the electric walls (off or
+        /// on), then the arena (floor and edges).
         /// </summary>
         private void TrackBodies()
         {
@@ -536,6 +599,14 @@ namespace XRim.Simulation.Unity2D
             foreach (Rigidbody2D body in bodies)
             {
                 Track(body, false);
+            }
+
+            // A wall that is off has no attached colliders yet, so its own collider is mapped.
+            foreach (Rigidbody2D wall in _electricWalls)
+            {
+                if (wall == null) continue;
+                _indexByCollider[wall.GetComponent<Collider2D>()] = _tracked.Count;
+                _tracked.Add(new TrackedBody(wall, wall.GetComponent<PhysicsBodyTag>().Tag, false));
             }
 
             foreach (string arenaName in new[] { FloorName, LeftEdgeName, RightEdgeName })
@@ -704,6 +775,11 @@ namespace XRim.Simulation.Unity2D
             }
 
             _severedLimbs.Clear();
+            for (int i = 0; i < SideCount; i++)
+            {
+                _electricWalls[i] = null;
+            }
+
             _tracked.Clear();
             _indexByCollider.Clear();
             _touching.Clear();

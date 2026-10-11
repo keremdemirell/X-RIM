@@ -1,12 +1,14 @@
 using NUnit.Framework;
 using XRim.Core;
 using XRim.Presentation.Playback;
+using XRim.Rules.Arena;
+using XRim.Rules.Events;
 using XRim.Rules.Settings;
 using XRim.Simulation.Recording;
 
 namespace XRim.Tests.EditMode.Presentation
 {
-    /// <summary>The HP bars drop as playback passes each hit, not when the turn resolved.</summary>
+    /// <summary>The HP bars drop as playback passes each hit or wall zap, not when the turn resolved.</summary>
     public sealed class PlaybackHitPointsTests
     {
         private RulesSettings _settings;
@@ -39,6 +41,18 @@ namespace XRim.Tests.EditMode.Presentation
             Assert.That(HpAt(0.59, Side.Right), Is.EqualTo(max - 20f));
             Assert.That(HpAt(0.6, Side.Right), Is.EqualTo(max - 35f));
             Assert.That(HpAt(0.6, Side.Left), Is.EqualTo(max - 8f), "a trade: both bars drop together");
+        }
+
+        [Test]
+        public void AnElectricWallZap_DropsItsOwnersBar_AtItsInstant()
+        {
+            var zap = new ElectricWallEvent(SimTime.FromSeconds(0.4), Side.Left, ElectricWallPhase.Active, 10f, -360f);
+            TurnResult turn = PlayedTurn.Create(_settings, 0, zap);
+            float max = _settings.Damage.MaxHp;
+
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.39), Side.Left), Is.EqualTo(max));
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.4), Side.Left), Is.EqualTo(max - 10f));
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.4), Side.Right), Is.EqualTo(max), "only its owner");
         }
 
         [Test]

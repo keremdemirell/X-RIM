@@ -3,6 +3,7 @@ using XRim.Core;
 using XRim.Networking;
 using XRim.Presentation.Playback;
 using XRim.Presentation.UI;
+using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Simulation.Recording;
 
@@ -10,14 +11,14 @@ namespace XRim.App
 {
     /// <summary>
     /// Feeds the match HUD from the client flow, for one match: each fighter's HP under its own dummy (it follows the view flip,
-    /// GDD §4), the turn counter, and the sudden-death banner (§14; its open parts are placeholders until Session 12).
+    /// GDD §4), the turn counter, and the sudden-death banner (§14: 1 HP each, the first clean hit wins, and which of its capped tries
+    /// this is, designer 2026-10-11).
     /// While planning it shows the frozen board; during and after a turn's playback it shows that turn, the HP dropping as playback
     /// passes each hit. Plain data in, plain data out: no rule lives here.
     /// </summary>
     public sealed class MatchHudPresenter
     {
         public const string SuddenDeathTitle = "SUDDEN DEATH";
-        public const string SuddenDeathDetail = "1 HP each: the first hit wins. Board, ties and no-hit turns are placeholders until Session 12.";
 
         private readonly IMatchHudView _view;
         private readonly ClientMatchFlow _flow;
@@ -25,7 +26,7 @@ namespace XRim.App
         private readonly PerSide<string> _names;
         private readonly PerSide<Shown> _shown = new PerSide<Shown>(null, null);
         private string _shownTurn;
-        private bool? _shownSuddenDeath;
+        private string _shownBannerDetail;
 
         public MatchHudPresenter(IMatchHudView view, ClientMatchFlow flow, RulesSettings rules, PerSide<string> names)
         {
@@ -45,6 +46,7 @@ namespace XRim.App
             // The turn being (or just) played is newer than the board once it resolved; a new planning window replaces it.
             bool showTurn = turn != null && (window == null || turn.TurnIndex >= window.TurnIndex);
             int turnIndex = showTurn ? turn.TurnIndex : window != null ? window.TurnIndex : 0;
+            MatchState shownState = showTurn ? turn.Report.ResolvedState : window?.Board.State;
             bool suddenDeath = showTurn ? turn.Report.ResolvedState.IsSuddenDeath : window != null && window.IsSuddenDeath;
 
             foreach (Side side in new[] { Side.Left, Side.Right })
@@ -55,8 +57,15 @@ namespace XRim.App
                 ShowFighter(side, hp, (side == Side.Left) != viewFlipped);
             }
 
-            ShowTurn(turnIndex, suddenDeath);
+            ShowTurn(turnIndex, suddenDeath, shownState != null ? shownState.SuddenDeathRepeats : 0);
         }
+
+        /// <summary>
+        /// The banner's line under "SUDDEN DEATH": 1 HP each, the first clean hit wins, and which try this is of the capped number (after the
+        /// last, the fallback decides, P6).
+        /// </summary>
+        public static string SuddenDeathDetail(int repeatsSoFar, int maxRepeats) =>
+            string.Format(CultureInfo.InvariantCulture, "1 HP each: the first clean hit wins · try {0} of {1}", repeatsSoFar + 1, maxRepeats + 1);
 
         private void ShowFighter(Side side, float hp, bool onScreenLeft)
         {
@@ -66,7 +75,7 @@ namespace XRim.App
             _view.ShowFighter(side, _names[side], hp, _rules.Damage.MaxHp, onScreenLeft);
         }
 
-        private void ShowTurn(int turnIndex, bool suddenDeath)
+        private void ShowTurn(int turnIndex, bool suddenDeath, int repeatsSoFar)
         {
             string text = suddenDeath
                 ? SuddenDeathTitle
@@ -77,9 +86,10 @@ namespace XRim.App
                 _view.ShowTurn(text);
             }
 
-            if (_shownSuddenDeath == suddenDeath) return;
-            _shownSuddenDeath = suddenDeath;
-            _view.ShowBanner(suddenDeath ? SuddenDeathTitle : string.Empty, suddenDeath ? SuddenDeathDetail : string.Empty);
+            string detail = suddenDeath ? SuddenDeathDetail(repeatsSoFar, _rules.SuddenDeath.MaxRepeatsWithoutHit) : string.Empty;
+            if (_shownBannerDetail == detail) return;
+            _shownBannerDetail = detail;
+            _view.ShowBanner(suddenDeath ? SuddenDeathTitle : string.Empty, detail);
         }
 
         private sealed class Shown

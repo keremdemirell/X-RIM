@@ -115,6 +115,20 @@ namespace XRim.Rules.Settings
                 if (block.HeavyWeaponMinMass < 0f) issues.Add("Shield block: the heavy weapon mass must not be negative.");
             }
 
+            if (ElectricWall == null)
+            {
+                issues.Add("Electric wall: the settings are missing.");
+            }
+            else
+            {
+                if (ElectricWall.Damage < 0f) issues.Add("Electric wall: the damage must not be negative.");
+                if (ElectricWall.BounceDistanceUnits < 0f || ElectricWall.AdvanceDistanceUnits < 0f || ElectricWall.SpawnOffsetBehindUnits < 0f)
+                    issues.Add("Electric wall: the bounce, advance and spawn distances must not be negative.");
+            }
+
+            if (SuddenDeath == null) issues.Add("Sudden death: the settings are missing.");
+            else if (SuddenDeath.MaxRepeatsWithoutHit < 0) issues.Add("Sudden death: the repeats without a hit must not be negative.");
+
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (WeaponStats weapon in Weapons)
             {

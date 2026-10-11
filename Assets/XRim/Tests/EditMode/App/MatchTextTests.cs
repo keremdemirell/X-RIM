@@ -56,6 +56,20 @@ namespace XRim.Tests.EditMode.App
                 Is.EqualTo("by forfeit: PLAYER 2 set no move for 3 turns in a row"));
             Assert.That(MatchOverText.Reason(new MatchOutcome(Side.Right, MatchEndReason.SuddenDeathHit, 31), names),
                 Is.EqualTo("with the first hit in sudden death"));
+            Assert.That(MatchOverText.Reason(new MatchOutcome(Side.Right, MatchEndReason.SuddenDeathMoreHp, 34), names),
+                Is.EqualTo("sudden death ran out of tries: more HP when it began"));
+            Assert.That(MatchOverText.Reason(new MatchOutcome(Side.Left, MatchEndReason.SuddenDeathCoinToss, 34), names),
+                Is.EqualTo("sudden death ran out of tries, level on HP: a coin toss"));
+        }
+
+        [Test]
+        public void EveryEndReason_HasWords()
+        {
+            var names = new PerSide<string>("PLAYER 1", "PLAYER 2");
+            foreach (MatchEndReason reason in (MatchEndReason[])System.Enum.GetValues(typeof(MatchEndReason)))
+            {
+                Assert.That(MatchOverText.Reason(new MatchOutcome(Side.Left, reason, 10), names), Is.Not.Empty, reason.ToString());
+            }
         }
 
         [Test]

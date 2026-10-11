@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using XRim.Core;
+using XRim.Rules.Arena;
 using XRim.Rules.Combat;
 using XRim.Rules.Damage;
 using XRim.Rules.Events;
@@ -8,16 +9,16 @@ using XRim.Rules.Events;
 namespace XRim.DebugTools
 {
     /// <summary>
-    /// One line per rules outcome for the debug panels (Sessions 06, 07 and 11): a landed hit with its damage, a clash with its angle,
-    /// powers and outcome, a shield block, a cancelled attack, a stun or stagger, a severed limb, a dropped weapon, a death. Raw contacts and body moves are not
-    /// outcomes, so they get no line here.
+    /// One line per rules outcome for the debug panels (Sessions 06, 07, 11 and 12): a landed hit with its damage, a clash with its angle,
+    /// powers and outcome, a shield block, a cancelled attack, a stun or stagger, a severed limb, a dropped weapon, a death, an electric wall
+    /// springing up or zapping. Raw contacts and body moves are not outcomes, so they get no line here.
     /// </summary>
     internal static class MatchEventText
     {
         public static bool IsOutcome(MatchEvent matchEvent) =>
             matchEvent is HitLandedEvent || matchEvent is WeaponClashEvent || matchEvent is ShieldBlockEvent ||
             matchEvent is AttackInterruptedEvent || matchEvent is StatusAppliedEvent || matchEvent is FighterDiedEvent ||
-            matchEvent is LimbSeveredEvent || matchEvent is WeaponDroppedEvent;
+            matchEvent is LimbSeveredEvent || matchEvent is WeaponDroppedEvent || matchEvent is ElectricWallEvent;
 
         public static string Describe(MatchEvent matchEvent)
         {
@@ -40,9 +41,22 @@ namespace XRim.DebugTools
                     return time + $"{severed.Side}'s {severed.Part} is SEVERED";
                 case WeaponDroppedEvent dropped:
                     return time + $"{dropped.Side} drops the {dropped.Weapon.Value}";
+                case ElectricWallEvent wall:
+                    return time + DescribeWall(wall);
                 default:
                     return time + matchEvent.GetType().Name;
             }
+        }
+
+        private static string DescribeWall(ElectricWallEvent wall)
+        {
+            if (wall.Phase == ElectricWallPhase.Warning)
+                return string.Format(CultureInfo.InvariantCulture, "{0}'s electric wall springs up behind it at x {1:0} (a warning, no damage)",
+                    wall.Side, wall.PositionUnits);
+            if (wall.IsKnockedInto)
+                return string.Format(CultureInfo.InvariantCulture, "{0} is knocked into its electric wall: {1:0.#} HP", wall.Side, wall.HpDamage);
+            return string.Format(CultureInfo.InvariantCulture, "{0} backs into its electric wall: ZAP {1:0.#} HP, thrown forward; the wall advances to x {2:0}",
+                wall.Side, wall.HpDamage, wall.PositionUnits);
         }
 
         private static string DescribeClash(ClashResult result)

@@ -22,9 +22,17 @@ namespace XRim.Simulation.Physics
         /// edges. When its pose has a held item, each fighter holds <c>state.Fighters[side].CurrentWeapon</c> (a weapon, shield or
         /// severed-limb club) at that pose, in the arm <c>FighterState.HeldItemArm</c> names: the dominant arm while intact, then
         /// the other (GDD §12). A body blow holds nothing (see <see cref="StrikeWithBodyPart"/>). A dropped item or a split torso
-        /// in the pose is not rebuilt. Electric walls come in Session 12.
+        /// in the pose is not rebuilt. Each electric wall the state has up (<c>state.Walls</c>, GDD §13) stands at its position.
         /// </summary>
         void Load(PoseSnapshot pose, MatchState state, RulesSettings rules, SimulationSettings simulation, ArenaEdges edges);
+
+        /// <summary>
+        /// A player's electric wall (GDD §13): a barrier across the arena standing on the floor, its face at <paramref name="xUnits"/> and
+        /// its body behind it, away from the owner's opponent; null takes it away. A wall that was not standing appears there at once; a
+        /// standing one moves there during the next step and pushes what is in its way (the advance). It collides like the arena edge and
+        /// its contacts are reported, its owner's included (tagged <see cref="BodyRole.ElectricWall"/>, owned by its player).
+        /// </summary>
+        void SetElectricWall(Side owner, float? xUnits);
 
         /// <summary>
         /// Gap at which the engine already counts two bodies as touching (its contact offset). Time-to-impact

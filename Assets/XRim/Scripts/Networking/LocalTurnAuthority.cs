@@ -27,6 +27,8 @@ namespace XRim.Networking
     /// sudden death), so a client plays back exactly what the next planning phase starts from.</item>
     /// <item>The next planning timer starts after <see cref="PlaybackHoldSettings"/> says playback is over, so the replay
     /// never eats planning time (ARCHITECTURE §5). Clients report it with <see cref="NotifyPlaybackFinished"/>.</item>
+    /// <item>When sudden death begins, the board's pose follows the board mode (<see cref="SuddenDeathBoard"/>: the start lines on a
+    /// reset, GDD §14), so the first sudden-death planning starts from it.</item>
     /// </list>
     /// </summary>
     public sealed class LocalTurnAuthority : ITurnAuthority
@@ -114,6 +116,21 @@ namespace XRim.Networking
             return result;
         }
 
+        /// <summary>
+        /// Debug (the Cheats tab, Session 12): makes this the turn to be played next (0-based), to reach the turn cap quickly. Allowed between
+        /// turns and while planning; it changes the rules' turn counter and the board's, nothing else, so the turn after it counts from there.
+        /// </summary>
+        public void SetTurnIndexForDebug(int turnIndex)
+        {
+            if (turnIndex < 0) throw new ArgumentOutOfRangeException(nameof(turnIndex), turnIndex, "The turn index cannot be negative.");
+            MatchPhase phase = Machine.Phase;
+            if (phase != MatchPhase.TurnStart && phase != MatchPhase.SuddenDeathSetup && phase != MatchPhase.Planning)
+                throw new InvalidOperationException($"The turn counter can only be set between turns or while planning, not in {phase}.");
+
+            Machine.State.TurnIndex = turnIndex;
+            _board.State.TurnIndex = turnIndex;
+        }
+
         public void NotifyPlaybackFinished(int turnIndex)
         {
             if (!_holding || _hold.Mode != PlaybackHoldMode.ClientReport || turnIndex != _heldTurnIndex) return;
@@ -142,7 +159,10 @@ namespace XRim.Networking
             TurnResult simulated = Simulator.Simulate(input);
 
             Machine.CompleteExecution(simulated.Report);
-            _board = new BoardSnapshot(Machine.State.Clone(), simulated.FinalBoard.Pose.Clone());
+            PoseSnapshot pose = simulated.FinalBoard.Pose;
+            if (Machine.Phase == MatchPhase.SuddenDeathSetup)
+                pose = SuddenDeathBoard.Prepare(pose, Machine.State, Rules, SimulationSettings, new AimFromShoulderModel(), _initialPose);
+            _board = new BoardSnapshot(Machine.State.Clone(), pose.Clone());
             var result = new TurnResult(simulated.TurnIndex, simulated.Timeline, _board.Clone(), simulated.Report, simulated.EndReason);
             RaiseTurnResolved(result);
 

@@ -25,6 +25,9 @@ namespace XRim.App
     {
         private const int PercentSteps = 100;
 
+        /// <summary>Shown as planning opens while the player's own electric wall stands behind their dummy (GDD §13).</summary>
+        public const string WallBehindYouMessage = "ELECTRIC WALL BEHIND YOU: STEP BACK AGAIN AND IT ZAPS";
+
         private readonly IPlanningHudView _hud;
         private readonly ITurnAuthority _authority;
         private readonly MatchSetup _setup;
@@ -101,7 +104,8 @@ namespace XRim.App
 
         /// <summary>
         /// A new planning phase (or a different human): the weapons that can be held this turn (the loadout and the §12 extra options:
-        /// the severed-limb club, the armless body blow), and nothing carried over from before.
+        /// the severed-limb club, the armless body blow), nothing carried over from before, and a warning when the player's own electric
+        /// wall stands behind them (§13: one more step back is a zap).
         /// </summary>
         private void BeginWindow(TouchPlanSource source, PlanningWindow window)
         {
@@ -117,7 +121,7 @@ namespace XRim.App
             _shownOpponent = null;
             _shownMirrored = null;
             _hud.SetLoadout(window.Constraints[source.Side].AvailableWeapons(_setup.Fighters[source.Side].Loadout));
-            _hud.ShowMessage(string.Empty);
+            _hud.ShowMessage(window.Board.State.Walls[source.Side].IsUp ? WallBehindYouMessage : string.Empty);
         }
 
         private void ShowLayout(ScreenLayout layout)

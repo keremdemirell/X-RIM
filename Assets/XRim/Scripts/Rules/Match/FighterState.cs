@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using XRim.Rules.Limbs;
 using XRim.Rules.Status;
@@ -14,6 +15,9 @@ namespace XRim.Rules.Match
 
         /// <summary>One global HP pool (GDD §11). At 0 the dummy dies.</summary>
         public float Hp { get; set; }
+
+        /// <summary>The HP the dummy had when sudden death began (0 after a double KO), for the §14 no-hit fallback.</summary>
+        public float HpBeforeSuddenDeath { get; set; }
 
         public WeaponId CurrentWeapon { get; set; }
         public int ConsecutiveIdleTurns { get; set; }
@@ -67,9 +71,19 @@ namespace XRim.Rules.Match
 
         public void MarkSevered(BodyPart part) => _severed[(int)part] = true;
 
+        /// <summary>Every limb whole and undamaged again: only for a sudden-death board reset (§14, P5), never during play (§11).</summary>
+        public void RestoreLimbs()
+        {
+            Array.Clear(_limbDamage, 0, _limbDamage.Length);
+            Array.Clear(_severed, 0, _severed.Length);
+        }
+
         public FighterState Clone()
         {
-            var copy = new FighterState(Handedness, Hp, CurrentWeapon) { ConsecutiveIdleTurns = ConsecutiveIdleTurns, HeldLimb = HeldLimb };
+            var copy = new FighterState(Handedness, Hp, CurrentWeapon)
+            {
+                ConsecutiveIdleTurns = ConsecutiveIdleTurns, HeldLimb = HeldLimb, HpBeforeSuddenDeath = HpBeforeSuddenDeath,
+            };
             _limbDamage.CopyTo(copy._limbDamage, 0);
             _severed.CopyTo(copy._severed, 0);
             copy.Statuses.AddRange(Statuses);

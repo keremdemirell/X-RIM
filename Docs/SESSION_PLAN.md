@@ -13,7 +13,8 @@ Section numbers such as §9 refer to the GDD (`Docs/X-RIM — Game Design Docume
 1. Check this plan for **decisions I must make before it starts** and record the answers in `MEMORY.md` → *Decisions made during development*. (Claude can also record them for you at the start of the session if you type them in.)
 2. Open a fresh Claude Code chat with the recommended model and paste the whole content of the session's prompt file.
 3. Claude reads the docs, checks dependencies in `MEMORY.md`, proposes a batch plan and waits for your approval.
-4. Claude does one batch at a time. After each one it runs `python Tools/check.py` (from session 01 on), updates `MEMORY.md`, commits locally and stops. Check what it says to check in Unity, then type `continue`.
+4. Claude does one batch at a time. After each one it runs `python Tools/check.py` (from session 01 on), updates `MEMORY.md`, lists the files it changed and stops. Check what it says to check in Unity, then type `continue`.
+   - **You commit**, once, when the session is done (your rule since 2026-10-01). Claude commits only when you ask. Prompts 01–11 still say "commit after each batch"; `MEMORY.md` overrides them. Prompts 12–22 already follow the new rule.
 5. If the chat closes mid-session, paste the same prompt into a new chat. Claude resumes from `MEMORY.md` at the next unfinished batch.
 6. At a **playtest checkpoint (PT)**, test in the Editor (or on a device) and give Claude the report described in §5 below. Do this before starting the next session. The report can go at the start of the next session's chat or into `MEMORY.md` directly.
 
@@ -34,8 +35,8 @@ Section numbers such as §9 refer to the GDD (`Docs/X-RIM — Game Design Docume
 | 09 | First playable | End-to-end offline match (hot-seat and vs bot), HP UI, basic hitstop, match over and rematch | Opus 5.5 | 05–08 | **PT3** |
 | 10 | Device build | Android development build, real touch, safe areas, simulation time budget on a phone | Sonnet 5.5 | 09, PT3 | **PT4** |
 | 11 | Dismemberment and desperation | Severing, weapon drop, off-hand fighting, severed limb as a club, torso split on death | Opus 5.5 | 09 | – |
-| 12 | Electric wall, arena edge and sudden death | Per-player wall sequence, arena edge, double KO and turn cap into sudden death | Sonnet 5.5 | 09 | – |
-| 13 | Feel and juice pass | Hitstop, slow motion, camera punch, mechanical VFX, audio hooks, legendary-moment replay, art spec | Opus 5.5 | 11, 12 | **PT5** |
+| 12 | Electric wall, arena edge and sudden death | Per-player wall sequence, arena edge, double KO and turn cap into sudden death | Opus 5.5 | 11 | – |
+| 13 | Feel and juice pass | Hitstop, slow motion, camera punch, mechanical VFX, audio hooks, legendary-moment replay, art spec | Opus 5.5 | 11 (12 in either order) | **PT5** |
 | 14 | Weapon roster and loadout | Sword and spear (rigidity), loadout pick and reveal, trait seams | Sonnet 5.5 | 09, 13 | – |
 | 15 | Signature moves | Preset self-drawing patterns, charge model, HUD buttons, first placeholder moves | Sonnet 5.5 | 14 | – |
 | 16 | Bots, scenarios and balance | Scenario save and load, regression tests, heuristic bot, headless bot-vs-bot balance batch | Opus 5.5 | 14, 15 | **PT6** |
@@ -45,6 +46,8 @@ Section numbers such as §9 refer to the GDD (`Docs/X-RIM — Game Design Docume
 | 20 | Matchmaking, friends and contacts | Match lobby, friend challenge, contacts permission flow, disconnect handling | Opus 5.5 | 19, decisions | **PT7** |
 | 21 | Tutorial and replays | First-match tutorial and local replay save/share seam | Sonnet 5.5 | 13, 18 | – |
 | 22 | Release readiness | Cosmetics store with real-money purchases, telemetry for balance targets, privacy, store build settings | Sonnet 5.5 | 18, 20, 21 | – |
+
+**Order note (2026-10-11).** Sessions 12 and 13 can run in either order; each prompt handles both. PT1–PT4 were rated 2–4/10 ("not much action yet"), so running **13 (feel) before 12** gets the juice in front of you sooner. Sessions 14 onward need both.
 
 **Milestones**
 - **Physics de-risked:** after 02 and PT1.
@@ -157,11 +160,12 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 `Tools/check` below is shorthand for `python Tools/check.py`, run from the project root.
 
 - **Read first:** `CLAUDE.md`, `MEMORY.md`, `Docs/ARCHITECTURE.md`, this file, and the GDD sections the session lists.
-- **Git:** commit locally after each finished batch. Never push, amend or force anything, and never touch other branches. Stage only the files the batch changed, by name. Commit messages contain **no attribution**: no `Co-Authored-By`, no "Generated with Claude Code", no mention of Claude or AI.
+- **Git:** Claude does not commit (designer's rule since 2026-10-01). It lists the changed files after each batch, and you commit once when the session is done. If you ask Claude to commit, it stages only the named files. Never push, amend or force anything, and never touch other branches. Commit messages contain **no attribution**: no `Co-Authored-By`, no "Generated with Claude Code", no mention of Claude or AI.
 - **GDD tags:** Decided → build as written. Tunable → the value lives in config. TBD → never invent a final answer; build a flagged seam with a default, or ask. Parked or Rejected → do not implement.
 - **The GDD file is never edited.** Decisions and deviations go into `MEMORY.md`.
 - **No hand-written `.unity`, `.prefab` or asset YAML.** Use Editor scripts (menu items under `XRim/…`) or give short numbered manual steps.
-- **After every batch:** run `python Tools/check.py` (from session 01 on) and fix everything it reports, update `MEMORY.md`, commit, summarize, then stop and wait for `continue`.
+- **After every batch:** run `python Tools/check.py` (from session 01 on) and fix everything it reports, update `MEMORY.md`, list the changed files, summarize (with a plain-language "What this means for you"), then stop and wait for `continue`.
+- **Feel first:** every open choice, including ones the GDD never mentions, is made to maximize feel.
 - **New placeholders** are tagged `[Placeholder("reason")]` and reported to the user in the batch summary.
 
 ---
@@ -438,7 +442,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
 
 ### Session 12: Electric wall, arena edge and sudden death
 - **Prompt:** `Docs/sessions/session-12-wall-and-sudden-death.md`
-- **Model:** Sonnet 5.5.
+- **Model:** Opus 5.5 (raised from Sonnet: the wall is a physics body in the turn loop, and sudden death closes several seams).
 - **Module and goal:**
   - `ElectricWallRules`, one per player:
     - Turn N: a backward swipe raises the warning.
@@ -450,7 +454,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
   - Policies for the board state, no hit, same-step tie and the wall in sudden death.
   - HUD warnings.
 - **GDD:** §13, §14.
-- **Depends on:** 09.
+- **Depends on:** 11 (runs before or after 13).
 - **Definition of done:**
   - EditMode tests cover the full wall sequence table and each sudden-death policy.
   - A PlayMode scenario covers two retreats → zap and bounce.
@@ -473,7 +477,7 @@ Between checkpoints you still check each batch briefly in Unity (0 red errors, t
   - `GameplayGizmos`.
   - Writes `Docs/ART_SPEC.md`.
 - **GDD:** §1 (pillars 1 and 4), §2 (art and audio), §17 (replays: local instant replay only; sharing stays TBD).
-- **Depends on:** 11, 12.
+- **Depends on:** 11 (12 before or after; the prompt leaves named hooks if 12 is not done).
 - **Definition of done:**
   - EditMode tests show that feel effects never change a `TurnResult` (the same inputs produce the same outcome regardless of `FeelConfig`), and cover the moment detector rules.
   - `ART_SPEC.md` exists.

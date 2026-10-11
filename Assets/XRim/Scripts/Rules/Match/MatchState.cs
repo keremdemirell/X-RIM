@@ -14,6 +14,9 @@ namespace XRim.Rules.Match
         public int TurnIndex { get; set; }
 
         public bool IsSuddenDeath { get; set; }
+
+        /// <summary>How many sudden-death turns without a winner have been played again so far (§14, P6); 0 when it begins.</summary>
+        public int SuddenDeathRepeats { get; set; }
         public PerSide<FighterState> Fighters { get; }
         public PerSide<ElectricWallState> Walls { get; }
 
@@ -42,6 +45,7 @@ namespace XRim.Rules.Match
             {
                 TurnIndex = TurnIndex,
                 IsSuddenDeath = IsSuddenDeath,
+                SuddenDeathRepeats = SuddenDeathRepeats,
             };
     }
 }

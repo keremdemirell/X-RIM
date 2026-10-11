@@ -93,7 +93,7 @@ namespace XRim.Tests.PlayMode.App
             File.WriteAllText(file, report);
             Debug.Log($"[XRim] Bot batch saved to {file}\n{report}");
 
-            Assert.That(results.All(r => r.Finished), Is.True, "every match ended (or stopped on the sudden-death tie placeholder)");
+            Assert.That(results.All(r => r.Finished), Is.True, "every match ended (sudden death always ends, Session 12)");
         }
 
         /// <summary>One match, one turn per frame, exactly as the Match scene's bot vs bot plays it minus the screen.</summary>
@@ -103,11 +103,7 @@ namespace XRim.Tests.PlayMode.App
             var simulator = new RecordingTurnSimulator(new TurnSimulator(world, policies));
             MatchSetup setup = CreateSetup(rules, stats.Seed);
             var authority = new LocalTurnAuthority(setup, rules, simulation, policies, simulator, new ManualClock());
-            authority.TurnResolved += turn =>
-            {
-                stats.Add(turn, simulator.LastSimulationMilliseconds);
-                if (SuddenDeathTiePlaceholder.StopsTheMatch(turn)) stats.StoppedOnTie = true;
-            };
+            authority.TurnResolved += turn => stats.Add(turn, simulator.LastSimulationMilliseconds);
             authority.MatchEnded += outcome => stats.Outcome = outcome;
 
             IReadOnlyList<IPlanSource> bots = PlanSourceFactory.Create(MatchMode.BotVsBot, setup, rules, NoHuman, new XorShiftRandom(stats.Seed));
@@ -158,8 +154,10 @@ namespace XRim.Tests.PlayMode.App
             text.AppendLine("The random bot draws a random valid stroke every turn and never idles: a baseline for the loop, not a human.");
             text.AppendLine();
             text.AppendLine($"Ends: KO {Count(results, MatchEndReason.KnockOut)}, forfeit {Count(results, MatchEndReason.Forfeit)}, " +
-                            $"sudden-death hit {Count(results, MatchEndReason.SuddenDeathHit)}, sudden-death tie stop {results.Count(r => r.StoppedOnTie)}, " +
+                            $"sudden-death hit {Count(results, MatchEndReason.SuddenDeathHit)}, sudden death out of tries: more HP " +
+                            $"{Count(results, MatchEndReason.SuddenDeathMoreHp)}, coin toss {Count(results, MatchEndReason.SuddenDeathCoinToss)}, " +
                             $"unfinished at {TurnLimit} turns {results.Count(r => !r.Finished)}.");
+            text.AppendLine($"Electric-wall zaps (GDD §13): {results.Sum(r => r.WallZaps)} in all, in {results.Count(r => r.WallZaps > 0)} of {results.Count} matches.");
             text.AppendLine($"Turns per match: mean {meanTurns.ToString("0.0", c)}, median {Median(turns).ToString("0.0", c)}, " +
                             $"min {turns.First()}, max {turns.Last()}. Sudden death reached in {results.Count(r => r.ReachedSuddenDeath)} of {results.Count}.");
             text.AppendLine($"Executed (played back) seconds per turn: mean {playbackPerTurn.ToString("0.00", c)}. " +
@@ -170,12 +168,12 @@ namespace XRim.Tests.PlayMode.App
             text.AppendLine($"Match length for people (turns × (planning + playback + {hitStopSeconds.ToString("0.00", c)} s hitstop per hit)): " +
                             $"playback alone {Clock(playbackPerMatch)}; upper bound with the full {planning.ToString("0", c)} s of planning every turn {Clock(upperBound)}.");
             text.AppendLine();
-            text.AppendLine("seed  turns  winner  reason          sudden  hits  played s");
+            text.AppendLine("seed  turns  winner  reason               sudden  hits  played s");
             foreach (MatchStats r in results)
             {
-                string reason = r.StoppedOnTie ? "tie stop" : r.Outcome != null ? r.Outcome.Reason.ToString() : "unfinished";
+                string reason = r.Outcome != null ? r.Outcome.Reason.ToString() : "unfinished";
                 string winner = r.Outcome != null ? r.Outcome.Winner.ToString() : "-";
-                text.AppendLine(string.Format(c, "{0,4}  {1,5}  {2,-6}  {3,-14}  {4,-6}  {5,4}  {6,8:0.00}", r.Seed, r.Turns, winner, reason,
+                text.AppendLine(string.Format(c, "{0,4}  {1,5}  {2,-6}  {3,-19}  {4,-6}  {5,4}  {6,8:0.00}", r.Seed, r.Turns, winner, reason,
                     r.ReachedSuddenDeath ? "yes" : "no", r.Hits, r.ExecutedSeconds));
             }
 
@@ -203,13 +201,13 @@ namespace XRim.Tests.PlayMode.App
 
             public uint Seed { get; }
             public MatchOutcome Outcome { get; set; }
-            public bool StoppedOnTie { get; set; }
-            public bool Finished => Outcome != null || StoppedOnTie;
+            public bool Finished => Outcome != null;
             public int Turns { get; private set; }
             public double ExecutedSeconds { get; private set; }
             public int Hits { get; private set; }
             public bool WouldSever { get; private set; }
             public bool ReachedSuddenDeath { get; private set; }
+            public int WallZaps { get; private set; }
             public List<double> SimulationMs { get; } = new List<double>();
 
             public void Add(TurnResult turn, double simulationMs)
@@ -220,6 +218,7 @@ namespace XRim.Tests.PlayMode.App
                 if (turn.FinalBoard.State.IsSuddenDeath) ReachedSuddenDeath = true;
                 foreach (MatchEvent matchEvent in turn.Timeline.Events)
                 {
+                    if (matchEvent is ElectricWallEvent wall && wall.HpDamage > 0f) WallZaps++;
                     if (!(matchEvent is HitLandedEvent hit)) continue;
                     Hits++;
                     if (hit.Damage.SeversLimb) WouldSever = true;

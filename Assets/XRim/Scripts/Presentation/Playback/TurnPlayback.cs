@@ -24,6 +24,9 @@ namespace XRim.Presentation.Playback
 
         public event Action<TurnResult> Finished;
 
+        /// <summary>Every pose shown, frozen or played (the arena's electric walls follow it).</summary>
+        public event Action<PoseSnapshot> PoseShown;
+
         public TimelinePlayer Player { get; } = new TimelinePlayer();
 
         /// <summary>The turn being played or last played; null before the first.</summary>
@@ -102,11 +105,12 @@ namespace XRim.Presentation.Playback
             ShowWeapon(Side.Right, state.Fighters[Side.Right].CurrentWeapon);
         }
 
-        /// <summary>Both dummies, each drawing its own severed limbs where they lie (GDD §12).</summary>
+        /// <summary>Both dummies, each drawing its own severed limbs where they lie (GDD §12); then whoever draws the rest of the pose.</summary>
         private void ShowPose(PoseSnapshot pose)
         {
             _views.Left.ApplyPose(pose.Left, Side.Left, pose.SeveredLimbs, _space);
             _views.Right.ApplyPose(pose.Right, Side.Right, pose.SeveredLimbs, _space);
+            PoseShown?.Invoke(pose);
         }
     }
 }

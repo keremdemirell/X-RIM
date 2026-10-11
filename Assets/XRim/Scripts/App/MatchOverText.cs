@@ -6,16 +6,13 @@ using XRim.Rules.Match;
 
 namespace XRim.App
 {
-    /// <summary>The match-over screen's words: who won, how, and how long it took (GDD §3: a match ends only on a KO or a forfeit).</summary>
+    /// <summary>
+    /// The match-over screen's words: who won, how, and how long it took (GDD §3: a match ends only on a KO or a forfeit; §14: sudden death
+    /// always ends, by a hit or, once its tries run out, by the designer's fallback).
+    /// </summary>
     public static class MatchOverText
     {
         private const int SecondsPerMinute = 60;
-
-        /// <summary>Placeholder until Session 12 decides the sudden-death tie (§14, TBD; designer, 2026-10-04).</summary>
-        public const string SuddenDeathTieTitle = "SUDDEN DEATH TIE";
-
-        public const string SuddenDeathTieReason =
-            "Both dummies fell at the same instant. The tie rule comes in Session 12; until then the match stops here.";
 
         public static string Title(MatchOutcome outcome, PerSide<string> names)
         {
@@ -36,6 +33,10 @@ namespace XRim.App
                         names[outcome.Winner.Opponent()], RuleConstants.IdleTurnsBeforeForfeit);
                 case MatchEndReason.SuddenDeathHit:
                     return "with the first hit in sudden death";
+                case MatchEndReason.SuddenDeathMoreHp:
+                    return "sudden death ran out of tries: more HP when it began";
+                case MatchEndReason.SuddenDeathCoinToss:
+                    return "sudden death ran out of tries, level on HP: a coin toss";
                 default:
                     throw new ArgumentOutOfRangeException(nameof(outcome), outcome.Reason, "Unknown end reason.");
             }

@@ -166,6 +166,66 @@ namespace XRim.Tests.EditMode.Bots
             }
         }
 
+        /// <summary>
+        /// GDD §14 and the designer's choices (2026-10-11): a 30-turn stall in which nobody ever lands a hit (a shield standoff) enters sudden
+        /// death and always ends: 1 + 3 sudden-death turns, then the fallback. Both are level at 100 HP, so the match seed's coin toss decides.
+        /// </summary>
+        [TestCase(LeftSeed, RightSeed)]
+        [TestCase(1u, 2u)]
+        [TestCase(77u, 5u)]
+        public void AThirtyTurnStall_EntersSuddenDeath_AndAlwaysEnds(uint leftSeed, uint rightSeed)
+        {
+            var simulator = new ScriptedTurnSimulator();
+            using (var match = new BotMatch(_settings, simulator, leftSeed, rightSeed))
+            {
+                match.Play();
+
+                int suddenDeathTurns = 1 + _settings.SuddenDeath.MaxRepeatsWithoutHit;
+                Assert.That(match.Outcome, Is.Not.Null, "sudden death ended the match");
+                Assert.That(match.EndedCount, Is.EqualTo(1));
+                Assert.That(match.Outcome.Reason, Is.EqualTo(MatchEndReason.SuddenDeathCoinToss));
+                Assert.That(match.Outcome.TurnCount, Is.EqualTo(_settings.Match.TurnCap + suddenDeathTurns));
+                Assert.That(simulator.Inputs, Has.Count.EqualTo(_settings.Match.TurnCap + suddenDeathTurns));
+                Assert.That(match.Windows.FindAll(w => w.IsSuddenDeath), Has.Count.EqualTo(suddenDeathTurns));
+                Assert.That(match.Authority.Phase, Is.EqualTo(MatchPhase.MatchOver));
+            }
+        }
+
+        [Test]
+        public void AStallWithOneDummyAhead_GoesToIt_WhenSuddenDeathRunsOut()
+        {
+            var simulator = new ScriptedTurnSimulator((turn, state) =>
+            {
+                if (turn == 0) state.Fighters[Side.Right].Hp -= 30f;
+            });
+            using (var match = new BotMatch(_settings, simulator, LeftSeed, RightSeed))
+            {
+                match.Play();
+
+                Assert.That(match.Outcome.Winner, Is.EqualTo(Side.Left));
+                Assert.That(match.Outcome.Reason, Is.EqualTo(MatchEndReason.SuddenDeathMoreHp));
+            }
+        }
+
+        [Test]
+        public void ATiedSuddenDeathTurnEveryTime_StillEnds()
+        {
+            // Both dummies fall in every sudden-death turn: each tie is replayed at 1 HP, and the replays count toward the cap.
+            var simulator = new ScriptedTurnSimulator((turn, state) =>
+            {
+                if (!state.IsSuddenDeath) return;
+                state.Fighters[Side.Left].Hp = 0f;
+                state.Fighters[Side.Right].Hp = 0f;
+            });
+            using (var match = new BotMatch(_settings, simulator, LeftSeed, RightSeed))
+            {
+                match.Play();
+
+                Assert.That(match.Outcome, Is.Not.Null);
+                Assert.That(match.Outcome.TurnCount, Is.EqualTo(_settings.Match.TurnCap + 1 + _settings.SuddenDeath.MaxRepeatsWithoutHit));
+            }
+        }
+
         // --- The bots behave -------------------------------------------------------------------
 
         [Test]

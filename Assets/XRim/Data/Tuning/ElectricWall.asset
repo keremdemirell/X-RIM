@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: XRim.Config::XRim.Config.ElectricWallConfig
   _settings:
     Damage: 10
-    BounceImpulse: 5
+    BounceDistanceUnits: 80
     AdvanceDistanceUnits: 50
     SpawnOffsetBehindUnits: 60
     DamageGrowthPerConsecutiveRetreat: 0
     DamageWhenKnockedInto: 0
-    ActiveInSuddenDeath: 1
+    ActiveInSuddenDeath: 0

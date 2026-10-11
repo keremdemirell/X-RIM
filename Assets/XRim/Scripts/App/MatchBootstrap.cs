@@ -42,8 +42,9 @@ namespace XRim.App
     /// by the flow), so the replay never eats planning time.
     /// Modes: the Match scene shows the mode picker (hot-seat through <see cref="HotSeatCoordinator"/> and its cover screen, vs the
     /// random bot, bot vs bot to watch; D25 dev opponents); the sandbox's debug tools plan both sides and hand their sources to
-    /// <see cref="StartMatch"/>. Sudden death plays as the rules have it now (1 HP, first hit wins) under a banner; the one case they
-    /// cannot finish yet stops the match on a placeholder screen (<see cref="SuddenDeathTiePlaceholder"/>, Session 12).
+    /// <see cref="StartMatch"/>. Sudden death plays as the rules have it (GDD §14, Session 12): 1 HP, the first clean hit wins, a tie or a
+    /// turn without a hit is played again a capped number of times, then the fallback decides; the electric walls are drawn on the board
+    /// (<see cref="ElectricWallView"/>).
     /// </summary>
     public sealed class MatchBootstrap : MonoBehaviour
     {
@@ -104,6 +105,7 @@ namespace XRim.App
         private TurnPlayback _playback;
         private FeelDirector _feel;
         private MatchVfx _vfx;
+        private ElectricWallView _wallView;
         private InputConfig _input;
         private ScriptableObject _ownedInput;
         private ScriptableObject _ownedFeel;
@@ -125,6 +127,7 @@ namespace XRim.App
         // Match, built per match.
         private RecordingTurnSimulator _simulator;
         private ScriptedSeverContactHandler _severCheat;
+        private ScriptedKnockOutContactHandler _knockOutCheat;
         private LocalTurnAuthority _authority;
         private ClientMatchFlow _flow;
         private PlanSourceBinder _binder;
@@ -136,7 +139,6 @@ namespace XRim.App
         private HotSeatCoordinator _hotSeat;
         private HotSeatStage _shownHotSeatStage;
         private Side _shownHotSeatSide;
-        private bool _stoppedByPlaceholder;
         private bool _started;
         private bool _viewFlipped;
         private double _matchStartedRealSeconds;
@@ -169,6 +171,10 @@ namespace XRim.App
         /// <summary>The severs the force-sever cheat queued for the next turn (debug); empty between matches.</summary>
         public IReadOnlyList<SeveredLimbRef> QueuedSevers =>
             _severCheat != null ? _severCheat.Queued : (IReadOnlyList<SeveredLimbRef>)Array.Empty<SeveredLimbRef>();
+
+        /// <summary>The dummies the force-double-KO cheat knocks out at the next turn's start (debug); empty between matches.</summary>
+        public IReadOnlyList<Side> QueuedKnockOuts =>
+            _knockOutCheat != null ? _knockOutCheat.Queued : (IReadOnlyList<Side>)Array.Empty<Side>();
         public TurnPlayback Playback => _playback;
         public MatchSetup Setup => _setup;
 
@@ -252,7 +258,7 @@ namespace XRim.App
             if (!_composed) return;
 
             float delta = Time.unscaledDeltaTime;
-            if (_started && !_stoppedByPlaceholder)
+            if (_started)
             {
                 if (_hotSeat != null) _hotSeat.Advance(delta); // hot-seat runs the planning timer per player
                 else if (!IsPlanningTimerFrozen) _clock.Advance(delta);
@@ -273,7 +279,10 @@ namespace XRim.App
             {
                 _playback.Finished -= OnPlaybackFinished;
                 _playback.RemoveReactor(_feel);
+                if (_wallView != null) _playback.PoseShown -= _wallView.Show;
             }
+
+            if (_wallView != null) Destroy(_wallView.gameObject);
 
             if (_screens != null)
             {
@@ -351,9 +360,11 @@ namespace XRim.App
             BuildViews(SimulationSettings.Segmentation);
 
             _setup = CreateSetup(RulesSettings);
-            // The contact handler is the game's (hits, clashes, blocks), wrapped so the force-sever cheat can cut a limb at a turn's start.
+            // The contact handler is the game's (hits, clashes, blocks), wrapped so the debug cheats can knock both dummies out or cut a limb at a
+            // turn's start, through the real paths.
             _severCheat = new ScriptedSeverContactHandler(new HitContactHandler());
-            var simulatorOptions = new TurnSimulatorOptions { Contacts = _severCheat };
+            _knockOutCheat = new ScriptedKnockOutContactHandler(_severCheat);
+            var simulatorOptions = new TurnSimulatorOptions { Contacts = _knockOutCheat };
             _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies, simulatorOptions), _simulationTiming);
             if (mode == MatchMode.Sandbox)
             {
@@ -404,7 +415,6 @@ namespace XRim.App
         private void TearDownMatch()
         {
             _playbackReportPending = false;
-            _stoppedByPlaceholder = false;
             _shownHotSeatStage = HotSeatStage.Idle;
             if (_authority == null) return;
 
@@ -425,6 +435,7 @@ namespace XRim.App
             _authority = null;
             _simulator = null;
             _severCheat = null;
+            _knockOutCheat = null;
             _started = false;
         }
 
@@ -433,6 +444,25 @@ namespace XRim.App
         /// hit (it falls, a held weapon drops, the events and debris play). Does nothing between matches.
         /// </summary>
         public void QueueSever(Side side, BodyPart part) => _severCheat?.QueueSever(side, part);
+
+        /// <summary>
+        /// Debug (the Cheats tab's force double KO, Session 12): both dummies die at the very start of the next turn through the real death
+        /// path, so a normal turn goes to sudden death (§3) and a sudden-death turn is a tie (§14). Does nothing between matches.
+        /// </summary>
+        public void QueueDoubleKnockOut() => _knockOutCheat?.QueueDoubleKnockOut();
+
+        /// <summary>
+        /// Debug (the Cheats tab's turn counter, Session 12): the next turn played is this one (0-based), so the turn cap can be reached at
+        /// once. Works between turns and while planning; returns false when it cannot (no match, or the match is over).
+        /// </summary>
+        public bool SetTurnCounter(int turnIndex)
+        {
+            if (_authority == null || turnIndex < 0) return false;
+            MatchPhase phase = _authority.Phase;
+            if (phase != MatchPhase.TurnStart && phase != MatchPhase.SuddenDeathSetup && phase != MatchPhase.Planning) return false;
+            _authority.SetTurnIndexForDebug(turnIndex);
+            return true;
+        }
 
         // ----- debug -----
 
@@ -512,6 +542,8 @@ namespace XRim.App
             ShowArena();
             BuildViews(SimulationSettings.Segmentation);
             _playback = new TurnPlayback(_views, Space);
+            _wallView = ElectricWallView.Create(_arenaRoot, _square, Space);
+            _playback.PoseShown += _wallView.Show;
             FeelConfig feel = _tuning.Feel != null ? _tuning.Feel : OwnedDefault<FeelConfig>(ref _ownedFeel, "Feel");
             _feel = new FeelDirector(feel);
             _playback.Pacer = _feel;
@@ -831,12 +863,6 @@ namespace XRim.App
         private void ReportPlaybackFinished()
         {
             if (_flow == null) return;
-            if (_flow.Phase == ClientPhase.Playback && SuddenDeathTiePlaceholder.StopsTheMatch(_flow.CurrentResult))
-            {
-                StopForSuddenDeathTie(_flow.CurrentResult);
-                return;
-            }
-
             _flow.OnPlaybackFinished(); // also tells the authority, which then starts the next planning timer
 
             // A replay or re-simulation watched during planning: show the board being planned from again.
@@ -851,18 +877,6 @@ namespace XRim.App
             string summary = MatchOverText.Summary(outcome.TurnCount, MatchRealSeconds);
             Debug.Log($"[XRim] Match over ({_mode}): {title} {reason}. {summary}.", this);
             if (_screens != null) _screens.ShowMatchOver(title, reason, summary);
-        }
-
-        /// <summary>
-        /// Placeholder until Session 12 (§14 TBD): both fell at the same instant in sudden death, which the rules would repeat forever
-        /// at 0 HP. The match stops here and says so; Rematch and Change mode work as after any match.
-        /// </summary>
-        private void StopForSuddenDeathTie(TurnResult turn)
-        {
-            _stoppedByPlaceholder = true;
-            string summary = MatchOverText.Summary(turn.TurnIndex + 1, MatchRealSeconds);
-            Debug.LogWarning($"[XRim] {MatchOverText.SuddenDeathTieTitle} ({_mode}): {MatchOverText.SuddenDeathTieReason} {summary}.", this);
-            if (_screens != null) _screens.ShowMatchOver(MatchOverText.SuddenDeathTieTitle, MatchOverText.SuddenDeathTieReason, summary);
         }
 
         private void OnModePicked(int index)

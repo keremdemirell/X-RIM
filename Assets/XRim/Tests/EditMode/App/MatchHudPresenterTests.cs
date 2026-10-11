@@ -173,9 +173,22 @@ namespace XRim.Tests.EditMode.App
 
             Assert.That(_hud.Turn, Is.EqualTo(MatchHudPresenter.SuddenDeathTitle));
             Assert.That(_hud.BannerTitle, Is.EqualTo(MatchHudPresenter.SuddenDeathTitle));
-            Assert.That(_hud.BannerDetail, Does.Contain("Session 12"), "its open parts are placeholders, and the HUD says so");
+            Assert.That(_hud.BannerDetail, Is.EqualTo("1 HP each: the first clean hit wins · try 1 of 4"), "3 repeats at most: 4 tries");
             Assert.That(_hud.Fighters[Side.Left].Hp, Is.EqualTo(1f));
         }
+
+        [Test]
+        public void TheSuddenDeathBanner_CountsTheTries()
+        {
+            PlanningWindow repeated = Window(32, 1f, 1f, suddenDeath: true);
+            repeated.Board.State.SuddenDeathRepeats = 2;
+            _authority.RaisePlanningStarted(repeated);
+
+            _presenter.Tick(null, false);
+
+            Assert.That(_hud.BannerDetail, Is.EqualTo("1 HP each: the first clean hit wins · try 3 of 4"));
+        }
+
 
         [Test]
         public void NothingChanged_SendsNothingAgain()

@@ -1,6 +1,7 @@
 using XRim.Core;
 using XRim.Core.Gdd;
 using XRim.Rules.Settings;
+using XRim.Rules.SuddenDeath;
 
 namespace XRim.Rules.Match
 {
@@ -18,21 +19,33 @@ namespace XRim.Rules.Match
     /// <see cref="MatchStateMachine"/> updates them (through <c>IIdleTurnPolicy</c>) before it calls the evaluator.
     /// The evaluator only reads the state.
     /// <para>
-    /// Sudden death itself is Session 12: the turn cap never fires again inside it, a single KO ends the match with
-    /// <see cref="MatchEndReason.SuddenDeathHit"/>, and every other sudden-death result is one marked seam.
+    /// A sudden-death turn (§14; the turn cap never fires again inside it):
+    /// <list type="number">
+    /// <item>The first decisive moment wins (Decided: the first valid hit wins, the earlier time-to-impact when both hit; P4, designer
+    /// 2026-10-11): a side wins at its first valid hit, even one too weak to bring HP to 0, or when the other side dies without being hit
+    /// (its own electric wall). Times are compared in microseconds; only exactly the same instant goes to <see cref="ITiePolicy"/>.</item>
+    /// <item>Idle players still forfeit (§3, Decided).</item>
+    /// <item>No winner (nobody hit, a tie replayed, both idle): <see cref="ISuddenDeathNoHitPolicy"/> plays the turn again or, once its
+    /// repeats run out, names the winner (P6), so sudden death always ends.</item>
+    /// </list>
     /// </para>
     /// </summary>
     [GddTbd("§3", "Order of end conditions when they happen in the same turn (not covered by the GDD)",
         Proposal = "Double KO, then single KO, then forfeit, then turn cap")]
     public sealed class EndConditionEvaluator
     {
-        public EndCheckResult Evaluate(ExecutionReport report, RulesSettings settings)
+        /// <summary>A death the report has no time for (a source that does not record deaths) counts as the turn's last instant.</summary>
+        private static readonly SimTime UntimedDeath = new SimTime(long.MaxValue);
+
+        /// <param name="matchSeed">The match's seed (<see cref="MatchSetup.RandomSeed"/>), for a policy's random choice.</param>
+        public EndCheckResult Evaluate(ExecutionReport report, RulesSettings settings, RulePolicies policies, uint matchSeed)
         {
             Guard.NotNull(report, nameof(report));
             Guard.NotNull(settings, nameof(settings));
+            Guard.NotNull(policies, nameof(policies));
 
             MatchState state = report.ResolvedState;
-            return state.IsSuddenDeath ? EvaluateSuddenDeathTurn(state, settings) : EvaluateNormalTurn(state, settings);
+            return state.IsSuddenDeath ? EvaluateSuddenDeathTurn(report, settings, policies, matchSeed) : EvaluateNormalTurn(state, settings);
         }
 
         private static EndCheckResult EvaluateNormalTurn(MatchState state, RulesSettings settings)
@@ -50,28 +63,58 @@ namespace XRim.Rules.Match
             return Resolution(TurnResolution.NextTurn);
         }
 
-        private static EndCheckResult EvaluateSuddenDeathTurn(MatchState state, RulesSettings settings)
+        private static EndCheckResult EvaluateSuddenDeathTurn(ExecutionReport report, RulesSettings settings, RulePolicies policies, uint matchSeed)
         {
-            bool leftDead = state.Fighters[Side.Left].IsDead;
-            bool rightDead = state.Fighters[Side.Right].IsDead;
+            MatchState state = report.ResolvedState;
+            SimTime? leftWins = WinningMoment(report, Side.Left);
+            SimTime? rightWins = WinningMoment(report, Side.Right);
+            if (leftWins.HasValue || rightWins.HasValue)
+            {
+                if (!rightWins.HasValue || (leftWins.HasValue && leftWins.Value < rightWins.Value))
+                    return MatchOver(state, Side.Left, SuddenDeathReason(report, Side.Left, leftWins.Value));
+                if (!leftWins.HasValue || rightWins.Value < leftWins.Value)
+                    return MatchOver(state, Side.Right, SuddenDeathReason(report, Side.Right, rightWins.Value));
 
-            // With 1 HP the first valid hit wins (§14, Decided).
-            if (leftDead != rightDead) return MatchOver(state, leftDead ? Side.Right : Side.Left, MatchEndReason.SuddenDeathHit);
+                // Exactly the same instant: the tie policy, whose replay is a turn without a winner like any other (P6).
+                ITiePolicy tie = Guard.NotNull(policies.SuddenDeathTie, nameof(RulePolicies.SuddenDeathTie));
+                switch (tie.Resolve(leftWins.Value, rightWins.Value))
+                {
+                    case SuddenDeathTieOutcome.LeftWins: return MatchOver(state, Side.Left, MatchEndReason.SuddenDeathHit);
+                    case SuddenDeathTieOutcome.RightWins: return MatchOver(state, Side.Right, MatchEndReason.SuddenDeathHit);
+                }
+            }
+            else if (TryForfeit(state, settings, TurnResolution.RepeatSuddenDeathTurn, out EndCheckResult forfeit) &&
+                     forfeit.Resolution == TurnResolution.MatchOver)
+            {
+                return forfeit;
+            }
 
-            // SESSION 12 SEAM (§14, TBD): both dummies hit (the earlier time-to-impact wins, an exact same-step tie goes
-            // to ITiePolicy) or nobody hits (ISuddenDeathNoHitPolicy, which may cap the repeats). Until then the
-            // sudden-death turn simply repeats.
-            if (leftDead) return Resolution(TurnResolution.RepeatSuddenDeathTurn);
-
-            // Idle players still forfeit in sudden death (§3, Decided). Two forfeits at once repeat the turn.
-            if (TryForfeit(state, settings, TurnResolution.RepeatSuddenDeathTurn, out EndCheckResult forfeit)) return forfeit;
-
-            return Resolution(TurnResolution.RepeatSuddenDeathTurn);
+            // No winner this turn: nobody hit, a tie replayed, or both idled out.
+            ISuddenDeathNoHitPolicy noHit = Guard.NotNull(policies.SuddenDeathNoHit, nameof(RulePolicies.SuddenDeathNoHit));
+            SuddenDeathNoHitDecision decision = noHit.Decide(state, settings.SuddenDeath, matchSeed);
+            return decision.RepeatsTurn ? Resolution(TurnResolution.RepeatSuddenDeathTurn) : MatchOver(state, decision.Winner, decision.Reason);
         }
 
+        /// <summary>
+        /// The moment a side won this sudden-death turn, if it did: its first valid hit, or the other side's death without a hit, whichever
+        /// came first (a death the report did not time counts as the turn's end).
+        /// </summary>
+        private static SimTime? WinningMoment(ExecutionReport report, Side side)
+        {
+            SimTime? hit = report.FirstValidHitTime[side];
+            SimTime? opponentDied = report.DeathTime[side.Opponent()];
+            if (!opponentDied.HasValue && report.ResolvedState.Fighters[side.Opponent()].IsDead) opponentDied = UntimedDeath;
+            if (!hit.HasValue) return opponentDied;
+            if (!opponentDied.HasValue) return hit;
+            return hit.Value <= opponentDied.Value ? hit : opponentDied;
+        }
+
+        /// <summary>Won by a hit, or by the other dummy dying without one (a knockout, such as its own wall).</summary>
+        private static MatchEndReason SuddenDeathReason(ExecutionReport report, Side winner, SimTime moment) =>
+            report.FirstValidHitTime[winner] == moment ? MatchEndReason.SuddenDeathHit : MatchEndReason.KnockOut;
+
         /// <param name="whenNoWinner">What a forfeit by both sides with no winner resolves to in this kind of turn.</param>
-        private static bool TryForfeit(MatchState state, RulesSettings settings, TurnResolution whenNoWinner,
-            out EndCheckResult result)
+        private static bool TryForfeit(MatchState state, RulesSettings settings, TurnResolution whenNoWinner, out EndCheckResult result)
         {
             bool leftForfeits = HasForfeited(state, Side.Left);
             bool rightForfeits = HasForfeited(state, Side.Right);
