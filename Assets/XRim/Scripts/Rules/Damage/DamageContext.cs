@@ -26,11 +26,18 @@ namespace XRim.Rules.Damage
         /// <summary>The share of its damage the weapon still deals after shields partially blocked it this turn (GDD §7; A5).</summary>
         public float ShieldBlockDamageMultiplier { get; }
 
+        /// <summary>
+        /// The HP damage the attacker had taken in the match before this instant (GDD §15 build-up). Read before the hits of the instant
+        /// were applied, so two hits at the same instant do not depend on the order they are taken in.
+        /// </summary>
+        public float AttackerHpDamageTaken { get; }
+
         public HitZone Zone => Hit.Part.ToHitZone();
         public float ZoneMultiplier => Settings.HitZones.MultiplierFor(Zone);
 
         public DamageContext(HitFacts hit, WeaponStats weapon, RulesSettings settings, BodyMoveStats attackerBodyMove = null,
-            bool crushedThrough = false, float followThroughSpeedFraction = 1f, float shieldBlockDamageMultiplier = 1f)
+            bool crushedThrough = false, float followThroughSpeedFraction = 1f, float shieldBlockDamageMultiplier = 1f,
+            float attackerHpDamageTaken = 0f)
         {
             Hit = hit;
             Weapon = Guard.NotNull(weapon, nameof(weapon));
@@ -39,6 +46,7 @@ namespace XRim.Rules.Damage
             CrushedThrough = crushedThrough;
             FollowThroughSpeedFraction = followThroughSpeedFraction;
             ShieldBlockDamageMultiplier = shieldBlockDamageMultiplier;
+            AttackerHpDamageTaken = attackerHpDamageTaken;
         }
     }
 }

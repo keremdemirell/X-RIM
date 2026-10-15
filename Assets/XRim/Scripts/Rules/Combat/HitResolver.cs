@@ -43,6 +43,7 @@ namespace XRim.Rules.Combat
         private readonly RulesSettings _settings;
         private readonly RulePolicies _policies;
         private readonly DamageCalculator _calculator;
+        private readonly List<IDamageModifier> _modifiers;
         private readonly SeverRules _severRules = new SeverRules();
         private readonly PerSide<SimTime?> _firstHitTime = new PerSide<SimTime?>(null, null);
 
@@ -56,7 +57,12 @@ namespace XRim.Rules.Combat
             Guard.NotNull(policies.Interrupt, nameof(RulePolicies.Interrupt));
             Guard.NotNull(policies.DamageModifiers, nameof(RulePolicies.DamageModifiers));
             Guard.NotNull(policies.StatusEffects, nameof(RulePolicies.StatusEffects));
+            Guard.NotNull(policies.WeaponTraits, nameof(RulePolicies.WeaponTraits));
             _calculator = new DamageCalculator(Guard.NotNull(policies.InstantKo, nameof(RulePolicies.InstantKo)));
+
+            // The weapon traits (§15) are damage modifiers too, applied after the rules' own.
+            _modifiers = new List<IDamageModifier>(policies.DamageModifiers);
+            _modifiers.AddRange(policies.WeaponTraits);
         }
 
         public PerSide<TurnAttack> Attacks { get; }
@@ -79,6 +85,8 @@ namespace XRim.Rules.Combat
             }
 
             PerSide<bool> deadBefore = PerSide<bool>.Create(side => _state.Fighters[side].IsDead);
+            PerSide<float> damageTakenBefore = PerSide<float>.Create(side => _state.Fighters[side].HpDamageTaken);
+            var heals = new List<PendingHeal>();
             var cancel = new PerSide<bool>(false, false);
             var died = new PerSide<bool>(false, false);
             var dropped = new PerSide<bool>(false, false);
@@ -90,7 +98,7 @@ namespace XRim.Rules.Combat
             {
                 if (!CanLand(hit, deadBefore, weaponsTravelling)) continue;
 
-                LandedHit result = Land(hit, events);
+                LandedHit result = Land(hit, events, damageTakenBefore, heals);
                 landed.Add(result);
                 Side victim = hit.Victim;
                 if (result.KillsVictim) died[victim] = true;
@@ -103,6 +111,12 @@ namespace XRim.Rules.Combat
                 severed.Add(sever);
                 events.AddRange(sever.Events);
                 if (sever.DropsHeldItem) dropped[victim] = true;
+            }
+
+            // Recoveries land after every hit of the instant, so two dummies trading blows do not depend on the order they were taken in.
+            foreach (PendingHeal heal in heals)
+            {
+                ApplyHeal(heal, time, events);
             }
 
             foreach (Side side in BothSides)
@@ -143,14 +157,14 @@ namespace XRim.Rules.Combat
             return !attack.HasHit(hit.Part) && attack.HitsLanded < damage.MaxHitsPerWeaponPerTurn;
         }
 
-        private LandedHit Land(HitFacts hit, List<MatchEvent> events)
+        private LandedHit Land(HitFacts hit, List<MatchEvent> events, PerSide<float> damageTakenBefore, List<PendingHeal> heals)
         {
             TurnAttack attack = Attacks[hit.Attacker];
             FighterState victim = _state.Fighters[hit.Victim];
             float speedAtHit = attack.SpeedFraction;
             var context = new DamageContext(hit, attack.Weapon, _settings, attack.BodyMove, attack.CrushedThrough, speedAtHit,
-                attack.ShieldBlockDamageMultiplier);
-            DamageResult damage = _calculator.Calculate(context, _policies.DamageModifiers, victim);
+                attack.ShieldBlockDamageMultiplier, damageTakenBefore[hit.Attacker]);
+            DamageResult damage = _calculator.Calculate(context, _modifiers, victim);
 
             DamageCalculator.ApplyTo(victim, hit.Part, damage);
             bool kills = victim.IsDead;
@@ -164,7 +178,54 @@ namespace XRim.Rules.Combat
                 events.Add(new StatusAppliedEvent(hit.Time, hit.Victim, StatusKind.Stunned));
             }
 
+            NotifyTraits(hit, attack, damage, heals);
             return new LandedHit(hit, damage, speedAtHit, attack.SpeedFraction, attack.IsStopped, kills);
+        }
+
+        /// <summary>
+        /// A landed hit, for the traits (§15) its weapon carries: they count it on the attacker and may ask for HP back, which is
+        /// applied after the instant. Marks the turn as one in which the attacker hit (lifesteal's "in a row").
+        /// </summary>
+        private void NotifyTraits(HitFacts hit, TurnAttack attack, DamageResult damage, List<PendingHeal> heals)
+        {
+            FighterState attacker = _state.Fighters[hit.Attacker];
+            attacker.HitLandedThisTurn = true;
+            foreach (IWeaponTrait trait in _policies.WeaponTraits)
+            {
+                if (!WeaponTraitRules.Carries(attack.Weapon, trait.Id)) continue;
+                float recovered = trait.OnHitLanded(new TraitHitContext(hit, attacker, attack.Weapon, damage, _settings.Traits));
+                if (recovered > 0f) heals.Add(new PendingHeal(hit.Attacker, trait.Id, recovered));
+            }
+        }
+
+        /// <summary>
+        /// Gives the HP back, never above the maximum, and not to a dummy that died this instant. In sudden death HP is not what
+        /// decides (§14: the first valid hit wins), so nothing is recovered there and the 1 HP stays.
+        /// </summary>
+        private void ApplyHeal(PendingHeal heal, SimTime time, List<MatchEvent> events)
+        {
+            FighterState fighter = _state.Fighters[heal.Side];
+            if (fighter.IsDead || _state.IsSuddenDeath) return;
+
+            float before = fighter.Hp;
+            float after = Math.Min(_settings.Damage.MaxHp, before + heal.HpRecovered);
+            if (after <= before) return;
+            fighter.Hp = after;
+            events.Add(new WeaponTraitHealEvent(time, heal.Side, heal.TraitId, after - before));
+        }
+
+        private readonly struct PendingHeal
+        {
+            public readonly Side Side;
+            public readonly string TraitId;
+            public readonly float HpRecovered;
+
+            public PendingHeal(Side side, string traitId, float hpRecovered)
+            {
+                Side = side;
+                TraitId = traitId;
+                HpRecovered = hpRecovered;
+            }
         }
 
         /// <summary>The side holds its weapon, shield or club at this instant: it had one this turn and has not dropped it.</summary>

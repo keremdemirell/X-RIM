@@ -127,5 +127,15 @@ namespace XRim.Simulation.Settings
         /// </summary>
         [Placeholder("Session 04: grip drawn in so the blades start apart")]
         public float GuardHandReachFraction = 0f;
+
+        /// <summary>
+        /// The farthest the guard stance rests a weapon's tip from the shoulder, in arena units. A weapon longer than this is held
+        /// with its tip here and its butt behind the hand (a spear couched under the arm), so a long weapon neither dips below the
+        /// floor nor crosses the other blade at the starting gap (designer, 2026-10-15). A weapon up to this length rests exactly
+        /// as it did, and the cap never changes a weapon's reach limit or its drawn path. 400 is the rapier's own guard distance:
+        /// two weapons at the cap start 2 × 400 × cos(guard angle) = 613 apart, inside the 700 starting gap.
+        /// </summary>
+        [Placeholder("Session 14: the rapier's guard tip distance, so two long weapons still start apart at the starting gap")]
+        public float GuardMaxTipDistanceUnits = 400f;
     }
 }

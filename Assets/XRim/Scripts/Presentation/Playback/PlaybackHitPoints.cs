@@ -24,13 +24,16 @@ namespace XRim.Presentation.Playback
             return hp;
         }
 
-        /// <summary>The HP an event took from a side: a hit on it, or its own wall's zap.</summary>
+        /// <summary>
+        /// The HP an event took from a side: a hit on it, or its own wall's zap; negative for HP it gained (a lifesteal recovery, §15).
+        /// </summary>
         public static float HpLost(MatchEvent matchEvent, Side side)
         {
             switch (matchEvent)
             {
                 case HitLandedEvent hit when hit.Hit.Victim == side: return hit.Damage.HpDamage;
                 case ElectricWallEvent zap when zap.Side == side: return zap.HpDamage;
+                case WeaponTraitHealEvent heal when heal.Side == side: return -heal.HpRecovered;
                 default: return 0f;
             }
         }

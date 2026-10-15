@@ -11,7 +11,7 @@ namespace XRim.Presentation.UI
     /// The full-screen moments around a match (UI Toolkit built in code, placeholder look): the mode picker, the hot-seat cover screen
     /// (opaque, so the next player cannot see the arena or the last plan; a tap anywhere hands over) and the match-over screen, which
     /// leaves the final pose visible behind it, and (Session 13) the instant replay's banner over a see-through screen that skips the replay
-    /// when tapped. It draws above every HUD.
+    /// when tapped, and (Session 14) the pre-match loadout picker and the reveal of both loadouts. It draws above every HUD.
     /// </summary>
     public sealed class MatchScreens : MonoBehaviour, IMatchScreensView
     {
@@ -21,12 +21,19 @@ namespace XRim.Presentation.UI
         private const float ActionWidth = 300f;
         private const float ActionHeight = 96f;
         private const float Gap = 18f;
+        private const float CardWidth = 540f;
+        private const float CardHeight = 160f;
+        private const float CardGap = 12f;
+        private const float ConfirmWidth = 560f;
+        private const float ConfirmHeight = 100f;
+        private const float RevealColumnWidth = 620f;
 
         private static readonly Color OpaqueColor = new Color(0.07f, 0.08f, 0.1f, 1f);
         private static readonly Color DimmedColor = new Color(0f, 0f, 0f, 0.6f);
         private static readonly Color RematchColor = new Color(0.2f, 0.7f, 0.3f, 1f);
         private static readonly Color ReplayBannerColor = new Color(0f, 0f, 0f, 0.45f);
         private static readonly Color ReplayTitleColor = new Color(1f, 0.25f, 0.2f, 1f);
+        private static readonly Color PickedCardColor = new Color(0.1f, 0.38f, 0.17f, 0.95f);
 
         [SerializeField] private UIDocument _document;
 
@@ -49,12 +56,28 @@ namespace XRim.Presentation.UI
         private Label _replayTitle;
         private Label _replayCaption;
         private Label _replayHint;
+        private VisualElement _loadout;
+        private Label _loadoutTitle;
+        private Label _loadoutNote;
+        private VisualElement _loadoutCards;
+        private readonly List<LoadoutCard> _cards = new List<LoadoutCard>();
+        private Button _loadoutConfirm;
+        private VisualElement _reveal;
+        private Label _revealTitle;
+        private Label _revealLeftName;
+        private VisualElement _revealLeftWeapons;
+        private Label _revealRightName;
+        private VisualElement _revealRightWeapons;
+        private Button _revealAction;
 
         public event Action<int> ModePicked;
         public event Action CoverConfirmed;
         public event Action RematchPressed;
         public event Action ChangeModePressed;
         public event Action ReplaySkipPressed;
+        public event Action<int> LoadoutChoiceTapped;
+        public event Action LoadoutConfirmed;
+        public event Action LoadoutRevealConfirmed;
 
         /// <summary>Makes the screens on a new GameObject of their own (see <see cref="PlanningHud.Create"/>); all hidden.</summary>
         public static MatchScreens Create(Vector2Int referenceResolution, PanelSettings panelSettingsTemplate = null)
@@ -146,6 +169,43 @@ namespace XRim.Presentation.UI
             Show(_replay);
         }
 
+        public void ShowLoadoutPicker(string title, string note, IReadOnlyList<LoadoutChoice> choices, string confirmText, bool canConfirm)
+        {
+            if (_loadout == null) return;
+
+            SetText(_loadoutTitle, title);
+            SetText(_loadoutNote, note);
+            if (_cards.Count != choices.Count) RebuildCards(choices.Count);
+            for (int i = 0; i < choices.Count; i++)
+            {
+                LoadoutCard card = _cards[i];
+                bool picked = choices[i].PickedOrder > 0;
+                SetText(card.Title, picked ? choices[i].PickedOrder + ".  " + choices[i].Title : choices[i].Title);
+                SetText(card.Detail, choices[i].Detail);
+                card.Button.style.backgroundColor = picked ? PickedCardColor : ButtonColor;
+                SetBorderColor(card.Button, picked ? HighlightColor : EdgeColor);
+            }
+
+            _loadoutConfirm.text = confirmText;
+            _loadoutConfirm.SetEnabled(canConfirm);
+            _loadoutConfirm.style.backgroundColor = canConfirm ? RematchColor : ButtonColor;
+            Show(_loadout);
+        }
+
+        public void ShowLoadoutReveal(string title, string leftName, IReadOnlyList<string> leftWeapons, string rightName,
+            IReadOnlyList<string> rightWeapons, string action)
+        {
+            if (_reveal == null) return;
+
+            SetText(_revealTitle, title);
+            SetText(_revealLeftName, leftName);
+            SetText(_revealRightName, rightName);
+            FillWeaponList(_revealLeftWeapons, leftWeapons);
+            FillWeaponList(_revealRightWeapons, rightWeapons);
+            _revealAction.text = action;
+            Show(_reveal);
+        }
+
         public void Hide() => Show(null);
 
         // ----- building -----
@@ -158,6 +218,8 @@ namespace XRim.Presentation.UI
             BuildCover();
             BuildMatchOver();
             BuildReplay();
+            BuildLoadout();
+            BuildReveal();
             Hide();
             if (_safeArea.Changed(out ScreenInsets insets)) PadScreens(insets);
         }
@@ -165,7 +227,7 @@ namespace XRim.Presentation.UI
         /// <summary>Each screen's background still reaches every edge (the cover must hide everything); its content stays inside the safe area.</summary>
         private void PadScreens(ScreenInsets insets)
         {
-            foreach (VisualElement screen in new VisualElement[] { _picker, _cover, _matchOver, _replay })
+            foreach (VisualElement screen in new VisualElement[] { _picker, _cover, _matchOver, _replay, _loadout, _reveal })
             {
                 if (screen != null) PadBy(screen, insets);
             }
@@ -252,6 +314,122 @@ namespace XRim.Presentation.UI
             _replayHint = Text(banner, string.Empty, 20, DimTextColor);
         }
 
+        /// <summary>The loadout picker: a title, a note, the weapon cards in rows, and the lock-in button.</summary>
+        private void BuildLoadout()
+        {
+            _loadout = FullScreen(Plain(_root), OpaqueColor);
+            _loadoutTitle = Text(_loadout, string.Empty, 64, HighlightColor);
+            _loadoutTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _loadoutNote = Text(_loadout, string.Empty, 22, DimTextColor);
+            _loadoutNote.style.marginTop = Gap * 0.5f;
+            _loadoutNote.style.marginBottom = Gap;
+
+            _loadoutCards = Plain(_loadout);
+            _loadoutCards.style.flexDirection = FlexDirection.Row;
+            _loadoutCards.style.flexWrap = Wrap.Wrap;
+            _loadoutCards.style.justifyContent = Justify.Center;
+            _loadoutCards.style.width = CardWidth * 3f + CardGap * 6f;
+
+            _loadoutConfirm = new Button(() => LoadoutConfirmed?.Invoke()) { text = string.Empty };
+            StyleButton(_loadoutConfirm, ConfirmWidth, ConfirmHeight, 36);
+            _loadoutConfirm.style.marginTop = Gap * 2f;
+            _loadout.Add(_loadoutConfirm);
+        }
+
+        /// <summary>The reveal: both loadouts side by side with a tap to start.</summary>
+        private void BuildReveal()
+        {
+            _reveal = FullScreen(Plain(_root), OpaqueColor);
+            _revealTitle = Text(_reveal, string.Empty, 72, HighlightColor);
+            _revealTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            VisualElement row = Plain(_reveal);
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.marginTop = Gap * 2f;
+            row.style.alignItems = Align.FlexStart;
+            BuildRevealColumn(row, out _revealLeftName, out _revealLeftWeapons);
+            Label versus = Text(row, "VS", 56, DimTextColor);
+            versus.style.marginLeft = Gap * 2f;
+            versus.style.marginRight = Gap * 2f;
+            versus.style.marginTop = Gap;
+            BuildRevealColumn(row, out _revealRightName, out _revealRightWeapons);
+
+            _revealAction = new Button(() => LoadoutRevealConfirmed?.Invoke()) { text = string.Empty };
+            StyleButton(_revealAction, ConfirmWidth, ConfirmHeight, 36);
+            _revealAction.style.backgroundColor = RematchColor;
+            _revealAction.style.marginTop = Gap * 3f;
+            _reveal.Add(_revealAction);
+        }
+
+        private static void BuildRevealColumn(VisualElement row, out Label name, out VisualElement weapons)
+        {
+            VisualElement column = Plain(row);
+            column.style.width = RevealColumnWidth;
+            column.style.alignItems = Align.Center;
+            name = Text(column, string.Empty, 48, TextColor);
+            name.style.unityFontStyleAndWeight = FontStyle.Bold;
+            weapons = Plain(column);
+            weapons.style.alignItems = Align.Center;
+            weapons.style.marginTop = Gap;
+        }
+
+        private static void FillWeaponList(VisualElement container, IReadOnlyList<string> weapons)
+        {
+            container.Clear();
+            foreach (string weapon in weapons)
+            {
+                Label label = Text(container, weapon, 40, TextColor);
+                label.style.marginTop = Gap * 0.5f;
+            }
+        }
+
+        private void RebuildCards(int count)
+        {
+            _loadoutCards.Clear();
+            _cards.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                int index = i;
+                var button = new Button(() => LoadoutChoiceTapped?.Invoke(index)) { text = string.Empty };
+                StyleButton(button, CardWidth, CardHeight, 30);
+                button.style.marginLeft = CardGap;
+                button.style.marginRight = CardGap;
+                button.style.marginTop = CardGap;
+                button.style.marginBottom = CardGap;
+                button.style.flexDirection = FlexDirection.Column;
+                button.style.justifyContent = Justify.Center;
+                button.style.alignItems = Align.Center;
+                Label title = Text(button, string.Empty, 36, TextColor);
+                title.style.unityFontStyleAndWeight = FontStyle.Bold;
+                Label detail = Text(button, string.Empty, 20, DimTextColor);
+                detail.style.unityTextAlign = TextAnchor.MiddleCenter;
+                _loadoutCards.Add(button);
+                _cards.Add(new LoadoutCard(button, title, detail));
+            }
+        }
+
+        private static void SetBorderColor(Button button, Color color)
+        {
+            button.style.borderTopColor = color;
+            button.style.borderBottomColor = color;
+            button.style.borderLeftColor = color;
+            button.style.borderRightColor = color;
+        }
+
+        private readonly struct LoadoutCard
+        {
+            public readonly Button Button;
+            public readonly Label Title;
+            public readonly Label Detail;
+
+            public LoadoutCard(Button button, Label title, Label detail)
+            {
+                Button = button;
+                Title = title;
+                Detail = detail;
+            }
+        }
+
         private static Button AddAction(VisualElement parent, string text, Action pressed)
         {
             var button = new Button(pressed) { text = text };
@@ -280,7 +458,7 @@ namespace XRim.Presentation.UI
 
         private void Show(VisualElement screen)
         {
-            foreach (VisualElement candidate in new[] { _picker, _cover, _matchOver, _replay })
+            foreach (VisualElement candidate in new[] { _picker, _cover, _matchOver, _replay, _loadout, _reveal })
             {
                 if (candidate != null) candidate.style.display = candidate == screen ? DisplayStyle.Flex : DisplayStyle.None;
             }

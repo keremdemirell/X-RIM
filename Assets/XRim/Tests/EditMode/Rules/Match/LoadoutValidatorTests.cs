@@ -59,6 +59,31 @@ namespace XRim.Tests.EditMode.Rules.Match
             Assert.That(Check(WeaponIds.Rapier, WeaponIds.Rapier, WeaponIds.Mace), Has.Some.Contains("twice"));
         }
 
+        [TestCase("severed_limb")]
+        [TestCase("body_blow")]
+        public void AStopgapItem_CannotBePicked(string id)
+        {
+            Assert.That(Check(WeaponIds.Rapier, WeaponIds.Mace, new WeaponId(id)), Has.Some.Contains("cannot be picked"));
+        }
+
+        [Test]
+        public void AWeaponThePlayerDoesNotOwn_IsReported()
+        {
+            var issues = new List<string>();
+            var owned = new OwnedWeapons(WeaponIds.Rapier, WeaponIds.Mace, WeaponIds.Shield);
+
+            LoadoutValidator.Validate(new[] { WeaponIds.Rapier, WeaponIds.Mace, WeaponIds.Spear }, _settings, owned, issues);
+
+            Assert.That(issues, Has.Count.EqualTo(1));
+            Assert.That(issues, Has.Some.Contains("spear").And.Contains("does not own"));
+        }
+
+        [Test]
+        public void EveryWeapon_CountsAsOwned_WhenNoOwnershipIsGiven()
+        {
+            Assert.That(Check(WeaponIds.Sword, WeaponIds.Spear, WeaponIds.Shield), Is.Empty);
+        }
+
         [Test]
         public void TheShieldSlot_IsOnlyRequiredWhenTheFlagSaysSo()
         {

@@ -133,6 +133,77 @@ namespace XRim.Tests.EditMode.Simulation.Physics
         }
 
         [Test]
+        public void GuardBlades_OfEveryRosterWeapon_StartApartAndAboveTheFloor()
+        {
+            // Session 14: the sword and the spear are playable, so every pair of the five weapons must start apart and off the floor
+            // (the spear at the plain -40° guard crossed its twin and sat below the floor).
+            WeaponId[] roster = { WeaponIds.Rapier, WeaponIds.Sword, WeaponIds.Mace, WeaponIds.Spear, WeaponIds.Shield };
+
+            foreach (WeaponId left in roster)
+            {
+                foreach (WeaponId right in roster)
+                {
+                    PoseSnapshot board = StartingBoard.Create(State(left, right), _rules, _simulation, _aim);
+                    Vec2[] leftBox = Corners(board.Left, left);
+                    Vec2[] rightBox = Corners(board.Right, right);
+                    Assert.That(leftBox.Max(corner => corner.X), Is.LessThan(rightBox.Min(corner => corner.X)),
+                        $"{left.Value} and {right.Value} start apart");
+                    Assert.That(leftBox.Min(corner => corner.Y), Is.GreaterThan(0f), $"{left.Value} (left) above the floor");
+                    Assert.That(rightBox.Min(corner => corner.Y), Is.GreaterThan(0f), $"{right.Value} (right) above the floor");
+                }
+            }
+        }
+
+        [Test]
+        public void TheSpearsTip_RestsAboveTheFloor_AtTheGuard()
+        {
+            // Known issue until Session 14: at -40° a 500-long spear's tip sat 41 units below the floor.
+            WeaponStats spear = _rules.FindWeapon(WeaponIds.Spear);
+
+            Vec2 tip = GuardStance.TipLocal(spear, _simulation.Ragdoll, _rules.Paths);
+
+            Assert.That(tip.Y, Is.GreaterThan(-_simulation.Ragdoll.LegLengthUnits), "the floor is a leg length below the pelvis");
+        }
+
+        [Test]
+        public void ALongWeapon_RestsWithItsTipAtTheCap_AndItsButtBehindTheShoulder()
+        {
+            WeaponStats spear = _rules.FindWeapon(WeaponIds.Spear);
+            RagdollSettings body = _simulation.Ragdoll;
+            Assert.That(spear.LengthUnits, Is.GreaterThan(body.GuardMaxTipDistanceUnits), "the spear is the long weapon");
+            Vec2 shoulder = _rules.Paths.ShoulderOffsetUnits;
+
+            Vec2 tipLocal = GuardStance.TipLocal(spear, body, _rules.Paths);
+
+            Assert.That(Vec2.Distance(tipLocal, shoulder), Is.EqualTo(body.GuardMaxTipDistanceUnits).Within(Tolerance));
+
+            var torso = new BodyPose(Vec2.Zero, 0f);
+            FighterPose pose = GuardStance.Create(torso, Side.Left, BodyPart.RightArm, spear, RagdollSegmentation.TenBodies, body,
+                _rules.Paths, _aim);
+            Vec2 tip = HeldItemShape.Of(spear).PathPointAt(pose.HeldItem);
+            Assert.That(Vec2.Distance(tip, TorsoFrame.ToArena(tipLocal, torso, Side.Left)), Is.LessThan(Tolerance), "the pose rests on the guard tip");
+            Assert.That(pose.HeldItem.PositionUnits.X, Is.LessThan(TorsoFrame.ToArena(shoulder, torso, Side.Left).X),
+                "the butt sticks out behind the shoulder");
+            Assert.That(spear.ReachBeyondHandUnits, Is.EqualTo(spear.LengthUnits), "the cap never shortens the reach limit");
+        }
+
+        [TestCase("rapier")]
+        [TestCase("sword")]
+        [TestCase("mace")]
+        [TestCase("shield")]
+        public void AnItemWithinTheCap_RestsExactlyAsBeforeTheCap(string id)
+        {
+            WeaponStats item = _rules.FindWeapon(new WeaponId(id));
+            RagdollSettings body = _simulation.Ragdoll;
+            Vec2 asBefore = _rules.Paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(body.GuardAngleDegrees) *
+                (_rules.Paths.ArmLengthUnits * body.GuardHandReachFraction + item.LengthUnits);
+
+            Vec2 tip = GuardStance.TipLocal(item, body, _rules.Paths);
+
+            Assert.That(Vec2.Distance(tip, asBefore), Is.LessThan(Tolerance));
+        }
+
+        [Test]
         public void StartingDummies_StandInsideTheArenaEdges()
         {
             ArenaEdges edges = new RulePolicies().ArenaEdge.EdgesFor(_rules.Arena);

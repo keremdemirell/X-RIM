@@ -22,6 +22,7 @@ MonoBehaviour:
   _loadout: {fileID: 11400000, guid: c66dbf317df57e046beb3286f0f54cd6, type: 2}
   _signature: {fileID: 11400000, guid: 36a60d50739000d4fa642158a6dcb6cf, type: 2}
   _suddenDeath: {fileID: 11400000, guid: 1fd292fc9b02da648b4013bfb4673d6e, type: 2}
+  _traits: {fileID: 11400000, guid: 9290e63ff9dffd048b0adb5234230d7d, type: 2}
   _weapons:
   - {fileID: 11400000, guid: 6ce2099ecb494ae4a98930d5844848c3, type: 2}
   - {fileID: 11400000, guid: 15c84c5cb54139040b426a1c1bf5292c, type: 2}

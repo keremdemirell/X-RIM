@@ -16,7 +16,7 @@ namespace XRim.Rules
     /// implementation is how an option gets prototyped. The path policies (start, reach, strokes) hold designer
     /// decisions (D3–D5, 2026-09-29) and stay here so each rule lives in one swappable place. A property is null
     /// until the session that implements it. Status effects are created per event, by <see cref="StatusEffects"/>; weapon
-    /// traits get their factory in Session 14.
+    /// traits are in <see cref="WeaponTraits"/>.
     /// </summary>
     public sealed class RulePolicies
     {
@@ -45,7 +45,8 @@ namespace XRim.Rules
         /// <summary>
         /// The "Modifiers" of Damage = BaseDamage × ZoneMultiplier × Modifiers (§11), applied in this order: off hand (§12),
         /// crush-through (§10), shield reduction (§7, A5), the body move's damage bonus (D13, 0 by default) and the
-        /// follow-through of a weapon that already hit this turn (D26). Session 14 adds the weapon traits.
+        /// follow-through of a weapon that already hit this turn (D26). The weapon traits (<see cref="WeaponTraits"/>, §15) come after
+        /// these.
         /// </summary>
         public List<IDamageModifier> DamageModifiers { get; set; } = new List<IDamageModifier>
         {
@@ -91,6 +92,13 @@ namespace XRim.Rules
 
         /// <summary>§14 (TBD; designer 2026-10-11, the recommended default): decisive moments at exactly the same instant replay the turn.</summary>
         public ITiePolicy SuddenDeathTie { get; set; } = new ReplayTiePolicy();
+
+        /// <summary>
+        /// §15 (TBD; designer 2026-10-15, seams only): the traits a weapon can carry, lifesteal and build-up. Each does nothing until its
+        /// flag in <c>TraitSettings</c> is on and a weapon lists its id; they act as damage modifiers (after
+        /// <see cref="DamageModifiers"/>) and see every landed hit.
+        /// </summary>
+        public IReadOnlyList<IWeaponTrait> WeaponTraits { get; set; } = new IWeaponTrait[] { new LifestealTrait(), new BuildUpTrait() };
 
         public ISignatureChargeModel SignatureCharge { get; set; }
     }

@@ -56,6 +56,20 @@ namespace XRim.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void ALifestealRecovery_RaisesItsOwnersBar_AtItsInstant()
+        {
+            TurnResult turn = PlayedTurn.Create(_settings, 0, PlayedTurn.Hit(Side.Left, 0.2, 30f),
+                new WeaponTraitHealEvent(SimTime.FromSeconds(0.5), Side.Left, "lifesteal", 7.2f));
+            float max = _settings.Damage.MaxHp;
+
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.0), Side.Left), Is.EqualTo(max).Within(1e-4f));
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.4), Side.Left), Is.EqualTo(max - 30f).Within(1e-4f));
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.5), Side.Left), Is.EqualTo(max - 30f + 7.2f).Within(1e-4f),
+                "the bar rises where the recovery lands");
+            Assert.That(PlaybackHitPoints.HpAt(turn, SimTime.FromSeconds(0.5), Side.Right), Is.EqualTo(max), "only its owner");
+        }
+
+        [Test]
         public void AtTheEnd_ShowsTheResolvedHp()
         {
             Assert.That(HpAt(PlayedTurn.Seconds, Side.Right), Is.EqualTo(_turn.Report.ResolvedState.Fighters[Side.Right].Hp));

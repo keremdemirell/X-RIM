@@ -96,6 +96,7 @@ namespace XRim.Rules.Arena
             float before = fighter.Hp;
             fighter.Hp = Math.Max(0f, before - ZapDamage(wall, settings));
             float hpDamage = before - fighter.Hp;
+            fighter.HpDamageTaken += hpDamage;
             if (!retreatZapDone)
                 wall.PositionUnits = edges.ClampX(wall.PositionUnits + side.FacingSign() * settings.AdvanceDistanceUnits, 0f);
 

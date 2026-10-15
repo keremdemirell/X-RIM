@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules.Arena;
+using XRim.Rules.Damage;
 using XRim.Rules.Limbs;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
@@ -182,6 +183,8 @@ namespace XRim.Rules.Match
             {
                 FighterState fighter = State.Fighters[side];
                 fighter.ConsecutiveIdleTurns = Policies.IdleTurn.IsIdle(LockedPlans[side]) ? fighter.ConsecutiveIdleTurns + 1 : 0;
+                TurnPlan plan = LockedPlans[side];
+                WeaponTraitRules.EndTurn(fighter, plan.Path.IsEmpty ? null : Settings.FindWeapon(plan.Weapon), Settings.Traits);
             }
 
             EndCheckResult result = _evaluator.Evaluate(

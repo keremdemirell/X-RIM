@@ -27,6 +27,7 @@ namespace XRim.Rules.Settings
         public LoadoutSettings Loadout = new LoadoutSettings();
         public SignatureSettings Signature = new SignatureSettings();
         public SuddenDeathSettings SuddenDeath = new SuddenDeathSettings();
+        public TraitSettings Traits = new TraitSettings();
         public List<WeaponStats> Weapons = new List<WeaponStats>();
         public List<BodyMoveStats> BodyMoves = new List<BodyMoveStats>();
         public List<SignatureMoveStats> SignatureMoves = new List<SignatureMoveStats>();
@@ -129,6 +130,19 @@ namespace XRim.Rules.Settings
             if (SuddenDeath == null) issues.Add("Sudden death: the settings are missing.");
             else if (SuddenDeath.MaxRepeatsWithoutHit < 0) issues.Add("Sudden death: the repeats without a hit must not be negative.");
 
+            if (Traits == null)
+            {
+                issues.Add("Traits: the settings are missing.");
+            }
+            else
+            {
+                if (Traits.LifestealHitsNeeded < 1) issues.Add("Traits: lifesteal needs at least 1 hit.");
+                if (Traits.LifestealRecoveredFraction < 0f || Traits.LifestealRecoveredFraction > 1f)
+                    issues.Add("Traits: the lifesteal recovery must be a share between 0 and 1 of the damage dealt.");
+                if (Traits.BuildUpGrowthPerHpDamageTaken < 0f || Traits.BuildUpMaxBonusFraction < 0f)
+                    issues.Add("Traits: build-up growth and its cap must not be negative.");
+            }
+
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (WeaponStats weapon in Weapons)
             {
@@ -171,6 +185,83 @@ namespace XRim.Rules.Settings
                 if (rapier.BaseDamage >= mace.BaseDamage)
                     issues.Add("Weapons: GDD §6 roster gives the rapier low damage and the mace high damage.");
             }
+
+            ValidateRoster(issues);
+        }
+
+        /// <summary>
+        /// The roster rules the GDD sets for the weapons it leaves the numbers of (Session 14): the spear has the longest reach
+        /// (§6), the shield's damage is very low (§7), the rapier bends easier than the spear (§6), and no weapon is strictly
+        /// stronger than another (§16, unlockables are sidegrades). Placeholders are not errors; a number that breaks one of these
+        /// orderings is.
+        /// </summary>
+        private void ValidateRoster(ICollection<string> issues)
+        {
+            var handHeld = new List<WeaponStats>();
+            foreach (WeaponStats weapon in Weapons)
+            {
+                if (weapon.Kind == WeaponKind.Weapon) handHeld.Add(weapon);
+            }
+
+            WeaponStats spear = FindWeapon(WeaponIds.Spear);
+            if (spear != null)
+            {
+                foreach (WeaponStats other in handHeld)
+                {
+                    if (other == spear || other.ReachBeyondHandUnits < spear.ReachBeyondHandUnits) continue;
+                    issues.Add($"Weapons: GDD §6 gives the spear the longest reach, but '{other.Id}' reaches as far.");
+                }
+            }
+
+            foreach (WeaponStats shield in Weapons)
+            {
+                if (shield.Kind != WeaponKind.Shield) continue;
+                foreach (WeaponStats weapon in handHeld)
+                {
+                    if (shield.BaseDamage < weapon.BaseDamage) continue;
+                    issues.Add($"Weapons: GDD §7 gives the shield very low damage (bash only), but '{shield.Id}' hits as hard as '{weapon.Id}'.");
+                }
+            }
+
+            WeaponStats rapier = FindWeapon(WeaponIds.Rapier);
+            if (rapier != null && spear != null)
+            {
+                if (BendFactorOf(rapier) > BendFactorOf(spear))
+                    issues.Add("Weapons: GDD §6 gives the rapier almost no bend penalty, but its bend factor is above the spear's.");
+                if (BreakAngleOf(rapier) < BreakAngleOf(spear))
+                    issues.Add("Weapons: GDD §6 makes the rapier very tolerant of curves, but its path breaks at a gentler turn than the spear's.");
+            }
+
+            foreach (WeaponStats stronger in handHeld)
+            {
+                foreach (WeaponStats weaker in handHeld)
+                {
+                    if (stronger == weaker || !IsStrictlyStronger(stronger, weaker)) continue;
+                    issues.Add($"Weapons: '{stronger.Id}' is strictly stronger than '{weaker.Id}' (GDD §16: weapons are sidegrades).");
+                }
+            }
+        }
+
+        /// <summary>The bend factor k a weapon pays: 0 when its rigidity is off (plain length).</summary>
+        private static float BendFactorOf(WeaponStats weapon) =>
+            weapon.Rigidity != null && weapon.Rigidity.Enabled ? weapon.Rigidity.BendCostK : 0f;
+
+        /// <summary>The turn at which a weapon's path breaks: never when its rigidity is off.</summary>
+        private static float BreakAngleOf(WeaponStats weapon) =>
+            weapon.Rigidity != null && weapon.Rigidity.Enabled ? weapon.Rigidity.BreakAngleDegrees : float.PositiveInfinity;
+
+        /// <summary>
+        /// At least as good in speed, base damage, ink length, reach and mass, and better in one of them. Every one of those is
+        /// something a weapon's identity trades (GDD §6), so a weapon that wins them all gives no reason to pick the other.
+        /// </summary>
+        private static bool IsStrictlyStronger(WeaponStats a, WeaponStats b)
+        {
+            bool atLeastAsGood = a.SpeedUnitsPerSecond >= b.SpeedUnitsPerSecond && a.BaseDamage >= b.BaseDamage &&
+                                 a.InkLengthUnits >= b.InkLengthUnits && a.ReachBeyondHandUnits >= b.ReachBeyondHandUnits &&
+                                 a.Mass >= b.Mass;
+            bool better = a.SpeedUnitsPerSecond > b.SpeedUnitsPerSecond || a.BaseDamage > b.BaseDamage ||
+                          a.InkLengthUnits > b.InkLengthUnits || a.ReachBeyondHandUnits > b.ReachBeyondHandUnits || a.Mass > b.Mass;
+            return atLeastAsGood && better;
         }
     }
 }

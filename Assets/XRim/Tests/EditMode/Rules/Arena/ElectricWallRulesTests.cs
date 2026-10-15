@@ -60,6 +60,17 @@ namespace XRim.Tests.EditMode.Rules.Arena
 
         private float Hp(Side side) => _state.Fighters[side].Hp;
 
+        [Test]
+        public void AZap_CountsAsDamageTaken_ForTheBuildUpTrait()
+        {
+            RetreatOnce(Side.Left, LeftPelvisX);
+
+            ElectricWallZap zap = RetreatIntoTheWall(Side.Left);
+
+            Assert.That(zap.HpDamage, Is.GreaterThan(0f));
+            Assert.That(_state.Fighters[Side.Left].HpDamageTaken, Is.EqualTo(zap.HpDamage), "§15: total damage taken, the wall's too");
+        }
+
         // --- The sequence, row by row (§13, Decided) -------------------------------------------------
 
         [Test]

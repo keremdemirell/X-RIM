@@ -41,6 +41,8 @@ namespace XRim.Simulation.Unity2D
         private static readonly Color DummyColor = new Color(0.93f, 0.9f, 0.82f);
         private static readonly Color BladeColor = new Color(0.75f, 0.78f, 0.82f);
         private static readonly Color HeavyWeaponColor = new Color(0.33f, 0.33f, 0.36f);
+        private static readonly Color SwordColor = new Color(0.45f, 0.6f, 0.82f);
+        private static readonly Color SpearColor = new Color(0.86f, 0.72f, 0.3f);
         private static readonly Color OtherItemColor = new Color(0.55f, 0.45f, 0.35f);
 
         public static Ragdoll Build(RagdollBuildSpec spec)
@@ -199,13 +201,30 @@ namespace XRim.Simulation.Unity2D
             FitHeldItemVisual(item.transform, weapon, space);
         }
 
-        /// <summary>Resizes only the drawing of a held item (for visual copies that have no physics).</summary>
+        /// <summary>
+        /// The placeholder colour of a held item, so the weapons read apart on screen until the art arrives (Session 17): the rapier
+        /// silver, the sword blue, the spear gold, the mace dark grey; the shield, the club and the rest brown.
+        /// </summary>
+        public static Color HeldItemColor(string weaponId)
+        {
+            if (weaponId == WeaponIds.Rapier.Value) return BladeColor;
+            if (weaponId == WeaponIds.Sword.Value) return SwordColor;
+            if (weaponId == WeaponIds.Spear.Value) return SpearColor;
+            if (weaponId == WeaponIds.Mace.Value) return HeavyWeaponColor;
+            return OtherItemColor;
+        }
+
+        /// <summary>
+        /// Resizes only the drawing of a held item (for visual copies that have no physics), and gives it its weapon's colour, so a
+        /// dummy prefab built before the sword and the spear had their own colours still shows them (Session 14).
+        /// </summary>
         public static void FitHeldItemVisual(Transform item, WeaponStats weapon, ArenaSpace space)
         {
             HeldItemShape shape = HeldItemShape.Of(weapon);
             Transform visual = item.Find(VisualName);
             if (visual != null)
             {
+                if (visual.TryGetComponent(out SpriteRenderer renderer)) renderer.color = HeldItemColor(weapon.Id);
                 Vector2 centre = ToWorld(shape.CentreLocal, space);
                 Vector2 size = ToWorld(shape.SizeUnits, space);
                 visual.localPosition = new Vector3(centre.x, centre.y, 0f);
@@ -322,8 +341,7 @@ namespace XRim.Simulation.Unity2D
                 body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
                 gameObject.AddComponent<BoxCollider2D>();
                 Tag(body, BodyRole.HeldItem, BodyPart.Torso);
-                Color color = weapon.Id == WeaponIds.Rapier.Value ? BladeColor : weapon.Id == WeaponIds.Mace.Value ? HeavyWeaponColor : OtherItemColor;
-                AddVisual(gameObject.transform, _spec.Sprites?.Square, color, Vector2.zero, Vector2.one, HeldItemOrder, false);
+                AddVisual(gameObject.transform, _spec.Sprites?.Square, HeldItemColor(weapon.Id), Vector2.zero, Vector2.one, HeldItemOrder, false);
                 FitHeldItem(body, weapon, _spec.Space);
                 gameObject.SetActive(false);
                 return body;

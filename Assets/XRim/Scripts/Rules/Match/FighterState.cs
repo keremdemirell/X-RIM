@@ -20,6 +20,21 @@ namespace XRim.Rules.Match
         public float HpBeforeSuddenDeath { get; set; }
 
         public WeaponId CurrentWeapon { get; set; }
+
+        /// <summary>
+        /// Every point of HP this dummy has lost to hits and to the electric wall in the match: never reduced, and not by healing or
+        /// by a sudden-death reset (GDD §15: build-up scales with the damage taken, never with the HP left).
+        /// </summary>
+        public float HpDamageTaken { get; set; }
+
+        /// <summary>Hits counted toward lifesteal's next recovery (§15), with a weapon that carries the trait.</summary>
+        public int LifestealHitCount { get; set; }
+
+        /// <summary>The HP damage those hits dealt: lifesteal gives back a share of it.</summary>
+        public float LifestealDamageDealt { get; set; }
+
+        /// <summary>This dummy landed a hit in the turn being resolved. The match machine clears it at the end of every turn.</summary>
+        public bool HitLandedThisTurn { get; set; }
         public int ConsecutiveIdleTurns { get; set; }
         public List<IStatusEffect> Statuses { get; } = new List<IStatusEffect>();
 
@@ -83,6 +98,8 @@ namespace XRim.Rules.Match
             var copy = new FighterState(Handedness, Hp, CurrentWeapon)
             {
                 ConsecutiveIdleTurns = ConsecutiveIdleTurns, HeldLimb = HeldLimb, HpBeforeSuddenDeath = HpBeforeSuddenDeath,
+                HpDamageTaken = HpDamageTaken, LifestealHitCount = LifestealHitCount, LifestealDamageDealt = LifestealDamageDealt,
+                HitLandedThisTurn = HitLandedThisTurn,
             };
             _limbDamage.CopyTo(copy._limbDamage, 0);
             _severed.CopyTo(copy._severed, 0);

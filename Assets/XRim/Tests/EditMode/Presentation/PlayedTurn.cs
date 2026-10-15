@@ -23,7 +23,7 @@ namespace XRim.Tests.EditMode.Presentation
             return new HitLandedEvent(time, facts, new DamageResult(hpDamage, hpDamage, 0f, false, false));
         }
 
-        /// <summary>A <see cref="Seconds"/>-long turn whose resolved board has taken every hit's and wall zap's damage.</summary>
+        /// <summary>A <see cref="Seconds"/>-long turn whose resolved board has taken every hit's and wall zap's damage and every recovery.</summary>
         public static TurnResult Create(RulesSettings settings, int turnIndex, params MatchEvent[] events)
         {
             BoardSnapshot board = TestData.CreateInitialBoard(settings);
@@ -35,6 +35,7 @@ namespace XRim.Tests.EditMode.Presentation
             {
                 if (matchEvent is HitLandedEvent hit) board.State.Fighters[hit.Hit.Victim].Hp -= hit.Damage.HpDamage;
                 if (matchEvent is ElectricWallEvent zap) board.State.Fighters[zap.Side].Hp -= zap.HpDamage;
+                if (matchEvent is WeaponTraitHealEvent heal) board.State.Fighters[heal.Side].Hp += heal.HpRecovered;
                 recorder.RecordEvent(matchEvent);
             }
 

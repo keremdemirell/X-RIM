@@ -64,6 +64,7 @@ namespace XRim.Rules.Damage
         {
             Guard.NotNull(victim, nameof(victim));
             victim.Hp -= result.HpDamage;
+            victim.HpDamageTaken += result.HpDamage;
             if (result.LimbDamage > 0f) victim.SetLimbDamage(part, victim.GetLimbDamage(part) + result.LimbDamage);
         }
     }

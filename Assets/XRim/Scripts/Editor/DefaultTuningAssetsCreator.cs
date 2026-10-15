@@ -35,6 +35,7 @@ namespace XRim.Editor
             Assign<LoadoutRulesConfig>(profileObject, TuningProfile.FieldNames.Loadout, "LoadoutRules", created);
             Assign<SignatureRulesConfig>(profileObject, TuningProfile.FieldNames.Signature, "SignatureRules", created);
             Assign<SuddenDeathConfig>(profileObject, TuningProfile.FieldNames.SuddenDeath, "SuddenDeath", created);
+            Assign<TraitRulesConfig>(profileObject, TuningProfile.FieldNames.Traits, "TraitRules", created);
             Assign<SimulationConfig>(profileObject, TuningProfile.FieldNames.Simulation, "Simulation", created);
             Assign<EconomyConfig>(profileObject, TuningProfile.FieldNames.Economy, "Economy", created);
             Assign<InputConfig>(profileObject, TuningProfile.FieldNames.Input, "Input", created);

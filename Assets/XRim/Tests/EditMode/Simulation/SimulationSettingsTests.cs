@@ -50,6 +50,15 @@ namespace XRim.Tests.EditMode.Simulation
         }
 
         [Test]
+        public void NonPositiveGuardTipCap_IsReported()
+        {
+            var settings = new SimulationSettings();
+            settings.Ragdoll.GuardMaxTipDistanceUnits = 0f;
+
+            Assert.That(Issues(settings), Has.Some.Contains("guard tip distance"));
+        }
+
+        [Test]
         public void NonPositiveMass_IsReported()
         {
             var settings = new SimulationSettings();

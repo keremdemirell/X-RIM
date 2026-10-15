@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8bc84e7f04551c74c8973a0f4a5a5ba8, type: 3}
+  m_Name: TraitRules
+  m_EditorClassIdentifier: XRim.Config::XRim.Config.TraitRulesConfig
+  _settings:
+    LifestealEnabled: 0
+    BuildUpEnabled: 0
+    LifestealHitsNeeded: 3
+    LifestealHitCounting: 0
+    LifestealRecoveredFraction: 0.3
+    BuildUpGrowthPerHpDamageTaken: 0.005
+    BuildUpMaxBonusFraction: 0.5

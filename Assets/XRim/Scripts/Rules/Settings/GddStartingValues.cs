@@ -47,7 +47,10 @@ namespace XRim.Rules.Settings
             SpeedUnitsPerSecond = 250f, BaseDamage = 20f, SpeedKeptAfterHitFraction = 0.7f,
         };
 
-        /// <summary>GDD §6: design TBD. Every number is a placeholder.</summary>
+        /// <summary>
+        /// GDD §6: design TBD. Every number is a placeholder (playable since Session 14; designer 2026-10-15: keep them). A
+        /// middle weapon: nothing here beats the rapier on speed and reach and the mace on mass, so it is a sidegrade (§16).
+        /// </summary>
         public static WeaponStats Sword() => new WeaponStats
         {
             Id = WeaponIds.Sword.Value, DisplayName = "Sword", Kind = WeaponKind.Weapon, DesignIsTbd = true,
@@ -55,7 +58,12 @@ namespace XRim.Rules.Settings
             SpeedUnitsPerSecond = 600f, BaseDamage = 12f, SpeedKeptAfterHitFraction = 0.5f,
         };
 
-        /// <summary>GDD §6: "Long, TBD", longest reach, straight thrusts. Rigidity is the TBD spear rule.</summary>
+        /// <summary>
+        /// GDD §6: "Long, TBD", longest reach, straight thrusts. Every number is a placeholder (playable since Session 14).
+        /// Rigidity is the TBD spear rule: designer 2026-10-15, keep it, with a per-weapon switch in tuning; the rapier's stays
+        /// off (plain length, never breaks). In the guard stance the spear's tip rests at <c>RagdollSettings.GuardMaxTipDistanceUnits</c>
+        /// from the shoulder, not at its 500 length.
+        /// </summary>
         public static WeaponStats Spear()
         {
             var spear = new WeaponStats

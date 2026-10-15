@@ -25,6 +25,7 @@ namespace XRim.Config
         [SerializeField] private LoadoutRulesConfig _loadout;
         [SerializeField] private SignatureRulesConfig _signature;
         [SerializeField] private SuddenDeathConfig _suddenDeath;
+        [SerializeField] private TraitRulesConfig _traits;
         [SerializeField] private List<WeaponDefinition> _weapons = new List<WeaponDefinition>();
         [SerializeField] private List<BodyMoveDefinition> _bodyMoves = new List<BodyMoveDefinition>();
         [SerializeField] private List<SignatureMoveDefinition> _signatureMoves = new List<SignatureMoveDefinition>();
@@ -72,6 +73,7 @@ namespace XRim.Config
                 Loadout = Snapshot(_loadout, nameof(_loadout), issues),
                 Signature = Snapshot(_signature, nameof(_signature), issues),
                 SuddenDeath = Snapshot(_suddenDeath, nameof(_suddenDeath), issues),
+                Traits = Snapshot(_traits, nameof(_traits), issues),
             };
             AddSnapshots(_weapons, settings.Weapons, nameof(_weapons), issues);
             AddSnapshots(_bodyMoves, settings.BodyMoves, nameof(_bodyMoves), issues);
@@ -88,7 +90,7 @@ namespace XRim.Config
         {
             SettingsConfigBase[] singles =
             {
-                _match, _paths, _damage, _hitZones, _clash, _electricWall, _arena, _loadout, _signature, _suddenDeath,
+                _match, _paths, _damage, _hitZones, _clash, _electricWall, _arena, _loadout, _signature, _suddenDeath, _traits,
                 _simulation, _economy,
             };
             foreach (SettingsConfigBase config in singles)
@@ -163,6 +165,7 @@ namespace XRim.Config
             public const string Loadout = nameof(_loadout);
             public const string Signature = nameof(_signature);
             public const string SuddenDeath = nameof(_suddenDeath);
+            public const string Traits = nameof(_traits);
             public const string Weapons = nameof(_weapons);
             public const string BodyMoves = nameof(_bodyMoves);
             public const string SignatureMoves = nameof(_signatureMoves);

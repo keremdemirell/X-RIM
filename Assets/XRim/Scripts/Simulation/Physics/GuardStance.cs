@@ -69,14 +69,17 @@ namespace XRim.Simulation.Physics
 
         /// <summary>
         /// Where a held item's path point (a weapon's tip, the shield's centre) rests in the guard stance, in the torso frame: a
-        /// first stroke's lead-in starts here (D3). A body blow's is the head's centre on top of the torso.
+        /// first stroke's lead-in starts here (D3). A body blow's is the head's centre on top of the torso. A weapon longer than
+        /// <see cref="RagdollSettings.GuardMaxTipDistanceUnits"/> rests with its tip at that distance from the shoulder and its
+        /// butt behind the hand, so a spear's tip stays above the floor and clear of the other blade (designer, 2026-10-15).
         /// </summary>
         public static Vec2 TipLocal(WeaponStats weapon, RagdollSettings body, PathSettings paths)
         {
             Guard.NotNull(weapon, nameof(weapon));
             if (weapon.Kind == WeaponKind.BodyBlow) return new Vec2(0f, body.TorsoHeightUnits + weapon.InkThicknessUnits * 0.5f);
+            float fromShoulderUnits = paths.ArmLengthUnits * body.GuardHandReachFraction + weapon.LengthUnits;
             return paths.ShoulderOffsetUnits + Vec2.FromAngleDegrees(body.GuardAngleDegrees) *
-                (paths.ArmLengthUnits * body.GuardHandReachFraction + weapon.LengthUnits);
+                Math.Min(fromShoulderUnits, body.GuardMaxTipDistanceUnits);
         }
 
         /// <summary>

@@ -74,5 +74,35 @@ namespace XRim.App
         /// <summary>What a tap on the cover screen does; the timer starts with it.</summary>
         public static string CoverAction(float planningSeconds) =>
             "TAP TO START PLANNING (" + planningSeconds.ToString("0.#", CultureInfo.InvariantCulture) + " s)";
+
+        // ----- the pre-match loadout pick (Session 14; placeholder copy until the meta shell, Session 18) -----
+
+        public const string LoadoutNote = "The first weapon you pick is the one you start with. Both loadouts are shown when the match starts.";
+        public const string LoadoutSlotsFull = "All slots are full: tap a picked weapon to put it back first.";
+        public const string LoadoutLockIn = "LOCK IN";
+        public const string LoadoutShieldNeeded = "A SHIELD IS REQUIRED";
+        public const string LoadoutCoverInstruction = "Take the device and pick your weapons. The other player looks away.";
+        public const string LoadoutCoverAction = "TAP TO PICK WEAPONS";
+        public const string RevealTitle = "LOADOUTS";
+        public const string RevealAction = "TAP TO START";
+
+        /// <summary>The picker's headline: in hot-seat it names the player picking.</summary>
+        public static string LoadoutTitle(MatchMode mode, Side side) =>
+            (mode == MatchMode.HotSeat ? HotSeatPlayer(side) + ": PICK " : "PICK YOUR ") + XRim.Rules.RuleConstants.LoadoutSlotCount + " WEAPONS";
+
+        public static string LoadoutPickMore(int count) => "PICK " + count + " MORE";
+
+        public static string WeaponTitle(XRim.Rules.Settings.WeaponStats weapon) => weapon.DisplayName.ToUpperInvariant();
+
+        /// <summary>Two lines of the numbers that make a weapon what it is, for the picker's cards (placeholders show as they are).</summary>
+        public static string WeaponDetail(XRim.Rules.Settings.WeaponStats weapon)
+        {
+            string first = string.Format(CultureInfo.InvariantCulture, "damage {0:0.#} · speed {1:0} · mass {2:0.#}", weapon.BaseDamage,
+                weapon.SpeedUnitsPerSecond, weapon.Mass);
+            string second = string.Format(CultureInfo.InvariantCulture, "reach {0:0} · ink {1:0}×{2:0}", weapon.ReachBeyondHandUnits,
+                weapon.InkLengthUnits, weapon.InkThicknessUnits);
+            if (weapon.Rigidity != null && weapon.Rigidity.Enabled) second += " · stiff";
+            return first + "\n" + second;
+        }
     }
 }

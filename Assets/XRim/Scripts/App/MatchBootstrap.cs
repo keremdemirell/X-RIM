@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
+using XRim.Bots;
 using XRim.Config;
 using XRim.Core;
 using XRim.Core.Gdd;
@@ -63,6 +64,12 @@ namespace XRim.App
 
         /// <summary>The human plays the left dummy against the bot.</summary>
         private const Side HumanSide = Side.Left;
+
+        /// <summary>
+        /// Mixed into the seed of the bots' loadout picks, so they never repeat the random numbers the same seed gives the bots' plans
+        /// (technical, not a rule).
+        /// </summary>
+        private const uint LoadoutPickSeedSalt = 0x5EED10ADu;
 
         [Tooltip("Root of all tuning. Create one with XRim/Setup/Create Default Tuning Assets.")]
         [SerializeField] private TuningProfile _tuning;
@@ -136,6 +143,8 @@ namespace XRim.App
         private PlanningHud _planningHud;
         private MatchHud _matchHud;
         private MatchScreens _screens;
+        private LoadoutPickPresenter _loadoutPick;
+        private PerSide<IReadOnlyList<WeaponId>> _lastPicks;
         private bool _snapshotUnused;
         private bool _composed;
 
@@ -376,10 +385,13 @@ namespace XRim.App
 
         // ----- matches -----
 
-        /// <summary>Starts a new match in this mode with its own plan sources (humans on this device, bots). Ends the current one.</summary>
-        public void BeginMatch(MatchMode mode)
+        /// <summary>
+        /// Starts a new match in this mode with its own plan sources (humans on this device, bots). Ends the current one.
+        /// </summary>
+        /// <param name="loadouts">What both sides bring (the pre-match pick, <see cref="BeginLoadoutPick"/>); null: the default loadout for both.</param>
+        public void BeginMatch(MatchMode mode, LoadoutReveal loadouts = null)
         {
-            PrepareMatch(mode);
+            PrepareMatch(mode, loadouts);
             var random = new XorShiftRandom(_setup.RandomSeed);
             IReadOnlyList<IPlanSource> sources = PlanSourceFactory.Create(mode, _setup, RulesSettings, side => _humans.Add(side), random, HumanSide);
 
@@ -393,8 +405,64 @@ namespace XRim.App
             StartMatch(sources);
         }
 
-        /// <summary>The same mode again, from a fresh snapshot of the tuning.</summary>
-        public void Rematch() => BeginMatch(_mode);
+        /// <summary>The same mode again, from a fresh snapshot of the tuning; the players pick their loadouts again, from their last picks.</summary>
+        public void Rematch() => BeginLoadoutPick(_mode);
+
+        /// <summary>
+        /// The pre-match pick (GDD §6, Session 14): each human on this device locks in 3 of the weapons they own (behind a cover screen
+        /// in hot-seat), the bots pick at random, then both loadouts are revealed and the match starts with them. Without match screens
+        /// (the sandbox, a scene built in code) the match starts at once with the default loadout.
+        /// </summary>
+        public void BeginLoadoutPick(MatchMode mode)
+        {
+            if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
+            if (_screens == null || mode == MatchMode.Sandbox)
+            {
+                BeginMatch(mode);
+                return;
+            }
+
+            // The picker and the match built from it read the same snapshot, so a tuning edit never lands between the two.
+            TearDownMatch();
+            _mode = mode;
+            if (!_snapshotUnused) TakeSnapshot();
+            _snapshotUnused = true;
+
+            var ownership = new AllWeaponsOwned(); // Session 18: the profile's owned weapons
+            if (!LoadoutOptions.CanFormALoadout(RulesSettings, ownership))
+            {
+                Debug.LogWarning("[XRim] The weapons cannot make a valid loadout (3 pickable weapons, a shield if one is required): " +
+                                 "starting with the default loadout.", this);
+                BeginMatch(mode);
+                return;
+            }
+
+            if (_planningHud != null) _planningHud.SetVisible(false);
+            if (_matchHud != null) _matchHud.SetVisible(false);
+            if (_audio != null) _audio.SetMusicPlaying(false);
+            SetViewFlipped(false);
+
+            uint seed = _randomSeed != 0 ? (uint)_randomSeed ^ LoadoutPickSeedSalt : (uint)Environment.TickCount | 1u;
+            _loadoutPick = LoadoutPickPresenter.Create(_screens, RulesSettings, ownership, mode, HumanSide, new RandomLoadoutPicker(),
+                new XorShiftRandom(seed), _lastPicks);
+            _loadoutPick.Completed += OnLoadoutsPicked;
+            _loadoutPick.Begin();
+        }
+
+        private void OnLoadoutsPicked(LoadoutReveal loadouts)
+        {
+            _lastPicks = new PerSide<IReadOnlyList<WeaponId>>(loadouts.Left, loadouts.Right);
+            DisposeLoadoutPick();
+            BeginMatch(_mode, loadouts);
+        }
+
+        private void DisposeLoadoutPick()
+        {
+            if (_loadoutPick == null) return;
+            _loadoutPick.Completed -= OnLoadoutsPicked;
+            _loadoutPick.Dispose();
+            _loadoutPick = null;
+        }
 
         /// <summary>Ends the current match and shows the mode picker.</summary>
         public void ShowModePicker()
@@ -419,7 +487,7 @@ namespace XRim.App
         /// Builds a match in this mode without plan sources yet: a fresh settings snapshot and policies, the authority and the flow.
         /// <see cref="StartMatch"/> then binds the sources (the sandbox's debug tools, or a test's scripted ones). Ends the current match.
         /// </summary>
-        public void PrepareMatch(MatchMode mode)
+        public void PrepareMatch(MatchMode mode, LoadoutReveal loadouts = null)
         {
             if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
             TearDownMatch();
@@ -430,7 +498,7 @@ namespace XRim.App
             ShowArena();
             BuildViews(SimulationSettings.Segmentation);
 
-            _setup = CreateSetup(RulesSettings);
+            _setup = CreateSetup(RulesSettings, loadouts);
             // The contact handler is the game's (hits, clashes, blocks), wrapped so the debug cheats can knock both dummies out, cut a limb or
             // stun a dummy at a turn's start, through the real paths (in that order: a dummy knocked out gets no stun).
             _statusCheat = new ScriptedStatusContactHandler(new HitContactHandler());
@@ -487,6 +555,7 @@ namespace XRim.App
 
         private void TearDownMatch()
         {
+            DisposeLoadoutPick();
             _playbackReportPending = false;
             StopReplay();
 
@@ -816,17 +885,22 @@ namespace XRim.App
             if (segmentation != _viewSegmentation) BuildViews(segmentation);
         }
 
-        /// <summary>Both dummies right-handed, each with the default loadout (D8, flagged in <see cref="LoadoutSettings"/>).</summary>
-        private MatchSetup CreateSetup(RulesSettings rules)
+        /// <summary>
+        /// Both dummies right-handed (a dev setting, D24), each with the loadout it picked, or the default loadout without a pick
+        /// (D8, flagged in <see cref="LoadoutSettings"/>: the sandbox, scenes built in code).
+        /// </summary>
+        private MatchSetup CreateSetup(RulesSettings rules, LoadoutReveal loadouts)
         {
-            var loadout = new List<WeaponId>();
+            var defaultLoadout = new List<WeaponId>();
             foreach (string id in rules.Loadout.DefaultLoadoutWeaponIds)
             {
-                loadout.Add(new WeaponId(id));
+                defaultLoadout.Add(new WeaponId(id));
             }
 
             uint seed = _randomSeed != 0 ? (uint)_randomSeed : (uint)Environment.TickCount | 1u;
-            return new MatchSetup(PerSide<FighterSetup>.Create(_ => new FighterSetup(Handedness.Right, loadout)), seed);
+            PerSide<FighterSetup> fighters = PerSide<FighterSetup>.Create(side =>
+                new FighterSetup(Handedness.Right, loadouts != null ? loadouts.Of(side) : defaultLoadout));
+            return new MatchSetup(fighters, seed);
         }
 
         // ----- humans on this device -----
@@ -1126,7 +1200,7 @@ namespace XRim.App
         private void OnModePicked(int index)
         {
             IReadOnlyList<MatchMode> modes = MatchLabels.PickerModes();
-            if (index >= 0 && index < modes.Count) BeginMatch(modes[index]);
+            if (index >= 0 && index < modes.Count) BeginLoadoutPick(modes[index]);
         }
 
         /// <summary>Serialized field names, for Editor tools that assign references through SerializedObject.</summary>
