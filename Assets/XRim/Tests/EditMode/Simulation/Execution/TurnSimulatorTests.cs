@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using XRim.Core;
 using XRim.Rules;
@@ -315,7 +316,8 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             TurnResult result = new TurnSimulator(_world, new RulePolicies(), new TurnSimulatorOptions { Contacts = new RecordContactsHandler() })
                 .Simulate(Input(StraightThrust));
 
-            IReadOnlyList<MatchEvent> events = result.Timeline.Events;
+            // Session 13: the turn also starts with the left's AttackStartedEvent (its drawn path); the contacts are the rest.
+            List<MatchEvent> events = result.Timeline.Events.Where(matchEvent => !(matchEvent is AttackStartedEvent)).ToList();
             Assert.That(events.Count, Is.EqualTo(2));
             Assert.That(events[0], Is.TypeOf<ContactEvent>());
             Assert.That(events[1], Is.TypeOf<ContactEvent>());

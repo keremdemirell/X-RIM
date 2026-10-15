@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using XRim.Core;
+using XRim.Presentation.Moments;
 using XRim.Presentation.UI;
 
 namespace XRim.App
@@ -48,6 +49,27 @@ namespace XRim.App
         /// <summary>The cover screen's headline for the player about to plan.</summary>
         public static string CoverPlayer(Side side) =>
             HotSeatPlayer(side) + (side == Side.Left ? " (LEFT)" : " (RIGHT)");
+
+        public const string ReplayTitle = "INSTANT REPLAY";
+        public const string ReplayHint = "tap to skip";
+
+        /// <summary>The instant replay's caption: who did what (Session 13).</summary>
+        public static string MomentCaption(MomentKind kind, Side? hero, PerSide<string> names)
+        {
+            string who = hero.HasValue && names != null ? names[hero.Value] + ": " : string.Empty;
+            switch (kind)
+            {
+                case MomentKind.SuddenDeathFinish: return hero.HasValue ? who + "SUDDEN DEATH!" : "DEAD EVEN!";
+                case MomentKind.DoubleKnockOut: return "DOUBLE K.O.!";
+                case MomentKind.KnockOut: return who + "K.O.!";
+                case MomentKind.Sever: return who + "SEVERED!";
+                case MomentKind.DodgeCounter: return who + "DODGE AND COUNTER!";
+                case MomentKind.CounterHit: return who + "COUNTER!";
+                case MomentKind.Trade: return "TRADE!";
+                case MomentKind.Requested: return "REPLAY";
+                default: return who + "CRUSHED!";
+            }
+        }
 
         /// <summary>What a tap on the cover screen does; the timer starts with it.</summary>
         public static string CoverAction(float planningSeconds) =>

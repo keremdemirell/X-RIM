@@ -39,6 +39,7 @@ namespace XRim.Config
         [SerializeField] private FeelConfig _feel;
         [SerializeField] private BalanceTargetsConfig _balanceTargets;
         [SerializeField] private DisplayConfig _display;
+        [SerializeField] private AudioConfig _audio;
 
         public InputConfig InputConfig => _input;
 
@@ -49,6 +50,9 @@ namespace XRim.Config
 
         /// <summary>Frame-rate target and other device display settings; null in a profile made before Session 10 (run Create Default Tuning Assets).</summary>
         public DisplayConfig Display => _display;
+
+        /// <summary>The duel's sound (Session 13); null until Create Default Tuning Assets makes it (everything is then silent).</summary>
+        public AudioConfig Audio => _audio;
 
         public ArenaSpace ArenaSpace =>
             _arenaSpace != null ? _arenaSpace.CreateSpace() : new ArenaSpace(ArenaSpaceConfig.DefaultWorldUnitsPerArenaUnit);
@@ -108,10 +112,10 @@ namespace XRim.Config
             }
         }
 
-        /// <summary>Unity-only tuning assets (input, scale, feel, targets, display).</summary>
+        /// <summary>Unity-only tuning assets (input, scale, feel, targets, display, audio).</summary>
         public IEnumerable<ScriptableObject> ClientConfigs()
         {
-            ScriptableObject[] configs = { _input, _arenaSpace, _feel, _balanceTargets, _display };
+            ScriptableObject[] configs = { _input, _arenaSpace, _feel, _balanceTargets, _display, _audio };
             foreach (ScriptableObject config in configs)
             {
                 if (config != null) yield return config;
@@ -169,6 +173,7 @@ namespace XRim.Config
             public const string Feel = nameof(_feel);
             public const string BalanceTargets = nameof(_balanceTargets);
             public const string Display = nameof(_display);
+            public const string Audio = nameof(_audio);
         }
     }
 }

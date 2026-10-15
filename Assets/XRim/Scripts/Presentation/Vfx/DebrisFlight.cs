@@ -35,6 +35,9 @@ namespace XRim.Presentation.Vfx
             _bounceFraction = XMath.Clamp01(bounceFraction);
         }
 
+        /// <summary>How long after it flew off the piece first touches the floor (never, without gravity).</summary>
+        public float FirstLandingSeconds => _gravity > 0f ? TimeToFloor(Math.Max(_start.Y, _floorY), _velocity.Y) : float.MaxValue;
+
         /// <summary>The piece's position and rotation this long after it flew off; before that it is at its start.</summary>
         public Vec2 PositionAt(float seconds, out float rotationDegrees)
         {

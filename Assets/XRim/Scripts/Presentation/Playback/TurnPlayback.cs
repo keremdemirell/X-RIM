@@ -37,8 +37,17 @@ namespace XRim.Presentation.Playback
         /// <summary>The drawn dummies (reactors read where their parts are, for effects).</summary>
         public PerSide<DummyView> Views => _views;
 
-        /// <summary>Bends the pace of playback (hitstop); null plays at the player's speed.</summary>
+        /// <summary>Bends the pace of playback (hitstop, slow motion); null plays at the player's speed.</summary>
         public IPlaybackPacer Pacer { get; set; }
+
+        /// <summary>
+        /// Real (screen) seconds the current or last play has taken, hitstops, slow motion and the camera settling included; paused time
+        /// is not counted. Final once <see cref="Finished"/> fired (the per-turn log and the debug Playback tab show it).
+        /// </summary>
+        public float PlayRealSeconds { get; private set; }
+
+        /// <summary>The pose on screen now, frozen or played; null before the first (debug overlays draw over it).</summary>
+        public PoseSnapshot ShownPose { get; private set; }
 
         public TurnPlayback(PerSide<DummyView> views, ArenaSpace space)
         {
@@ -61,13 +70,17 @@ namespace XRim.Presentation.Playback
             if (Current != null) Play(Current);
         }
 
-        public void Play(TurnResult result)
+        public void Play(TurnResult result) => PlayFrom(result, SimTime.Zero);
+
+        /// <summary>Plays a turn from a time partway through (the instant replay); the events before it do not fire again.</summary>
+        public void PlayFrom(TurnResult result, SimTime start)
         {
             Current = Guard.NotNull(result, nameof(result));
             ShowWeapons(result.FinalBoard.State);
             IsPlaying = true;
-            Pacer?.Reset();
-            Player.Play(result.Timeline);
+            PlayRealSeconds = 0f;
+            Pacer?.Begin(result);
+            Player.PlayFrom(result.Timeline, start);
             FinishIfDone();
         }
 
@@ -86,7 +99,8 @@ namespace XRim.Presentation.Playback
         public void Advance(float realDeltaSeconds)
         {
             if (!IsPlaying) return;
-            float delta = Pacer != null && !Player.IsPaused ? Pacer.Pace(realDeltaSeconds) : realDeltaSeconds;
+            if (!Player.IsPaused) PlayRealSeconds += realDeltaSeconds;
+            float delta = Pacer != null && !Player.IsPaused ? Pacer.Pace(realDeltaSeconds, Player.CurrentTime) : realDeltaSeconds;
             Player.Advance(delta);
             FinishIfDone();
         }
@@ -110,6 +124,7 @@ namespace XRim.Presentation.Playback
         {
             _views.Left.ApplyPose(pose.Left, Side.Left, pose.SeveredLimbs, _space);
             _views.Right.ApplyPose(pose.Right, Side.Right, pose.SeveredLimbs, _space);
+            ShownPose = pose;
             PoseShown?.Invoke(pose);
         }
     }

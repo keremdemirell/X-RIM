@@ -18,6 +18,8 @@ namespace XRim.Editor
         public const string UiFolder = XRimRoot + "/UI";
         public const string PlaceholderArtFolder = XRimRoot + "/Art/Placeholder";
         public const string DummyPrefabsFolder = XRimRoot + "/Prefabs/Dummies";
+        public const string AudioIncomingFolder = XRimRoot + "/Audio/Incoming";
+        public const string AudioDataFolder = DataFolder + "/Audio";
 
         public const string TuningProfilePath = TuningFolder + "/TuningProfile.asset";
         public const string HudPanelSettingsPath = UiFolder + "/HudPanelSettings.asset";

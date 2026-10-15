@@ -20,8 +20,13 @@ namespace XRim.Presentation.UI
         /// <summary>Shows or hides the whole HUD (it only shows during planning).</summary>
         void SetVisible(bool visible);
 
-        /// <summary>Where the layout puts things: the own edge of the screen is the left one unless mirrored (GDD §4).</summary>
-        void ShowLayout(bool mirrored, float bodyZoneWidthFraction);
+        /// <summary>
+        /// Where the layout puts things: the own edge of the screen is the left one unless mirrored (GDD §4). The body zone strip shows
+        /// <paramref name="bodyZoneFraction"/> of the screen width (it covers the player's own dummy, Session 13); the weapon selector
+        /// starts at <paramref name="selectorStartFraction"/>, the configured strip's edge, so it stays clear of the centred timer
+        /// however far the zone reaches (a touch on a button is a press, never a swipe).
+        /// </summary>
+        void ShowLayout(bool mirrored, float bodyZoneFraction, float selectorStartFraction);
 
         void SetLoadout(IReadOnlyList<WeaponId> loadout);
 

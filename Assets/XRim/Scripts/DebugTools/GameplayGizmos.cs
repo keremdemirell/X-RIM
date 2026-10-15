@@ -18,8 +18,9 @@ namespace XRim.DebugTools
     /// playback has reached it (all of them between turns). At each contact point it draws the contact normal (bright) and the
     /// relative motion (dim), and labels it with what the rules made of it: a hit's zone and damage, a clash's angle (§10 stage
     /// 1), both powers and outcome, a block's angle against the shield face and its kind; every label carries the refined
-    /// time-to-impact (§9) and the weapon's distance along its path. Toggle: Debug → Playback. Hit zones and the path's ink
-    /// are drawn elsewhere (the sandbox draws paths) or later.
+    /// time-to-impact (§9) and the weapon's distance along its path. Session 13 adds the hit zones (<see cref="HitZoneOverlay"/>:
+    /// each body outlined, each zone's multiplier and a limb's damage) and the turn's legendary moment (<see cref="MomentMarker"/>).
+    /// Toggles: Debug → Playback. The path's ink is drawn by the sandbox.
     /// </summary>
     public sealed class GameplayGizmos : MonoBehaviour
     {
@@ -40,8 +41,12 @@ namespace XRim.DebugTools
         private static readonly Color MotionTint = new Color(1f, 1f, 1f, 0.4f);
 
         [SerializeField] private bool _showContacts = true;
+        [SerializeField] private bool _showHitZones;
+        [SerializeField] private bool _showMoments = true;
 
         private readonly List<Mark> _marks = new List<Mark>();
+        private readonly HitZoneOverlay _hitZones = new HitZoneOverlay();
+        private readonly MomentMarker _moment = new MomentMarker();
         private readonly List<LineRenderer> _normals = new List<LineRenderer>();
         private readonly List<LineRenderer> _motions = new List<LineRenderer>();
         private MatchBootstrap _bootstrap;
@@ -56,9 +61,32 @@ namespace XRim.DebugTools
             set => _showContacts = value;
         }
 
+        /// <summary>Both dummies' bodies outlined, each hit zone labelled with its multiplier and a limb's damage (Session 13).</summary>
+        public bool ShowHitZones
+        {
+            get => _showHitZones;
+            set => _showHitZones = value;
+        }
+
+        /// <summary>A ring and label where the turn's legendary moment happened (Session 13).</summary>
+        public bool ShowMoments
+        {
+            get => _showMoments;
+            set => _showMoments = value;
+        }
+
         public void Init(MatchBootstrap bootstrap) => _bootstrap = bootstrap;
 
         private void LateUpdate()
+        {
+            UpdateContacts();
+            if (_bootstrap == null || !_bootstrap.IsComposed) return;
+            if (_material == null) _material = DebugLines.CreateMaterial();
+            _hitZones.Update(_showHitZones ? _bootstrap : null, _material);
+            _moment.Update(_showMoments ? _bootstrap : null, _material);
+        }
+
+        private void UpdateContacts()
         {
             if (!TryGetTurn(out TurnResult turn, out SimTime until) || !_showContacts)
             {
@@ -80,19 +108,37 @@ namespace XRim.DebugTools
 
         private void OnGUI()
         {
-            if (!_showContacts || _marks.Count == 0 || _bootstrap == null) return;
+            if (_bootstrap == null) return;
             Camera view = Camera.main;
             if (view == null) return;
 
             if (_labelStyle == null) _labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, wordWrap = false };
-            foreach (Mark mark in _marks)
+            if (_showContacts)
             {
-                Vector3 screen = view.WorldToScreenPoint(ToWorld(mark.Point));
-                if (screen.z < 0f) continue;
-                var rect = new Rect(screen.x + LabelOffsetPixels, Screen.height - screen.y - LabelHeight - LabelOffsetPixels, LabelWidth, LabelHeight);
-                _labelStyle.normal.textColor = mark.Color;
-                GUI.Label(rect, mark.Text, _labelStyle);
+                foreach (Mark mark in _marks)
+                {
+                    DrawLabel(view, mark.Point, mark.Text, mark.Color);
+                }
             }
+
+            foreach (GizmoLabel label in _hitZones.Labels)
+            {
+                DrawLabel(view, label.PointUnits, label.Text, label.Color);
+            }
+
+            foreach (GizmoLabel label in _moment.Labels)
+            {
+                DrawLabel(view, label.PointUnits, label.Text, label.Color);
+            }
+        }
+
+        private void DrawLabel(Camera view, Vec2 pointUnits, string text, Color color)
+        {
+            Vector3 screen = view.WorldToScreenPoint(ToWorld(pointUnits));
+            if (screen.z < 0f) return;
+            var rect = new Rect(screen.x + LabelOffsetPixels, Screen.height - screen.y - LabelHeight - LabelOffsetPixels, LabelWidth, LabelHeight);
+            _labelStyle.normal.textColor = color;
+            GUI.Label(rect, text, _labelStyle);
         }
 
         private void OnDestroy()
@@ -107,6 +153,9 @@ namespace XRim.DebugTools
             {
                 if (line != null) Destroy(line.gameObject);
             }
+
+            _hitZones.Destroy();
+            _moment.Destroy();
         }
 
         /// <summary>The turn being shown and how far into it: playback's time while it plays, the whole turn between turns.</summary>

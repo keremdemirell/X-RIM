@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 302edec14e47d5b4ab20b8d1ba9ae7b5, type: 3}
+  m_Name: Audio
+  m_EditorClassIdentifier: XRim.Config::XRim.Config.AudioConfig
+  _effects: {fileID: 0}
+  _grunts: {fileID: 0}
+  _music: {fileID: 0}
+  _playMusic: 1
+  _masterVolume: 1
+  _effectsVolume: 0.9
+  _voiceVolume: 0.85
+  _musicVolume: 0.45
+  _maxEffectVoices: 16
+  _repeatCooldownSeconds: 0.04
+  _pitchJitter: 0.06
+  _slowMotionPitchShare: 0.5
+  _minPitch: 0.5
+  _fullVolumeDamage: 25
+  _minHitVolume: 0.55

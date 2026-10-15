@@ -28,7 +28,7 @@ namespace XRim.Simulation.Unity2D
         private const float ReachToleranceUnits = 0.5f;
 
         /// <summary>Each torso half is this share of the torso: the split runs across its middle (GDD §11).</summary>
-        public const float TorsoHalfFraction = 0.5f;
+        public const float TorsoHalfFraction = DummyLayout.TorsoHalfFraction;
 
         /// <summary>
         /// Whether Unity's HingeJoint2D.jointAngle grows as the jointed limb turns counter-clockwise relative to its

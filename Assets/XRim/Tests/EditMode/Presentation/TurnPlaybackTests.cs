@@ -74,6 +74,17 @@ namespace XRim.Tests.EditMode.Presentation
         }
 
         [Test]
+        public void ThePoseOnScreen_IsKept_ForTheDebugOverlays()
+        {
+            Assert.That(_playback.ShownPose, Is.Null, "nothing shown yet");
+            BoardSnapshot board = Result(0.1).FinalBoard;
+
+            _playback.ShowBoard(board);
+
+            Assert.That(_playback.ShownPose, Is.SameAs(board.Pose));
+        }
+
+        [Test]
         public void PausedPlayback_NeverFinishes()
         {
             _playback.Play(Result(0.1));
@@ -172,14 +183,16 @@ namespace XRim.Tests.EditMode.Presentation
                 var director = new FeelDirector(feel);
                 _playback.Pacer = director;
                 _playback.AddReactor(director);
-                _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, PlayedTurn.Hit(Side.Right, 0.5, 10f)));
+                HitLandedEvent hit = PlayedTurn.Hit(Side.Right, 0.5, 10f);
+                float freeze = HitStopSettings.From(feel).SecondsFor(hit);
+                _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, hit));
 
                 _playback.Advance(0.5f); // reaches the hit
                 SimTime atHit = _playback.Player.CurrentTime;
-                _playback.Advance(feel.HitStopSeconds * 0.5f);
+                _playback.Advance(freeze * 0.5f);
                 Assert.That(_playback.Player.CurrentTime, Is.EqualTo(atHit), "frozen");
 
-                _playback.Advance(feel.HitStopSeconds * 0.5f + 0.49f); // over a second of real time: 0.99 s of turn plus the freeze
+                _playback.Advance(freeze * 0.5f + 0.49f); // over a second of real time: 0.99 s of turn plus the freeze
                 Assert.That(_finished, Is.EqualTo(0), "the freeze took real time, so the turn is not over yet");
                 _playback.Advance(0.02f);
                 Assert.That(_finished, Is.EqualTo(1));
@@ -199,13 +212,14 @@ namespace XRim.Tests.EditMode.Presentation
                 var director = new FeelDirector(feel);
                 _playback.Pacer = director;
                 _playback.AddReactor(director);
-                _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, PlayedTurn.Hit(Side.Right, PlayedTurn.Seconds, 10f)));
+                HitLandedEvent hit = PlayedTurn.Hit(Side.Right, PlayedTurn.Seconds, 10f);
+                _playback.Play(PlayedTurn.Create(GddStartingValues.CreateRulesSettings(), 0, hit));
 
                 _playback.Advance((float)PlayedTurn.Seconds);
                 Assert.That(_playback.Player.IsFinished, Is.True);
                 Assert.That(_finished, Is.EqualTo(0), "held by the hitstop");
 
-                _playback.Advance(feel.HitStopSeconds);
+                _playback.Advance(HitStopSettings.From(feel).SecondsFor(hit));
                 Assert.That(_finished, Is.EqualTo(1));
             }
             finally

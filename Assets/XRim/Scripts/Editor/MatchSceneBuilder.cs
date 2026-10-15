@@ -26,7 +26,7 @@ namespace XRim.Editor
         private const string MainCameraTag = "MainCamera";
 
         /// <summary>Frames the 2000-unit arena edge to edge at 16:9, with the floor near the bottom (world units).</summary>
-        private const float CameraOrthographicSize = 5.75f;
+        internal const float CameraOrthographicSize = 5.75f;
 
         private const float CameraHeight = 5.25f;
         private const float CameraZ = -10f;
@@ -73,6 +73,7 @@ namespace XRim.Editor
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = BackgroundColor;
             cameraObject.transform.position = new Vector3(0f, CameraHeight, CameraZ);
+            cameraObject.AddComponent<AudioListener>();
 
             var arenaRoot = new GameObject("ArenaRoot");
             var cameraDirector = cameraObject.AddComponent<FixedSideCameraDirector>();

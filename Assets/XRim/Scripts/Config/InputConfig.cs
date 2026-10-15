@@ -15,6 +15,16 @@ namespace XRim.Config
         [Range(0.05f, 0.4f)]
         [SerializeField] private float _bodyZoneWidthFraction = 0.15f;
 
+        [Tooltip("GDD §4 (Decided: the body zone covers the player's own dummy). When on, the zone runs from the player's screen edge to " +
+                 "just past their own dummy, set when planning opens, and never narrower than the width above (designer 2026-10-11, F3). " +
+                 "Off: a strip of that width at the screen edge.")]
+        [GddTbd("§4–5", "Overall feel of the dual-zone scheme", Proposal = "Validate in prototype")]
+        [SerializeField] private bool _bodyZoneCoversDummy = true;
+
+        [Tooltip("How far past the front of the player's own dummy (its torso, head and legs) the body zone reaches, in arena units.")]
+        [Placeholder("Session 13: the body zone's margin past the dummy is not in the GDD")]
+        [SerializeField] private float _bodyZoneMarginBeyondDummyUnits = 60f;
+
         [Tooltip("GDD §5: a stance swipe takes about 0.3 s. Tunable.")]
         [SerializeField] private float _swipeWindowSeconds = 0.3f;
 
@@ -54,6 +64,8 @@ namespace XRim.Config
         [SerializeField] private Vector2Int _referenceResolution = new Vector2Int(1920, 1080);
 
         public float BodyZoneWidthFraction => _bodyZoneWidthFraction;
+        public bool BodyZoneCoversDummy => _bodyZoneCoversDummy;
+        public float BodyZoneMarginBeyondDummyUnits => _bodyZoneMarginBeyondDummyUnits;
         public float SwipeWindowSeconds => _swipeWindowSeconds;
         public float MinSwipeDistanceScreenFraction => _minSwipeDistanceScreenFraction;
         public float SwipeAxisToleranceDegrees => _swipeAxisToleranceDegrees;

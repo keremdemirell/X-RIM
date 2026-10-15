@@ -170,6 +170,48 @@ namespace XRim.Tests.PlayMode.Simulation
             Assert.That(offLine, Is.LessThan(0.5f), "the hand holds the blade, so arm and weapon do not fight");
         }
 
+        /// <summary>Session 13: the art spec and the hit-zone overlay read <see cref="DummyLayout"/>; the builder builds exactly that.</summary>
+        [TestCase(RagdollSegmentation.SixBodies)]
+        [TestCase(RagdollSegmentation.TenBodies)]
+        public void TheBuiltDummy_MatchesTheLayoutTheArtSpecReads(RagdollSegmentation segmentation)
+        {
+            Ragdoll ragdoll = Build(segmentation);
+            DummyLayout layout = DummyLayout.Of(_body, _paths, segmentation);
+
+            foreach (DummyBodyLayout body in layout.Bodies)
+            {
+                Transform built = ragdoll.transform.Find(body.Name);
+                Assert.That(built, Is.Not.Null, body.Name);
+                AssertWorld(built.localPosition, body.PivotUnits, body.Name + " pivot");
+                if (body.IsRound)
+                {
+                    var circle = built.GetComponent<CircleCollider2D>();
+                    Assert.That(circle.radius, Is.EqualTo(_space.ToWorldLength(body.SizeUnits.X * 0.5f)).Within(Tolerance), body.Name + " radius");
+                    AssertWorld(circle.offset, body.CentreLocalUnits, body.Name + " centre");
+                }
+                else
+                {
+                    var box = built.GetComponent<BoxCollider2D>();
+                    AssertWorld(box.size, body.SizeUnits, body.Name + " size");
+                    AssertWorld(box.offset, body.CentreLocalUnits, body.Name + " centre");
+                }
+            }
+
+            foreach (DummyJointLayout joint in layout.Joints)
+            {
+                var hinge = ragdoll.transform.Find(joint.ChildBody).GetComponent<HingeJoint2D>();
+                Assert.That(hinge, Is.Not.Null, joint.Name);
+                Assert.That(hinge.connectedBody.name, Is.EqualTo(joint.ParentBody), joint.Name);
+                AssertWorld(hinge.transform.localPosition, joint.AnchorUnits, joint.Name + " (the child's pivot)");
+            }
+        }
+
+        private void AssertWorld(Vector2 actualWorld, Vec2 expectedUnits, string what)
+        {
+            Assert.That(actualWorld.x, Is.EqualTo(_space.ToWorldLength(expectedUnits.X)).Within(Tolerance), what + " x");
+            Assert.That(actualWorld.y, Is.EqualTo(_space.ToWorldLength(expectedUnits.Y)).Within(Tolerance), what + " y");
+        }
+
         [Test]
         public void ApplyTuning_SetsMassesAndFlipsLimitsWhenMirrored()
         {

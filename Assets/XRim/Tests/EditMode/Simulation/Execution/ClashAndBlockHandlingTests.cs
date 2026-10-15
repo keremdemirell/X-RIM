@@ -243,7 +243,8 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             Assert.That(block.ContactAngleDegrees, Is.EqualTo(90f).Within(1e-3f));
             Assert.That(block.FacePositionFraction, Is.EqualTo(0f).Within(1e-3f));
             Assert.That(block.Time.Seconds, Is.EqualTo(reached).Within(2e-5), "the moving weapon's arrival, not the still shield's");
-            Assert.That(ReleasesOf(Side.Left).Single().Velocity.X, Is.EqualTo(-450f).Within(1f), "bounced back off the shield");
+            Assert.That(ReleasesOf(Side.Left).Single().Velocity.X, Is.EqualTo(-900f * _simulation.ClashReaction.ReboundSpeedFraction).Within(1f),
+                "bounced back off the shield");
             Assert.That(EventsOf<HitLandedEvent>(result), Is.Empty);
             Assert.That(HpLost(result, Side.Right), Is.EqualTo(0f));
 

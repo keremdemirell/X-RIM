@@ -71,6 +71,38 @@ namespace XRim.Tests.EditMode.Presentation
             Assert.That(shown, Is.SameAs(timeline.Frames[2].Pose));
         }
 
+        [Test]
+        public void TimelinePlayer_CountsEachPass_SoEffectsKnowEventsFireAgain()
+        {
+            var player = new TimelinePlayer();
+            player.Play(CreateTimeline(out _));
+            int first = player.PassCount;
+            player.Advance(10f);
+
+            player.Restart();
+            Assert.That(player.PassCount, Is.EqualTo(first + 1));
+            Assert.That(player.PassStart, Is.EqualTo(SimTime.Zero));
+
+            player.Seek(SimTime.FromMilliseconds(20));
+            Assert.That(player.PassCount, Is.EqualTo(first + 1), "a scrub is no new pass");
+        }
+
+        [Test]
+        public void TimelinePlayer_PlayFrom_StartsPartway_WithoutFiringTheEventsBefore()
+        {
+            var player = new TimelinePlayer();
+            var fired = new List<MatchEvent>();
+            player.EventReached += fired.Add;
+            TurnTimeline timeline = CreateTimeline(out SimClock clock);
+
+            player.PlayFrom(timeline, clock.TimeAtStep(SeverStep));
+            Assert.That(fired.Count, Is.EqualTo(1), "the sever exactly at the start fires");
+            Assert.That(player.PassStart, Is.EqualTo(clock.TimeAtStep(SeverStep)));
+
+            player.Advance(10f);
+            Assert.That(fired.Count, Is.EqualTo(2), "then the death");
+        }
+
         private static TurnTimeline CreateTimeline(out SimClock clock)
         {
             clock = new SimClock(StepRateHz);

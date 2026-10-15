@@ -146,5 +146,59 @@ namespace XRim.Tests.EditMode.Presentation
             Assert.That(_parts[(int)BodyPart.Torso].gameObject.activeSelf, Is.True, "whole again (S5)");
             Assert.That(_torsoTop.gameObject.activeSelf, Is.False);
         }
+
+        [Test]
+        public void AFlinch_RocksTheDrawingAboutThePelvis_AndPutsItBackAtZero()
+        {
+            FighterPose pose = Pose();
+            pose.Set(BodyPart.Torso, new BodyPose(new Vec2(0f, 180f), 0f));
+            pose.Set(BodyPart.Head, new BodyPose(new Vec2(0f, 300f), 0f));
+            _view.ApplyPose(pose, Side.Left, new List<SeveredLimbPose>(), _space);
+
+            _view.SetFlinch(-90f, new Vec2(10f, 0f));
+
+            Transform head = _parts[(int)BodyPart.Head];
+            Assert.That(Vector3.Distance(head.localPosition, World(new Vec2(130f, 180f))), Is.LessThan(Tolerance),
+                "a quarter turn clockwise about the pelvis, pushed 10 (redrawn at once, without a new pose)");
+            Assert.That(Vector3.Distance(_rapier.localPosition, World(new Vec2(-80f + 10f, 180f))), Is.LessThan(Tolerance), "the held item flinches too");
+
+            _view.SetFlinch(0f, Vec2.Zero);
+            Assert.That(Vector3.Distance(head.localPosition, World(new Vec2(0f, 300f))), Is.LessThan(Tolerance));
+        }
+
+        [Test]
+        public void AFlinch_LeavesLimbsOnTheFloorWhereTheyLie()
+        {
+            FighterPose pose = Pose();
+            pose.MarkSevered(BodyPart.LeftLeg);
+            var floor = new List<SeveredLimbPose>
+            {
+                new SeveredLimbPose(Side.Left, BodyPart.LeftLeg, new BodyPose(new Vec2(300f, 20f), 90f), new BodyPose(new Vec2(390f, 20f), 90f)),
+            };
+            _view.ApplyPose(pose, Side.Left, floor, _space);
+
+            _view.SetFlinch(8f, new Vec2(-6f, 0f));
+
+            Assert.That(Vector3.Distance(_parts[(int)BodyPart.LeftLeg].localPosition, World(new Vec2(300f, 20f))), Is.LessThan(Tolerance));
+        }
+
+        [Test]
+        public void AFlash_TintsTheStruckPartsDrawings_AndFadesBackToTheirOwnColour()
+        {
+            var drawing = Make("Visual", _parts[(int)BodyPart.LeftArm]).AddComponent<SpriteRenderer>();
+            var lowerDrawing = Make("Visual", _lower[(int)BodyPart.LeftArm]).AddComponent<SpriteRenderer>();
+            drawing.color = Color.black;
+            lowerDrawing.color = Color.black;
+
+            _view.SetPartFlash(BodyPart.LeftArm, 1f, Color.white);
+            Assert.That(drawing.color, Is.EqualTo(Color.white));
+            Assert.That(lowerDrawing.color, Is.EqualTo(Color.white), "both segments of the limb");
+
+            _view.SetPartFlash(BodyPart.LeftArm, 0.5f, Color.white);
+            Assert.That(drawing.color.r, Is.EqualTo(0.5f).Within(Tolerance));
+
+            _view.SetPartFlash(BodyPart.LeftArm, 0f, Color.white);
+            Assert.That(drawing.color, Is.EqualTo(Color.black), "its own colour again");
+        }
     }
 }

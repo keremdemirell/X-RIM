@@ -126,10 +126,10 @@ namespace XRim.App
 
         private void ShowLayout(ScreenLayout layout)
         {
-            if (_shownMirrored == layout.IsMirrored && Mathf.Approximately(_shownBodyZoneFraction, layout.BodyZoneWidthFraction)) return;
+            if (_shownMirrored == layout.IsMirrored && Mathf.Approximately(_shownBodyZoneFraction, layout.EffectiveBodyZoneFraction)) return;
             _shownMirrored = layout.IsMirrored;
-            _shownBodyZoneFraction = layout.BodyZoneWidthFraction;
-            _hud.ShowLayout(layout.IsMirrored, layout.BodyZoneWidthFraction);
+            _shownBodyZoneFraction = layout.EffectiveBodyZoneFraction;
+            _hud.ShowLayout(layout.IsMirrored, layout.EffectiveBodyZoneFraction, layout.BodyZoneWidthFraction);
         }
 
         private void ShowSelection(PlanDraft draft)

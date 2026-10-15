@@ -36,14 +36,32 @@ namespace XRim.Presentation.Playback
 
         public bool IsFinished => _timeline == null || CurrentTime >= _timeline.Duration;
 
+        /// <summary>
+        /// Counts the passes over a timeline: each <see cref="Play"/> and <see cref="Restart"/> (a replay, a loop) starts one, and its events
+        /// fire again from <see cref="PassStart"/>. Effects that drew what a pass will fire again clear it first (Session 13).
+        /// </summary>
+        public int PassCount { get; private set; }
+
+        /// <summary>Where the current pass started in the turn.</summary>
+        public SimTime PassStart { get; private set; }
+
         /// <summary>The recorded frame shown now (the last at or before <see cref="CurrentTime"/>), or -1.</summary>
         public int CurrentFrameIndex => _timeline == null ? -1 : FrameIndexAt(CurrentTime);
 
-        public void Play(TurnTimeline timeline)
+        public void Play(TurnTimeline timeline) => PlayFrom(timeline, SimTime.Zero);
+
+        /// <summary>
+        /// Plays a timeline from a time partway through (Session 13: the instant replay starts just before its moment): the events before
+        /// it do not fire, those from it on fire as playback passes them, and a new pass starts there.
+        /// </summary>
+        public void PlayFrom(TurnTimeline timeline, SimTime start)
         {
             _timeline = Guard.NotNull(timeline, nameof(timeline));
-            _nextEventIndex = 0;
-            CurrentTime = SimTime.Zero;
+            SimTime from = start < SimTime.Zero ? SimTime.Zero : start > timeline.Duration ? timeline.Duration : start;
+            _nextEventIndex = FirstEventAtOrAfter(from);
+            CurrentTime = from;
+            PassCount++;
+            PassStart = from;
             IsPaused = false;
             FireEventsUpTo(CurrentTime);
             EmitPose();
@@ -63,6 +81,8 @@ namespace XRim.Presentation.Playback
             if (_timeline == null) return;
             _nextEventIndex = 0;
             CurrentTime = SimTime.Zero;
+            PassCount++;
+            PassStart = SimTime.Zero;
             FireEventsUpTo(CurrentTime);
             EmitPose();
         }
@@ -95,6 +115,14 @@ namespace XRim.Presentation.Playback
                 _nextEventIndex++;
                 EventReached?.Invoke(matchEvent);
             }
+        }
+
+        private int FirstEventAtOrAfter(SimTime time)
+        {
+            IReadOnlyList<MatchEvent> events = _timeline.Events;
+            int index = 0;
+            while (index < events.Count && events[index].Time < time) index++;
+            return index;
         }
 
         private int FirstEventAfter(SimTime time)

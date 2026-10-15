@@ -8,9 +8,11 @@ using XRim.Core.Gdd;
 using XRim.Input;
 using XRim.Networking;
 using XRim.Presentation.Arena;
+using XRim.Presentation.Audio;
 using XRim.Presentation.Cameras;
 using XRim.Presentation.Dummy;
 using XRim.Presentation.Feel;
+using XRim.Presentation.Moments;
 using XRim.Presentation.Playback;
 using XRim.Presentation.UI;
 using XRim.Presentation.Vfx;
@@ -18,8 +20,10 @@ using XRim.Rules;
 using XRim.Rules.Arena;
 using XRim.Rules.Limbs;
 using XRim.Rules.Match;
+using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Status;
 using XRim.Simulation;
 using XRim.Simulation.Execution;
 using XRim.Simulation.Physics;
@@ -32,7 +36,7 @@ namespace XRim.App
 {
     /// <summary>
     /// Composition root of a match scene, with constructor injection and no singletons. Built once for the scene: the hidden Unity
-    /// physics world, the visible dummies and <see cref="TurnPlayback"/> (with the <see cref="FeelDirector"/>'s hitstop), the touch
+    /// physics world, the visible dummies and <see cref="TurnPlayback"/> (with the <see cref="FeelDirector"/>'s hitstops and slow motion, and the camera director), the touch
     /// reader and, outside the sandbox, the planning HUD, the match HUD and the match screens. Built again for every match
     /// (<see cref="BeginMatch"/>, Rematch, a new mode), so tuning edits apply from the next match: the settings snapshot, the
     /// <see cref="RulePolicies"/> defaults, <see cref="LocalTurnAuthority"/> over the <see cref="TurnSimulator"/> → the
@@ -53,6 +57,9 @@ namespace XRim.App
 
         /// <summary>How many of the latest turns' simulation times the debug overlay's statistics keep (all-time numbers keep everything).</summary>
         private const int SimulationTimingWindowTurns = 200;
+
+        /// <summary>How many played turns the debug pacing list keeps.</summary>
+        private const int PacingHistoryTurns = 8;
 
         /// <summary>The human plays the left dummy against the bot.</summary>
         private const Side HumanSide = Side.Left;
@@ -96,6 +103,7 @@ namespace XRim.App
 
         private readonly ManualClock _clock = new ManualClock();
         private readonly RollingStatistics _simulationTiming = new RollingStatistics(SimulationTimingWindowTurns);
+        private readonly List<PlayedTurnPacing> _recentPacing = new List<PlayedTurnPacing>();
         private readonly TouchBlockerSet _touchBlockers = new TouchBlockerSet();
         private readonly IHandednessLayoutPolicy _handedness = new MirrorWhenLeftHanded();
         private readonly List<TouchSample> _discardedTouches = new List<TouchSample>();
@@ -105,6 +113,13 @@ namespace XRim.App
         private TurnPlayback _playback;
         private FeelDirector _feel;
         private MatchVfx _vfx;
+        private MatchAudio _audio;
+        private FeelConfig _feelConfig;
+        private InstantReplay _replay;
+        private TurnResult _replayedTurn;
+        private bool _replayHoldsTurn;
+        private bool _infiniteInk;
+        private ScriptableObject _ownedAudio;
         private ElectricWallView _wallView;
         private InputConfig _input;
         private ScriptableObject _ownedInput;
@@ -128,6 +143,7 @@ namespace XRim.App
         private RecordingTurnSimulator _simulator;
         private ScriptedSeverContactHandler _severCheat;
         private ScriptedKnockOutContactHandler _knockOutCheat;
+        private ScriptedStatusContactHandler _statusCheat;
         private LocalTurnAuthority _authority;
         private ClientMatchFlow _flow;
         private PlanSourceBinder _binder;
@@ -175,7 +191,25 @@ namespace XRim.App
         /// <summary>The dummies the force-double-KO cheat knocks out at the next turn's start (debug); empty between matches.</summary>
         public IReadOnlyList<Side> QueuedKnockOuts =>
             _knockOutCheat != null ? _knockOutCheat.Queued : (IReadOnlyList<Side>)Array.Empty<Side>();
+
+        /// <summary>The stuns and staggers the force-stun cheat gives at the next turn's start (debug); empty between matches.</summary>
+        public IReadOnlyList<(Side Side, StatusKind Kind)> QueuedStatuses =>
+            _statusCheat != null ? _statusCheat.Queued : (IReadOnlyList<(Side, StatusKind)>)Array.Empty<(Side, StatusKind)>();
+
         public TurnPlayback Playback => _playback;
+
+        /// <summary>The feel layer's pacing (hitstops, slow motion); debug tools read its plan for the turn being played.</summary>
+        public FeelDirector Feel => _feel;
+
+        /// <summary>The mechanical effects (debris, sparks, trails); tests count its pieces.</summary>
+        public MatchVfx Vfx => _vfx;
+
+        /// <summary>The match's sounds and music; tests read what it played.</summary>
+        public MatchAudio Audio => _audio;
+
+        /// <summary>The instant replay of a legendary turn, or of the last turn when the debug tools ask for it.</summary>
+        public InstantReplay Replay => _replay;
+
         public MatchSetup Setup => _setup;
 
         /// <summary>The humans planning on this device in the current match; null in the sandbox and between matches.</summary>
@@ -193,6 +227,12 @@ namespace XRim.App
         /// </summary>
         public RollingStatistics SimulationTiming => _simulationTiming;
 
+        /// <summary>
+        /// The last played turns' time on screen against the feel layer's plan, oldest first (Session 13: the debug Playback tab's pacing
+        /// list; the playback hold is measured from these). Replays are not counted.
+        /// </summary>
+        public IReadOnlyList<PlayedTurnPacing> RecentPacing => _recentPacing;
+
         /// <summary>The last turn re-simulated with the current tuning (display only); null if none.</summary>
         public TurnResult LastResimulation { get; private set; }
 
@@ -208,17 +248,38 @@ namespace XRim.App
         /// <summary>While true the authority's clock stands still, so the planning timer never runs out (Sandbox, debug cheats).</summary>
         public bool IsPlanningTimerFrozen { get; set; }
 
+        /// <summary>
+        /// Debug (the Cheats tab's infinite ink, Session 13): no path costs ink, for both sides, from now on and in later matches until it is
+        /// switched off. Reach and the execution hard cap still limit a path, and a too-sharp spear turn still breaks it. Never a game rule.
+        /// </summary>
+        public bool InfiniteInk
+        {
+            get => _infiniteInk;
+            set
+            {
+                _infiniteInk = value;
+                if (Policies != null) ApplyInfiniteInk(Policies);
+            }
+        }
+
         /// <summary>Real seconds since the current match started (planning and playback included).</summary>
         public double MatchRealSeconds => _started ? Time.unscaledTimeAsDouble - _matchStartedRealSeconds : 0.0;
 
         /// <summary>
         /// Wires a scene built in code (tests, tools) before its first frame, as XRim/Setup/Create Match Scene does in the Editor.
         /// </summary>
+        /// <param name="camera">The match camera (its <see cref="FixedSideCameraDirector"/>, if any, directs it); null finds the main camera.</param>
         public void Configure(TuningProfile tuning, Ragdoll sixBodies, Ragdoll tenBodies, Transform arenaRoot, Sprite square,
-            MatchMode mode, bool pickModeAtStart, PanelSettings hudPanelSettings = null)
+            MatchMode mode, bool pickModeAtStart, PanelSettings hudPanelSettings = null, Camera camera = null)
         {
             if (_composed) throw new InvalidOperationException("Configure the match scene before it starts.");
             _hudPanelSettings = hudPanelSettings;
+            if (camera != null)
+            {
+                _camera = camera;
+                _cameraDirector = camera.GetComponent<FixedSideCameraDirector>();
+            }
+
             _tuning = tuning;
             _sixBodies = sixBodies;
             _tenBodies = tenBodies;
@@ -260,13 +321,17 @@ namespace XRim.App
             float delta = Time.unscaledDeltaTime;
             if (_started)
             {
-                if (_hotSeat != null) _hotSeat.Advance(delta); // hot-seat runs the planning timer per player
-                else if (!IsPlanningTimerFrozen) _clock.Advance(delta);
+                // The clock stands still while it is frozen (debug) and while a replay plays: a replay shows a turn that is over, so it must
+                // never eat planning time or run out the wait for the playback report.
+                bool clockStopped = IsPlanningTimerFrozen || _replay.IsPlaying;
+                if (_hotSeat != null) _hotSeat.Advance(clockStopped ? 0.0 : delta); // hot-seat runs the planning timer per player
+                else if (!clockStopped) _clock.Advance(delta);
                 _humans?.TickInput();
                 _authority.Tick();
             }
 
             _playback.Advance(delta);
+            _replay.Advance();
             ReportPlaybackAfterWatchPause();
             SyncHotSeat();
             TickPresenters();
@@ -279,6 +344,9 @@ namespace XRim.App
             {
                 _playback.Finished -= OnPlaybackFinished;
                 _playback.RemoveReactor(_feel);
+                if (_cameraDirector != null) _playback.RemoveReactor(_cameraDirector);
+                if (_audio != null) _playback.RemoveReactor(_audio);
+                if (_replay != null) _replay.Finished -= OnReplayFinished;
                 if (_wallView != null) _playback.PoseShown -= _wallView.Show;
             }
 
@@ -290,6 +358,7 @@ namespace XRim.App
                 _screens.CoverConfirmed -= OnCoverConfirmed;
                 _screens.RematchPressed -= Rematch;
                 _screens.ChangeModePressed -= ShowModePicker;
+                _screens.ReplaySkipPressed -= OnReplaySkipPressed;
                 Destroy(_screens.gameObject);
             }
 
@@ -297,6 +366,7 @@ namespace XRim.App
             if (_matchHud != null) Destroy(_matchHud.gameObject);
             if (_ownedInput != null) Destroy(_ownedInput);
             if (_ownedFeel != null) Destroy(_ownedFeel);
+            if (_ownedAudio != null) Destroy(_ownedAudio);
             if (_ownedDisplay != null) Destroy(_ownedDisplay);
             RestoreDisplay();
             if (_lineMaterial != null) Destroy(_lineMaterial);
@@ -330,6 +400,7 @@ namespace XRim.App
         public void ShowModePicker()
         {
             TearDownMatch();
+            if (_audio != null) _audio.SetMusicPlaying(false);
             if (_screens == null) return;
 
             if (_planningHud != null) _planningHud.SetVisible(false);
@@ -360,9 +431,10 @@ namespace XRim.App
             BuildViews(SimulationSettings.Segmentation);
 
             _setup = CreateSetup(RulesSettings);
-            // The contact handler is the game's (hits, clashes, blocks), wrapped so the debug cheats can knock both dummies out or cut a limb at a
-            // turn's start, through the real paths.
-            _severCheat = new ScriptedSeverContactHandler(new HitContactHandler());
+            // The contact handler is the game's (hits, clashes, blocks), wrapped so the debug cheats can knock both dummies out, cut a limb or
+            // stun a dummy at a turn's start, through the real paths (in that order: a dummy knocked out gets no stun).
+            _statusCheat = new ScriptedStatusContactHandler(new HitContactHandler());
+            _severCheat = new ScriptedSeverContactHandler(_statusCheat);
             _knockOutCheat = new ScriptedKnockOutContactHandler(_severCheat);
             var simulatorOptions = new TurnSimulatorOptions { Contacts = _knockOutCheat };
             _simulator = new RecordingTurnSimulator(new TurnSimulator(_world, Policies, simulatorOptions), _simulationTiming);
@@ -406,6 +478,7 @@ namespace XRim.App
             DiscardPendingTouches(); // the tap that started the match is not a stroke
             if (_screens != null) _screens.Hide();
             if (_matchHud != null) _matchHud.SetVisible(true);
+            _audio.SetMusicPlaying(true);
             TouchPlanSource human = _hotSeat == null && _humans != null ? _humans.Find(HumanSide) : null;
             SetViewFlipped(human != null && human.Layout.ArenaViewFlipped);
             _authority.Start();
@@ -415,6 +488,8 @@ namespace XRim.App
         private void TearDownMatch()
         {
             _playbackReportPending = false;
+            StopReplay();
+
             _shownHotSeatStage = HotSeatStage.Idle;
             if (_authority == null) return;
 
@@ -436,6 +511,7 @@ namespace XRim.App
             _simulator = null;
             _severCheat = null;
             _knockOutCheat = null;
+            _statusCheat = null;
             _started = false;
         }
 
@@ -450,6 +526,18 @@ namespace XRim.App
         /// path, so a normal turn goes to sudden death (§3) and a sudden-death turn is a tie (§14). Does nothing between matches.
         /// </summary>
         public void QueueDoubleKnockOut() => _knockOutCheat?.QueueDoubleKnockOut();
+
+        /// <summary>
+        /// Debug (the Cheats tab's force KO, Session 13): this dummy dies at the very start of the next turn through the real death path, so
+        /// the other wins (in sudden death too): the match-winning KO and its replay on demand. Does nothing between matches.
+        /// </summary>
+        public void QueueKnockOut(Side side) => _knockOutCheat?.QueueKnockOut(side);
+
+        /// <summary>
+        /// Debug (the Cheats tab's force stun, Session 13): this dummy is stunned or staggered at the very start of the next turn, through the
+        /// real status path, so the turn after it is planned under that status (D17: no body move by default). Does nothing between matches.
+        /// </summary>
+        public void QueueStatus(Side side, StatusKind kind) => _statusCheat?.QueueStatus(side, kind);
 
         /// <summary>
         /// Debug (the Cheats tab's turn counter, Session 12): the next turn played is this one (0-based), so the turn cap can be reached at
@@ -487,6 +575,23 @@ namespace XRim.App
 
             LastResimulation = _simulator.Simulate(new TurnInput(last.Board, last.Plans, rules, simulation));
             Play(LastResimulation);
+            return true;
+        }
+
+        /// <summary>True when <see cref="ReplayLastTurn"/> can play: between turns (planning), nothing playing, no hot-seat cover up.</summary>
+        public bool CanReplayLastTurn =>
+            _composed && _flow != null && _flow.Phase == ClientPhase.Planning && _playback.Current != null && !_playback.IsPlaying &&
+            !_replay.IsPlaying && (_hotSeat == null || _hotSeat.Stage != HotSeatStage.Cover);
+
+        /// <summary>
+        /// Debug (the Playback tab, Session 13): plays the last turn's instant replay now, as a legendary turn's replay plays (its moment, or
+        /// its hardest hit when it has none). The planning clock stands still meanwhile, and the board being planned comes back after it.
+        /// </summary>
+        public bool ReplayLastTurn()
+        {
+            if (!CanReplayLastTurn) return false;
+            TurnResult turn = _playback.Current;
+            BeginReplay(turn, RequestedMoment.Pick(turn, new HeuristicMomentDetector(MomentSettings.From(_feelConfig))), false);
             return true;
         }
 
@@ -545,24 +650,50 @@ namespace XRim.App
             _wallView = ElectricWallView.Create(_arenaRoot, _square, Space);
             _playback.PoseShown += _wallView.Show;
             FeelConfig feel = _tuning.Feel != null ? _tuning.Feel : OwnedDefault<FeelConfig>(ref _ownedFeel, "Feel");
-            _feel = new FeelDirector(feel);
+
+            // The camera frames the duel and reacts to it (GDD §2, flagged); the feel layer holds each turn until it is still again.
+            if (_camera == null) _camera = Camera.main;
+            if (_cameraDirector == null && _camera != null) _cameraDirector = _camera.GetComponent<FixedSideCameraDirector>();
+            if (_cameraDirector != null)
+            {
+                _cameraDirector.Configure(feel, Space, _playback);
+                _playback.AddReactor(_cameraDirector);
+            }
+
+            _feel = new FeelDirector(feel, _cameraDirector);
+            _feelConfig = feel;
             _playback.Pacer = _feel;
             _playback.AddReactor(_feel);
+            _replay = new InstantReplay(_playback, _feel, _cameraDirector);
+            _replay.Finished += OnReplayFinished;
+            _touchBlockers.Add(new ReplayTouchBlocker(_replay));
             _vfx = gameObject.AddComponent<MatchVfx>();
-            _vfx.Configure(_playback, _arenaRoot, Space, feel, () => SimulationSettings.GravityUnitsPerSecondSquared);
+            _vfx.Configure(_playback, _arenaRoot, Space, feel, () => SimulationSettings.GravityUnitsPerSecondSquared, weapon => RulesSettings.FindWeapon(weapon));
             _playback.AddReactor(_vfx);
+            ComposeAudio(feel);
             _playback.Finished += OnPlaybackFinished;
 
             _input = _tuning.InputConfig != null ? _tuning.InputConfig : OwnedDefault<InputConfig>(ref _ownedInput, "Input");
             ApplyDisplay(_tuning.Display != null ? _tuning.Display : OwnedDefault<DisplayConfig>(ref _ownedDisplay, "Display"));
-            if (_camera == null) _camera = Camera.main;
-            if (_cameraDirector == null && _camera != null) _cameraDirector = _camera.GetComponent<FixedSideCameraDirector>();
             _touchReader = GetComponent<TouchInputReader>();
             if (_touchReader == null) _touchReader = gameObject.AddComponent<TouchInputReader>();
             if (_mode != MatchMode.Sandbox) ComposeMatchUi();
 
             _composed = true;
             return true;
+        }
+
+        /// <summary>
+        /// The duel's sound (GDD §2, Session 13): every played event's sounds and the music loop, silent where no clip exists yet. In slow
+        /// motion sounds play deeper (the feel layer's speed). The camera gets an audio listener if the scene has none on it.
+        /// </summary>
+        private void ComposeAudio(FeelConfig feel)
+        {
+            AudioConfig audio = _tuning.Audio != null ? _tuning.Audio : OwnedDefault<AudioConfig>(ref _ownedAudio, "Audio");
+            _audio = gameObject.AddComponent<MatchAudio>();
+            _audio.Configure(audio, feel, () => _feel.SlowMotion.SpeedAt(_playback.Player.CurrentTime));
+            _playback.AddReactor(_audio);
+            if (_camera != null && _camera.GetComponent<AudioListener>() == null) _camera.gameObject.AddComponent<AudioListener>();
         }
 
         /// <summary>
@@ -618,6 +749,7 @@ namespace XRim.App
             _screens.CoverConfirmed += OnCoverConfirmed;
             _screens.RematchPressed += Rematch;
             _screens.ChangeModePressed += ShowModePicker;
+            _screens.ReplaySkipPressed += OnReplaySkipPressed;
         }
 
         private T OwnedDefault<T>(ref ScriptableObject owned, string slot) where T : ScriptableObject
@@ -642,6 +774,13 @@ namespace XRim.App
             }
 
             Policies = new RulePolicies();
+            ApplyInfiniteInk(Policies);
+        }
+
+        private void ApplyInfiniteInk(RulePolicies policies)
+        {
+            if (_infiniteInk && !(policies.InkCost is FreeInkCostModel)) policies.InkCost = new FreeInkCostModel(policies.InkCost);
+            else if (!_infiniteInk && policies.InkCost is FreeInkCostModel free) policies.InkCost = free.Inner;
         }
 
         /// <summary>The floor and edge markers for this match's arena settings.</summary>
@@ -650,6 +789,7 @@ namespace XRim.App
             if (_arenaView != null) Destroy(_arenaView);
             ArenaEdges edges = Policies.ArenaEdge.EdgesFor(RulesSettings.Arena);
             _arenaView = ArenaView.Create(_arenaRoot, _square, edges, Space);
+            if (_cameraDirector != null) _cameraDirector.SetArena(edges);
         }
 
         /// <summary>The drawn dummies, holding this snapshot's weapons, for a segmentation (D2).</summary>
@@ -793,6 +933,7 @@ namespace XRim.App
 
         private void Play(TurnResult result)
         {
+            StopReplay(); // a turn played (or re-simulated) while a replay shows ends the replay
             MatchViewsTo(result.FinalBoard.Pose);
             _playback.Play(result);
         }
@@ -801,6 +942,29 @@ namespace XRim.App
         {
             MatchViewsTo(board.Pose);
             _playback.ShowBoard(board);
+            if (_cameraDirector != null) _cameraDirector.ShowBoard(board.Pose);
+            _audio.OnBoardShown(board.State);
+            CoverDummiesWithBodyZones(board.Pose);
+        }
+
+        /// <summary>
+        /// GDD §4 (Decided: the body zone covers the player's own dummy; designer 2026-10-11, F3, flagged in the Input asset): each human's
+        /// body zone reaches from their screen edge to just past their own dummy on the frozen board, as the camera frames it now (the
+        /// camera never moves while a player plans). Off: the plain strip.
+        /// </summary>
+        private void CoverDummiesWithBodyZones(PoseSnapshot pose)
+        {
+            if (_humans == null || _camera == null) return;
+            ArenaViewFrame view = CameraArenaView.Read(_camera, Space);
+            float centreXUnits = _viewFlipped ? -view.CenterUnits.X : view.CenterUnits.X; // the canonical arena, whichever way it is shown
+            float widthUnits = view.VisibleHeightUnits * _camera.aspect;
+            foreach (TouchPlanSource source in _humans.Sources)
+            {
+                float cover = _input.BodyZoneCoversDummy && widthUnits > 0f
+                    ? BodyZoneCover.FromOwnEdgeFraction(pose.Get(source.Side), source.Side, centreXUnits, widthUnits, _input.BodyZoneMarginBeyondDummyUnits)
+                    : 0f;
+                source.Layout = source.Layout.WithDummyCover(cover);
+            }
         }
 
         private void OnMatchStarted(MatchStartInfo info) => ShowBoard(info.InitialBoard);
@@ -838,10 +1002,89 @@ namespace XRim.App
                 _simulationTiming.Describe("ms")), this);
         }
 
+        /// <summary>
+        /// How long the turn took on screen with the feel effects (hitstops, slow motion, the camera settling) against its recorded length
+        /// and the feel layer's plan: the numbers the playback hold (<see cref="PlaybackHoldSettings"/>) is measured from (Session 13).
+        /// </summary>
+        private void LogPlayedTurn(TurnResult turn)
+        {
+            var pacing = new PlayedTurnPacing(turn.TurnIndex, _feel.Pacing, _playback.PlayRealSeconds);
+            if (_recentPacing.Count == PacingHistoryTurns) _recentPacing.RemoveAt(0);
+            _recentPacing.Add(pacing);
+            Debug.Log(string.Format(CultureInfo.InvariantCulture, "[XRim] Turn {0} ({1}) played in {2:0.00} s for {3:0.000} s of turn (planned {4}).",
+                turn.TurnIndex + 1, _mode, pacing.OnScreenSeconds, turn.Timeline.Duration.Seconds, pacing.Planned), this);
+        }
+
         private void OnPlaybackFinished(TurnResult result)
         {
-            if (_flow == null) return;
+            if (_flow == null || _replay.IsPlaying) return; // an instant replay ends itself
+            LogPlayedTurn(result);
+            if (TryStartReplay(result)) return;
+            ContinueAfterPlayback();
+        }
 
+        /// <summary>
+        /// A legendary turn just played (GDD pillar 1; §17: a local instant replay only, designer 2026-10-11): it plays again at once, slower,
+        /// the camera on the moment, before the match moves on; a tap skips it. Every KO is replayed (the match-winning blow). Not in the
+        /// sandbox, and never a turn twice.
+        /// </summary>
+        private bool TryStartReplay(TurnResult turn)
+        {
+            if (_mode == MatchMode.Sandbox || !_feelConfig.AutoReplayLegendaryTurns || _flow.Phase != ClientPhase.Playback || turn == _replayedTurn)
+                return false;
+            if (!new HeuristicMomentDetector(MomentSettings.From(_feelConfig)).TryDetect(turn, out LegendaryMoment moment)) return false;
+
+            _replayedTurn = turn;
+            BeginReplay(turn, moment, true);
+            return true;
+        }
+
+        /// <param name="holdsTurn">True for a legendary turn's own replay: the match moves on when it ends.</param>
+        private void BeginReplay(TurnResult turn, LegendaryMoment moment, bool holdsTurn)
+        {
+            _replayHoldsTurn = holdsTurn;
+            string why = holdsTurn ? "legendary moment" : "replay asked for";
+            Debug.Log($"[XRim] Turn {turn.TurnIndex + 1}: {why}, {moment}. Instant replay.", this);
+            _replay.Begin(turn, moment, ReplaySettings.From(_feelConfig));
+            if (_screens != null)
+            {
+                PerSide<string> names = _names ?? MatchLabels.FighterNames(_mode, HumanSide);
+                _screens.ShowReplay(MatchLabels.ReplayTitle, MatchLabels.MomentCaption(moment.Kind, moment.Hero, names), MatchLabels.ReplayHint);
+            }
+        }
+
+        private void OnReplaySkipPressed() => _replay.Skip();
+
+        /// <summary>
+        /// The replay is over: back to the board (a cut). A legendary turn's own replay then lets the match move on, as after any turn; a
+        /// replay asked for between turns returns to the board being planned.
+        /// </summary>
+        private void OnReplayFinished()
+        {
+            if (_screens != null) _screens.Hide();
+            bool heldTheTurn = _replayHoldsTurn;
+            _replayHoldsTurn = false;
+            if (_flow != null && _flow.Phase == ClientPhase.Planning)
+            {
+                ShowBoard(_flow.CurrentWindow.Board);
+                return;
+            }
+
+            if (_replay.Turn != null) ShowBoard(_replay.Turn.FinalBoard);
+            if (heldTheTurn && _flow != null && _flow.Phase == ClientPhase.Playback) ContinueAfterPlayback();
+        }
+
+        /// <summary>Ends a replay without the match moving on: a new playback replaces it, or the match is torn down.</summary>
+        private void StopReplay()
+        {
+            _replayHoldsTurn = false;
+            if (_replay == null || !_replay.IsPlaying) return;
+            _replay.Cancel();
+            if (_screens != null) _screens.Hide();
+        }
+
+        private void ContinueAfterPlayback()
+        {
             // Watching two bots: the frozen board stays a moment before the next turn, so it can be read.
             if (_mode == MatchMode.BotVsBot && _flow.Phase == ClientPhase.Playback && _botWatchPauseSeconds > 0f)
             {
@@ -876,6 +1119,7 @@ namespace XRim.App
             string reason = MatchOverText.Reason(outcome, names);
             string summary = MatchOverText.Summary(outcome.TurnCount, MatchRealSeconds);
             Debug.Log($"[XRim] Match over ({_mode}): {title} {reason}. {summary}.", this);
+            _audio.SetMusicPlaying(false);
             if (_screens != null) _screens.ShowMatchOver(title, reason, summary);
         }
 

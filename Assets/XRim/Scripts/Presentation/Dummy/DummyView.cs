@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using XRim.Config;
 using XRim.Core;
+using XRim.Presentation.Vfx;
 using XRim.Rules;
 using XRim.Simulation.Physics;
 
@@ -16,6 +17,8 @@ namespace XRim.Presentation.Dummy
     /// origin of the arena root, so flipping the arena root mirrors the view (GDD §4) without touching the simulation.
     /// Lost limbs (GDD §11, §12): a limb no longer on the dummy is drawn where it lies on the floor, or hidden while someone wields it
     /// as a club (the club is drawn as the held item); a dropped item is drawn where it falls; a split torso shows its two halves.
+    /// Feel (Session 13, drawing only): a struck part can flash (<see cref="SetPartFlash"/>) and the whole dummy can flinch, rocking about
+    /// its pelvis (<see cref="SetFlinch"/>); limbs lying on the floor and a dropped item do not flinch.
     /// </summary>
     public sealed class DummyView : MonoBehaviour
     {
@@ -34,6 +37,17 @@ namespace XRim.Presentation.Dummy
         private static readonly IReadOnlyList<SeveredLimbPose> NoFloorLimbs = Array.Empty<SeveredLimbPose>();
 
         private readonly Dictionary<string, Transform> _heldItemsByWeapon = new Dictionary<string, Transform>();
+        private readonly List<SpriteRenderer>[] _flashRenderers = new List<SpriteRenderer>[BodyParts.Count];
+        private readonly List<Color>[] _flashOriginalColors = new List<Color>[BodyParts.Count];
+
+        // The last pose drawn, so a flinch can be redrawn without a new pose.
+        private FighterPose _lastPose;
+        private Side _lastOwner;
+        private IReadOnlyList<SeveredLimbPose> _lastFloorLimbs;
+        private ArenaSpace _lastSpace;
+        private float _flinchDegrees;
+        private Vec2 _flinchOffsetUnits;
+        private Vec2 _flinchPivotUnits;
 
         /// <summary>Wires a dummy built in code. Arrays are indexed by <see cref="BodyPart"/>; the torso halves may be null.</summary>
         public void Configure(Transform[] parts, Transform[] lowerParts, Transform torsoBottom = null, Transform torsoTop = null)
@@ -86,6 +100,11 @@ namespace XRim.Presentation.Dummy
         {
             Guard.NotNull(pose, nameof(pose));
             Guard.NotNull(floorLimbs, nameof(floorLimbs));
+            _lastPose = pose;
+            _lastOwner = owner;
+            _lastFloorLimbs = floorLimbs;
+            _lastSpace = space;
+            _flinchPivotUnits = pose.Get(BodyPart.Torso).PositionUnits;
             int count = Mathf.Min(_parts.Length, pose.Parts.Length);
             for (int i = 0; i < count; i++)
             {
@@ -98,11 +117,11 @@ namespace XRim.Presentation.Dummy
                 }
 
                 SetVisible(_parts[i], true);
-                Apply(_parts[i], pose.Parts[i], space);
+                ApplyOnDummy(_parts[i], pose.Parts[i], space);
                 if (lower != null)
                 {
                     SetVisible(lower, true);
-                    Apply(lower, pose.LowerSegments[i], space);
+                    ApplyOnDummy(lower, pose.LowerSegments[i], space);
                 }
             }
 
@@ -143,8 +162,8 @@ namespace XRim.Presentation.Dummy
             }
 
             SetVisible(torso, false);
-            Apply(_torsoBottom, pose.Get(BodyPart.Torso), space);
-            Apply(_torsoTop, pose.TorsoTop, space);
+            ApplyOnDummy(_torsoBottom, pose.Get(BodyPart.Torso), space);
+            ApplyOnDummy(_torsoTop, pose.TorsoTop, space);
         }
 
         /// <summary>The item in hand, or the one this dummy dropped this turn, falling where it was let go of.</summary>
@@ -153,8 +172,64 @@ namespace XRim.Presentation.Dummy
             if (_heldItem == null) return;
             bool shown = pose.HasHeldItem || pose.HasDroppedItem;
             _heldItem.gameObject.SetActive(shown);
-            if (shown) Apply(_heldItem, pose.HasHeldItem ? pose.HeldItem : pose.DroppedItem, space);
+            if (!shown) return;
+            if (pose.HasHeldItem) ApplyOnDummy(_heldItem, pose.HeldItem, space);
+            else Apply(_heldItem, pose.DroppedItem, space);
         }
+
+        /// <summary>
+        /// Rocks the dummy's drawing about its pelvis by this many degrees and shifts it (a hit's flinch, Session 13); 0 and zero put it
+        /// back. Drawing only: what was recorded is unchanged. The last pose is redrawn at once.
+        /// </summary>
+        public void SetFlinch(float angleDegrees, Vec2 offsetUnits)
+        {
+            if (angleDegrees == _flinchDegrees && offsetUnits == _flinchOffsetUnits) return;
+            _flinchDegrees = angleDegrees;
+            _flinchOffsetUnits = offsetUnits;
+            if (_lastPose != null) ApplyPose(_lastPose, _lastOwner, _lastFloorLimbs, _lastSpace);
+        }
+
+        /// <summary>Tints every drawing of a part (both segments of a limb, the torso's halves) toward a colour: 0 = its own colour, 1 = the colour.</summary>
+        public void SetPartFlash(BodyPart part, float amount, Color flashColor)
+        {
+            List<SpriteRenderer> renderers = FlashRenderers(part);
+            List<Color> originals = _flashOriginalColors[(int)part];
+            float t = Mathf.Clamp01(amount);
+            for (int i = 0; i < renderers.Count; i++)
+            {
+                if (renderers[i] != null) renderers[i].color = Color.Lerp(originals[i], flashColor, t);
+            }
+        }
+
+        /// <summary>The part's drawings and their own colours, gathered the first time (before any flash).</summary>
+        private List<SpriteRenderer> FlashRenderers(BodyPart part)
+        {
+            int index = (int)part;
+            if (_flashRenderers[index] != null) return _flashRenderers[index];
+            var renderers = new List<SpriteRenderer>();
+            Gather(index < _parts.Length ? _parts[index] : null, renderers);
+            Gather(_lowerParts != null && index < _lowerParts.Length ? _lowerParts[index] : null, renderers);
+            if (part == BodyPart.Torso)
+            {
+                Gather(_torsoBottom, renderers);
+                Gather(_torsoTop, renderers);
+            }
+
+            var originals = new List<Color>(renderers.Count);
+            foreach (SpriteRenderer renderer in renderers) originals.Add(renderer.color);
+            _flashRenderers[index] = renderers;
+            _flashOriginalColors[index] = originals;
+            return renderers;
+        }
+
+        private static void Gather(Transform target, List<SpriteRenderer> into)
+        {
+            if (target != null) into.AddRange(target.GetComponentsInChildren<SpriteRenderer>(true));
+        }
+
+        /// <summary>A part still on the dummy: drawn where it is, flinched with the dummy.</summary>
+        private void ApplyOnDummy(Transform target, BodyPose pose, ArenaSpace space) =>
+            Apply(target, HitFlinch.Apply(pose, _flinchPivotUnits, _flinchDegrees, _flinchOffsetUnits), space);
 
         private static void SetVisible(Transform target, bool visible)
         {

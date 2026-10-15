@@ -10,7 +10,8 @@ namespace XRim.Presentation.UI
     /// <summary>
     /// The full-screen moments around a match (UI Toolkit built in code, placeholder look): the mode picker, the hot-seat cover screen
     /// (opaque, so the next player cannot see the arena or the last plan; a tap anywhere hands over) and the match-over screen, which
-    /// leaves the final pose visible behind it. It draws above every HUD.
+    /// leaves the final pose visible behind it, and (Session 13) the instant replay's banner over a see-through screen that skips the replay
+    /// when tapped. It draws above every HUD.
     /// </summary>
     public sealed class MatchScreens : MonoBehaviour, IMatchScreensView
     {
@@ -24,6 +25,8 @@ namespace XRim.Presentation.UI
         private static readonly Color OpaqueColor = new Color(0.07f, 0.08f, 0.1f, 1f);
         private static readonly Color DimmedColor = new Color(0f, 0f, 0f, 0.6f);
         private static readonly Color RematchColor = new Color(0.2f, 0.7f, 0.3f, 1f);
+        private static readonly Color ReplayBannerColor = new Color(0f, 0f, 0f, 0.45f);
+        private static readonly Color ReplayTitleColor = new Color(1f, 0.25f, 0.2f, 1f);
 
         [SerializeField] private UIDocument _document;
 
@@ -42,11 +45,16 @@ namespace XRim.Presentation.UI
         private Label _overTitle;
         private Label _overReason;
         private Label _overSummary;
+        private Button _replay;
+        private Label _replayTitle;
+        private Label _replayCaption;
+        private Label _replayHint;
 
         public event Action<int> ModePicked;
         public event Action CoverConfirmed;
         public event Action RematchPressed;
         public event Action ChangeModePressed;
+        public event Action ReplaySkipPressed;
 
         /// <summary>Makes the screens on a new GameObject of their own (see <see cref="PlanningHud.Create"/>); all hidden.</summary>
         public static MatchScreens Create(Vector2Int referenceResolution, PanelSettings panelSettingsTemplate = null)
@@ -128,6 +136,16 @@ namespace XRim.Presentation.UI
             Show(_matchOver);
         }
 
+        public void ShowReplay(string title, string caption, string hint)
+        {
+            if (_replay == null) return;
+
+            SetText(_replayTitle, title);
+            SetText(_replayCaption, caption);
+            SetText(_replayHint, hint);
+            Show(_replay);
+        }
+
         public void Hide() => Show(null);
 
         // ----- building -----
@@ -139,6 +157,7 @@ namespace XRim.Presentation.UI
             BuildPicker();
             BuildCover();
             BuildMatchOver();
+            BuildReplay();
             Hide();
             if (_safeArea.Changed(out ScreenInsets insets)) PadScreens(insets);
         }
@@ -146,7 +165,7 @@ namespace XRim.Presentation.UI
         /// <summary>Each screen's background still reaches every edge (the cover must hide everything); its content stays inside the safe area.</summary>
         private void PadScreens(ScreenInsets insets)
         {
-            foreach (VisualElement screen in new VisualElement[] { _picker, _cover, _matchOver })
+            foreach (VisualElement screen in new VisualElement[] { _picker, _cover, _matchOver, _replay })
             {
                 if (screen != null) PadBy(screen, insets);
             }
@@ -203,6 +222,36 @@ namespace XRim.Presentation.UI
             AddAction(actions, "CHANGE MODE", () => ChangeModePressed?.Invoke());
         }
 
+        /// <summary>A see-through screen (the replay shows through it) with a banner across the top; a tap anywhere skips.</summary>
+        private void BuildReplay()
+        {
+            _replay = new Button(() => ReplaySkipPressed?.Invoke()) { text = string.Empty };
+            _root.Add(_replay);
+            FullScreen(_replay, Color.clear);
+            _replay.style.justifyContent = Justify.FlexStart;
+            _replay.style.borderTopWidth = 0;
+            _replay.style.borderBottomWidth = 0;
+            _replay.style.borderLeftWidth = 0;
+            _replay.style.borderRightWidth = 0;
+            _replay.style.marginLeft = 0;
+            _replay.style.marginRight = 0;
+            _replay.style.marginTop = 0;
+            _replay.style.marginBottom = 0;
+
+            VisualElement banner = Plain(_replay);
+            banner.style.alignSelf = Align.Stretch;
+            banner.style.alignItems = Align.Center;
+            banner.style.backgroundColor = ReplayBannerColor;
+            banner.style.paddingTop = Gap;
+            banner.style.paddingBottom = Gap;
+            banner.pickingMode = PickingMode.Ignore;
+            _replayTitle = Text(banner, string.Empty, 44, ReplayTitleColor);
+            _replayTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _replayCaption = Text(banner, string.Empty, 34, TextColor);
+            _replayCaption.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _replayHint = Text(banner, string.Empty, 20, DimTextColor);
+        }
+
         private static Button AddAction(VisualElement parent, string text, Action pressed)
         {
             var button = new Button(pressed) { text = text };
@@ -231,7 +280,7 @@ namespace XRim.Presentation.UI
 
         private void Show(VisualElement screen)
         {
-            foreach (VisualElement candidate in new[] { _picker, _cover, _matchOver })
+            foreach (VisualElement candidate in new[] { _picker, _cover, _matchOver, _replay })
             {
                 if (candidate != null) candidate.style.display = candidate == screen ? DisplayStyle.Flex : DisplayStyle.None;
             }

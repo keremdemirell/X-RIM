@@ -55,7 +55,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
         private Vec2 Tip(BodyPose grip) => grip.PositionUnits + Vec2.FromAngleDegrees(grip.RotationDegrees) * _rapier.LengthUnits;
 
         [Test]
-        public void ARebound_BouncesTheBladeBack_AtHalfItsSpeed_ThenHoldsItBackedOffByTheRecoil()
+        public void ARebound_BouncesTheBladeBack_AtItsReboundShareOfItsSpeed_ThenHoldsItBackedOffByTheRecoil()
         {
             const int steps = 20;
             KinematicPathDriver driver = StoppedAfterSteps(WeaponStopKind.Rebounded, steps: steps);
@@ -63,7 +63,7 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             HeldItemCommand release = DriveStep(driver, steps);
 
             Assert.That(release.Kind, Is.EqualTo(HeldItemCommandKind.Release));
-            Assert.That(release.VelocityUnitsPerSecond.X, Is.EqualTo(-_rapier.SpeedUnitsPerSecond * 0.5f).Within(1f), "back the way it came");
+            Assert.That(release.VelocityUnitsPerSecond.X, Is.EqualTo(-_rapier.SpeedUnitsPerSecond * _clash.ReboundSpeedFraction).Within(1f), "back the way it came");
             Assert.That(DriveStep(driver, steps + 1).Kind, Is.EqualTo(HeldItemCommandKind.Push), "then the motor holds it");
             float stopDistance = (float)(_rapier.SpeedUnitsPerSecond * _clock.TimeAtStep(steps).Seconds);
             Assert.That(Tip(driver.EvaluateTarget(_clock.TimeAtStep(steps + 10), TorsoAtOrigin)).X,
@@ -131,9 +131,10 @@ namespace XRim.Tests.EditMode.Simulation.Drivers
             HeldItemCommand release = DriveStep(driver, 1, moving);
 
             Assert.That(release.Kind, Is.EqualTo(HeldItemCommandKind.Release), "a motor blade is already free, but it still bounces");
-            Assert.That(release.VelocityUnitsPerSecond.X, Is.EqualTo(-150f).Within(Tolerance));
-            Assert.That(release.VelocityUnitsPerSecond.Y, Is.EqualTo(-20f).Within(Tolerance));
-            Assert.That(release.AngularVelocityDegreesPerSecond, Is.EqualTo(-5f).Within(Tolerance));
+            float back = -_clash.ReboundSpeedFraction;
+            Assert.That(release.VelocityUnitsPerSecond.X, Is.EqualTo(300f * back).Within(Tolerance));
+            Assert.That(release.VelocityUnitsPerSecond.Y, Is.EqualTo(40f * back).Within(Tolerance));
+            Assert.That(release.AngularVelocityDegreesPerSecond, Is.EqualTo(10f * back).Within(Tolerance));
         }
 
         [Test]

@@ -93,6 +93,42 @@ namespace XRim.Tests.EditMode.Input
         }
 
         [Test]
+        public void ADummyStandingFartherIn_WidensTheBodyZoneToCoverIt()
+        {
+            ScreenLayout layout = Layout(2000f, 900f).WithDummyCover(0.32f);
+
+            Assert.That(layout.EffectiveBodyZoneFraction, Is.EqualTo(0.32f));
+            Assert.That(layout.BodyZoneWidthFraction, Is.EqualTo(BodyZoneFraction), "the configured width stays the least");
+            Assert.That(layout.ZoneAt(new Vec2(2000f * 0.30f, 450f)), Is.EqualTo(ScreenZone.Body));
+            Assert.That(layout.ZoneAt(new Vec2(2000f * 0.34f, 450f)), Is.EqualTo(ScreenZone.Weapon));
+        }
+
+        [Test]
+        public void ADummyInsideTheStrip_LeavesTheStripAsItIs()
+        {
+            ScreenLayout layout = Layout(2000f, 900f).WithDummyCover(0.1f);
+
+            Assert.That(layout.EffectiveBodyZoneFraction, Is.EqualTo(BodyZoneFraction));
+        }
+
+        [Test]
+        public void Mirrored_TheCoveredZoneGrowsFromTheRightEdge()
+        {
+            ScreenLayout layout = Layout(2000f, 900f, mirrored: true).WithDummyCover(0.3f);
+
+            Assert.That(layout.ZoneAt(new Vec2(2000f * 0.72f, 450f)), Is.EqualTo(ScreenZone.Body));
+            Assert.That(layout.ZoneAt(new Vec2(2000f * 0.68f, 450f)), Is.EqualTo(ScreenZone.Weapon));
+        }
+
+        [Test]
+        public void WithScreenSize_KeepsTheCover()
+        {
+            ScreenLayout resized = Layout(1000f, 500f).WithDummyCover(0.3f).WithScreenSize(2400f, 1080f);
+
+            Assert.That(resized.DummyCoverFraction, Is.EqualTo(0.3f));
+        }
+
+        [Test]
         public void AScreenWithNoSizeIsRefused()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => Layout(0f, 500f));

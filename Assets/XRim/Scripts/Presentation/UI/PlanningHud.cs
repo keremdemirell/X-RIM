@@ -73,6 +73,7 @@ namespace XRim.Presentation.UI
         private bool _switchLocked;
         private bool _mirrored;
         private float _bodyZoneWidthFraction = 0.15f;
+        private float _selectorStartFraction = 0.15f;
         private bool _visible = true;
 
         public event Action<WeaponId> WeaponChosen;
@@ -126,10 +127,11 @@ namespace XRim.Presentation.UI
             if (_root != null) _root.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
-        public void ShowLayout(bool mirrored, float bodyZoneWidthFraction)
+        public void ShowLayout(bool mirrored, float bodyZoneFraction, float selectorStartFraction)
         {
             _mirrored = mirrored;
-            _bodyZoneWidthFraction = bodyZoneWidthFraction;
+            _bodyZoneWidthFraction = bodyZoneFraction;
+            _selectorStartFraction = selectorStartFraction;
             if (_root != null) ApplyLayout();
         }
 
@@ -417,8 +419,9 @@ namespace XRim.Presentation.UI
             Anchor(_bodyStrip, true, 0f, LengthUnit.Pixel);
             _bodyStrip.style.width = new Length(zonePercent, LengthUnit.Percent);
 
-            // The selector column starts at the body zone's edge, so the drawing area stays clear.
-            Anchor(_selectorColumn, true, zonePercent, LengthUnit.Percent);
+            // The selector column starts at the configured strip's edge, so the drawing area stays clear and a zone reaching past the
+            // dummy (Session 13) never pushes it into the centred timer.
+            Anchor(_selectorColumn, true, _selectorStartFraction * 100f, LengthUnit.Percent);
             _selectorRow.style.flexDirection = _mirrored ? FlexDirection.RowReverse : FlexDirection.Row;
             _selectorColumn.style.alignItems = _mirrored ? Align.FlexEnd : Align.FlexStart;
             Anchor(_opponentBox, false, Margin, LengthUnit.Pixel);

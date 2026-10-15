@@ -2,6 +2,7 @@ using System.Globalization;
 using UnityEngine;
 using XRim.App;
 using XRim.Core;
+using XRim.Presentation.Feel;
 using XRim.Presentation.Playback;
 using XRim.Rules.Events;
 using XRim.Simulation.Execution;
@@ -13,6 +14,8 @@ namespace XRim.DebugTools
     /// Debug overlay tab for the turn being shown (ARCHITECTURE §10): playback speed 0.05×–2×, pause, frame step, scrub,
     /// loop, replay, and re-simulating the last turn with the current tuning. Playback only bends time on screen; the
     /// turn was resolved up front, so nothing here changes an outcome. Looping or pausing holds the match on this turn.
+    /// Session 13: the instant replay of the last turn on demand, the hit-zone and legendary-moment gizmos, and how long the last
+    /// turns took on screen against the feel layer's plan.
     /// </summary>
     internal sealed class PlaybackPanel
     {
@@ -48,8 +51,15 @@ namespace XRim.DebugTools
             DrawTransport(playback, player);
             DrawScrub(player, turn.Timeline);
             DrawResimulate(bootstrap);
+            DrawInstantReplay(bootstrap);
             if (gizmos != null)
+            {
                 gizmos.ShowContacts = GUILayout.Toggle(gizmos.ShowContacts, "Contact gizmos: normals, clash angle and powers, time-to-impact");
+                gizmos.ShowHitZones = GUILayout.Toggle(gizmos.ShowHitZones, "Hit zones: each body outlined, zone multiplier, limb damage");
+                gizmos.ShowMoments = GUILayout.Toggle(gizmos.ShowMoments, "Legendary moment: where and why the replay picks it");
+            }
+
+            DrawPacing(bootstrap);
             bool showProgress = playback.IsPlaying || player.CurrentTime > SimTime.Zero;
             DrawOutcomes(turn, player.CurrentTime, showProgress);
             DrawContacts(turn, player.CurrentTime, showProgress);
@@ -62,6 +72,42 @@ namespace XRim.DebugTools
             string resimulated = turn == bootstrap.LastResimulation ? "   [re-simulated with the current tuning, display only]" : string.Empty;
             GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "Turn {0}: {1}, {2} steps ({3:0.000} s), simulated in {4:0.0} ms{5}",
                 turn.TurnIndex + 1, turn.EndReason, steps, timeline.Duration.Seconds, bootstrap.LastSimulationMilliseconds, resimulated));
+
+            // Session 13: what the feel layer does to this turn on screen (hitstops, slow motion, the camera settling).
+            FeelDirector feel = bootstrap.Feel;
+            if (feel == null) return;
+            GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "On screen: {0:0.00} s so far; planned {1}",
+                bootstrap.Playback.PlayRealSeconds, feel.Pacing));
+        }
+
+        /// <summary>Session 13: the last turn's instant replay now (its legendary moment, or its hardest hit), as between turns only.</summary>
+        private void DrawInstantReplay(MatchBootstrap bootstrap)
+        {
+            if (bootstrap.Replay != null && bootstrap.Replay.IsPlaying)
+            {
+                GUILayout.Label($"Instant replay playing: {bootstrap.Replay.Moment}");
+                if (GUILayout.Button("Skip the replay")) bootstrap.Replay.Skip();
+                return;
+            }
+
+            GUI.enabled = bootstrap.CanReplayLastTurn;
+            if (GUILayout.Button("Instant replay of the last turn (its moment, or its hardest hit)")) bootstrap.ReplayLastTurn();
+            GUI.enabled = true;
+            if (!bootstrap.CanReplayLastTurn) GUILayout.Label("   (between turns only: while planning, with nothing playing)");
+        }
+
+        /// <summary>Session 13: the last turns' time on screen against the plan; the rest is mostly the camera settling.</summary>
+        private static void DrawPacing(MatchBootstrap bootstrap)
+        {
+            if (bootstrap.RecentPacing.Count == 0) return;
+            GUILayout.Label("Last turns on screen: turn + slow motion + hitstops + the rest (camera settling, frame rounding)");
+            foreach (PlayedTurnPacing played in bootstrap.RecentPacing)
+            {
+                PacingBreakdown planned = played.Planned;
+                GUILayout.Label(string.Format(CultureInfo.InvariantCulture, "   Turn {0}: {1:0.00} s = {2:0.000} + {3:0.00} + {4:0.00} + {5:0.00}",
+                    played.TurnIndex + 1, played.OnScreenSeconds, planned.TurnSeconds, planned.SlowMotionSeconds, planned.HitStopSeconds,
+                    played.UnplannedSeconds));
+            }
         }
 
         private static void DrawSpeed(TimelinePlayer player)

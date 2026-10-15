@@ -26,19 +26,17 @@ namespace XRim.Simulation.Unity2D
         private const string MarkerName = "Marker";
         private const string HandName = "Hand";
         private const string HeldItemPrefix = "HeldItem_";
-        private const string TorsoBottomName = "TorsoBottom";
-        private const string TorsoTopName = "TorsoTop";
+        private const string TorsoBottomName = DummyLayout.TorsoBottomName;
+        private const string TorsoTopName = DummyLayout.TorsoTopName;
 
-        // Draw order: far limbs behind the torso, near limbs and the weapon in front. Markers draw over their part.
-        private const int FarLimbOrder = -20;
-        private const int TorsoOrder = 0;
-        private const int HeadOrder = 10;
-        private const int NearLimbOrder = 20;
-        private const int HeldItemOrder = 30;
-        private const int MarkerOrderOffset = 1;
-
-        /// <summary>A marker's size as a share of the part's narrower side.</summary>
-        private const float MarkerSizeFraction = 0.8f;
+        // Draw order and marker size: one source with the layout the art spec and the debug overlay read (DummyLayout).
+        private const int FarLimbOrder = DummyLayout.FarLimbOrder;
+        private const int TorsoOrder = DummyLayout.TorsoOrder;
+        private const int HeadOrder = DummyLayout.HeadOrder;
+        private const int NearLimbOrder = DummyLayout.NearLimbOrder;
+        private const int HeldItemOrder = DummyLayout.HeldItemOrder;
+        private const int MarkerOrderOffset = DummyLayout.MarkerOrderOffset;
+        private const float MarkerSizeFraction = DummyLayout.MarkerSizeFraction;
 
         private static readonly Color DummyColor = new Color(0.93f, 0.9f, 0.82f);
         private static readonly Color BladeColor = new Color(0.75f, 0.78f, 0.82f);

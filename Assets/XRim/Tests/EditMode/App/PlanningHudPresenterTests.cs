@@ -33,6 +33,7 @@ namespace XRim.Tests.EditMode.App
             public bool Visible { get; private set; }
             public bool Mirrored { get; private set; }
             public float BodyZoneFraction { get; private set; }
+            public float SelectorStartFraction { get; private set; }
             public IReadOnlyList<WeaponId> Loadout { get; private set; }
             public int LoadoutCalls { get; private set; }
             public WeaponId Selected { get; private set; }
@@ -48,10 +49,11 @@ namespace XRim.Tests.EditMode.App
 
             public void SetVisible(bool visible) => Visible = visible;
 
-            public void ShowLayout(bool mirrored, float bodyZoneWidthFraction)
+            public void ShowLayout(bool mirrored, float bodyZoneFraction, float selectorStartFraction)
             {
                 Mirrored = mirrored;
-                BodyZoneFraction = bodyZoneWidthFraction;
+                BodyZoneFraction = bodyZoneFraction;
+                SelectorStartFraction = selectorStartFraction;
             }
 
             public void SetLoadout(IReadOnlyList<WeaponId> loadout)
@@ -336,6 +338,18 @@ namespace XRim.Tests.EditMode.App
 
             Assert.That(_hud.Mirrored, Is.True);
             Assert.That(_hud.BodyZoneFraction, Is.EqualTo(0.2f));
+        }
+
+        [Test]
+        public void AZoneCoveringTheDummy_ShowsItsWholeWidth_WhileTheSelectorStaysAtTheStripsEdge()
+        {
+            _presenter.Tick(1.0, null);
+
+            _left.Layout = _left.Layout.WithDummyCover(0.34f);
+            _presenter.Tick(1.1, null);
+
+            Assert.That(_hud.BodyZoneFraction, Is.EqualTo(0.34f), "Session 13: the zone reaches past the player's own dummy");
+            Assert.That(_hud.SelectorStartFraction, Is.EqualTo(SchemeRig.BodyZoneFraction), "clear of the centred timer");
         }
 
         [Test]

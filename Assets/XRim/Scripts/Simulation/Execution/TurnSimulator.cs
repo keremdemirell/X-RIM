@@ -129,6 +129,7 @@ namespace XRim.Simulation.Execution
                 PerSide<BodyMoveStats>.Create(side => rules.FindBodyMove(moves[side])), actions, recorder);
             _contactHandler.BeginTurn(context);
             RecordBodyMoves(moves, recorder);
+            RecordAttacks(input, recorder);
 
             PoseSnapshot pose = Capture(state, clock.Now);
             recorder.RecordFrame(clock.Step, clock.Now, pose);
@@ -245,7 +246,21 @@ namespace XRim.Simulation.Execution
             }
         }
 
-        private Fighter CreateFighter(Side side, BodyMove move, TurnInput input, PoseSnapshot board, MatchState state)
+        /// <summary>
+        /// Each drawn path is a fact of the turn's result from its first instant (Session 13): the player's input, which playback hooks the
+        /// swing's sound and grunt on. Never read by the rules.
+        /// </summary>
+        private static void RecordAttacks(TurnInput input, TimelineRecorder recorder)
+        {
+            foreach (Side side in BothSides)
+            {
+                TurnPlan plan = input.Plans[side];
+                WeaponStats weapon = plan.Path.IsEmpty ? null : input.Rules.FindWeapon(plan.Weapon);
+                if (weapon != null) recorder.RecordEvent(new AttackStartedEvent(SimTime.Zero, side, plan.Weapon, weapon.Kind));
+            }
+        }
+
+                private Fighter CreateFighter(Side side, BodyMove move, TurnInput input, PoseSnapshot board, MatchState state)
         {
             FighterPose start = board.Get(side);
             TurnPlan plan = input.Plans[side];

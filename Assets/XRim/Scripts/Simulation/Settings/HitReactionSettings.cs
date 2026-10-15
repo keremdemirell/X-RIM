@@ -23,10 +23,11 @@ namespace XRim.Simulation.Settings
 
         /// <summary>
         /// The struck part gets this share of the weapon's momentum (mass × path speed) as an extra kick along the weapon's
-        /// motion, scaled by the speed the weapon had left (D26).
+        /// motion, scaled by the speed the weapon had left (D26). Session 13 T2 (designer 2026-10-11): 0.5 → 0.8, so heads snap and
+        /// limbs whip.
         /// </summary>
         [Placeholder("§11 the hit impulse is Tunable with no value")]
-        public float PartImpulseMomentumFraction = 0.5f;
+        public float PartImpulseMomentumFraction = 0.8f;
 
         /// <summary>
         /// E1 (designer, 2026-10-03): a landed hit pushes the victim's standing point away from the attacker and it stays
@@ -36,9 +37,12 @@ namespace XRim.Simulation.Settings
             Proposal = "Designer 2026-10-03: it stays knocked back")]
         public bool KnockbackPersists = true;
 
-        /// <summary>E1: how far a hit knocks the victim per unit of the weapon's mass (the mace knocks five times as far as the rapier).</summary>
+        /// <summary>
+        /// E1: how far a hit knocks the victim per unit of the weapon's mass (the mace knocks five times as far as the rapier). Session 13
+        /// T1 (designer 2026-10-11): 6 → 9 (rapier 18, mace 90), so a heavy hit visibly throws the dummy back.
+        /// </summary>
         [Placeholder("E1: the knockback distance has no value")]
-        public float KnockbackUnitsPerWeaponMass = 6f;
+        public float KnockbackUnitsPerWeaponMass = 9f;
 
         /// <summary>E1: the knockback plays out over this time, fast first, then easing.</summary>
         [Placeholder("E1: the knockback time has no value")]

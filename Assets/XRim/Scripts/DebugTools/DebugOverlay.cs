@@ -11,6 +11,7 @@ using XRim.Rules;
 using XRim.Rules.Arena;
 using XRim.Rules.Limbs;
 using XRim.Rules.Match;
+using XRim.Rules.Status;
 
 namespace XRim.DebugTools
 {
@@ -36,6 +37,7 @@ namespace XRim.DebugTools
         private static readonly string[] Tabs = { "Tuning", "Playback", "Cheats", "Device" };
         private static readonly string[] SideNames = { "Left", "Right" };
         private static readonly BodyPart[] Limbs = { BodyPart.LeftArm, BodyPart.RightArm, BodyPart.LeftLeg, BodyPart.RightLeg };
+        private static readonly StatusKind[] Statuses = { StatusKind.Stunned, StatusKind.Staggered };
 
         private readonly TuningPanel _tuningPanel = new TuningPanel();
         private readonly PlaybackPanel _playbackPanel = new PlaybackPanel();
@@ -176,9 +178,10 @@ namespace XRim.DebugTools
         }
 
         /// <summary>
-        /// Cheats act through public seams (the turn's contact handler, the authority's debug turn counter, the clock, the settings snapshot),
-        /// never through rule code. Force sever (Session 11): the chosen limb is cut at the start of the next turn through the real sever path.
-        /// Session 12: the turn counter (to reach the turn cap at once), force double KO, and each electric wall's phase.
+        /// Cheats act through public seams (the turn's contact handler, the authority's debug turn counter, the clock, the settings snapshot,
+        /// the match's ink policy), never through rule code. Force sever (Session 11): the chosen limb is cut at the start of the next turn
+        /// through the real sever path. Session 12: the turn counter (to reach the turn cap at once), force double KO, and each electric
+        /// wall's phase. Session 13: freeze the planning timer, infinite ink, force a stun or a stagger.
         /// </summary>
         private void DrawCheats()
         {
@@ -188,12 +191,15 @@ namespace XRim.DebugTools
                 return;
             }
 
-            GUILayout.Label("Force sever: cut a limb at the start of the next turn (it falls, a held weapon drops, debris sprays).");
+            DrawTimerAndInk();
+            GUILayout.Space(Margin);
+            GUILayout.Label("The dummy the force sever and the force stun act on:");
             _cheatSide = GUILayout.Toolbar(_cheatSide, SideNames);
             Side side = _cheatSide == 0 ? Side.Left : Side.Right;
             PlanningWindow window = _bootstrap.Flow != null ? _bootstrap.Flow.CurrentWindow : null;
             FighterState fighter = window != null ? window.Board.State.Fighters[side] : null;
             IReadOnlyList<SeveredLimbRef> queued = _bootstrap.QueuedSevers;
+            GUILayout.Label("Force sever: cut a limb at the start of the next turn (it falls, a held weapon drops, debris sprays).");
 
             GUILayout.BeginHorizontal();
             foreach (BodyPart limb in Limbs)
@@ -209,13 +215,60 @@ namespace XRim.DebugTools
             GUILayout.EndHorizontal();
             GUILayout.Label(queued.Count == 0 ? "Nothing queued." : "Queued: " + string.Join(", ", queued));
             GUILayout.Space(Margin);
+            DrawForceStatus(side);
+            GUILayout.Space(Margin);
             DrawTurnCounter(window);
             GUILayout.Space(Margin);
             DrawDoubleKnockOut();
             GUILayout.Space(Margin);
             DrawWalls(window);
             GUILayout.Space(Margin);
-            GUILayout.Label("Planned: freeze planning timer, infinite ink, force stun, save/load scenario (board + both plans).");
+            GUILayout.Label("Planned: save/load scenario (board + both plans).");
+        }
+
+        /// <summary>
+        /// Session 13: the planning timer stands still (hot-seat too); no path costs ink, for both sides (it stays on for later matches until
+        /// switched off). Reach and the turn's time limit still cut a path.
+        /// </summary>
+        private void DrawTimerAndInk()
+        {
+            _bootstrap.IsPlanningTimerFrozen = GUILayout.Toggle(_bootstrap.IsPlanningTimerFrozen,
+                "Freeze the planning timer (it never runs out; hot-seat too)");
+            _bootstrap.InfiniteInk = GUILayout.Toggle(_bootstrap.InfiniteInk,
+                "Infinite ink for both sides (reach and the turn's time limit still apply)");
+        }
+
+        /// <summary>
+        /// Session 13: the dummy is stunned or staggered at the start of the next turn through the real status path, so the planning after
+        /// that turn is limited as a real stun limits it (D17: no body move by default), and the HUD names it.
+        /// </summary>
+        private void DrawForceStatus(Side side)
+        {
+            IReadOnlyList<(Side Side, StatusKind Kind)> queued = _bootstrap.QueuedStatuses;
+            GUILayout.Label($"Force stun: {side} is stunned or staggered at the start of the next turn; the planning after that turn is limited by it.");
+            GUILayout.BeginHorizontal();
+            foreach (StatusKind kind in Statuses)
+            {
+                bool waiting = false;
+                foreach ((Side Side, StatusKind Kind) entry in queued)
+                {
+                    waiting |= entry.Side == side && entry.Kind == kind;
+                }
+
+                GUI.enabled = !waiting;
+                if (GUILayout.Button(waiting ? $"{kind} (next turn)" : kind.ToString())) _bootstrap.QueueStatus(side, kind);
+                GUI.enabled = true;
+            }
+
+            GUILayout.EndHorizontal();
+            if (queued.Count == 0) return;
+            var names = new List<string>(queued.Count);
+            foreach ((Side Side, StatusKind Kind) entry in queued)
+            {
+                names.Add($"{entry.Side} {entry.Kind}");
+            }
+
+            GUILayout.Label("Queued: " + string.Join(", ", names));
         }
 
         /// <summary>The turn being planned can become any turn, so the turn cap (sudden death) is a click away (§3, §13).</summary>
@@ -240,13 +293,22 @@ namespace XRim.DebugTools
             GUI.enabled = true;
         }
 
+        /// <summary>Session 12: both dummies die (sudden death). Session 13: one dies, so the other wins (the match-winning KO and its replay).</summary>
         private void DrawDoubleKnockOut()
         {
             IReadOnlyList<Side> queued = _bootstrap.QueuedKnockOuts;
             GUILayout.Label("Force double KO: both dummies die at the start of the next turn (sudden death; inside it, a tie that is replayed).");
             GUI.enabled = queued.Count == 0;
             if (GUILayout.Button(queued.Count == 0 ? "Knock both out next turn" : "Queued for the next turn")) _bootstrap.QueueDoubleKnockOut();
+            GUILayout.BeginHorizontal();
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                if (GUILayout.Button($"Knock {side} out next turn (the other wins)")) _bootstrap.QueueKnockOut(side);
+            }
+
+            GUILayout.EndHorizontal();
             GUI.enabled = true;
+            if (queued.Count > 0) GUILayout.Label("Queued: " + string.Join(", ", queued));
         }
 
         /// <summary>Each player's wall as the board being planned (or the turn just played) has it (§13).</summary>

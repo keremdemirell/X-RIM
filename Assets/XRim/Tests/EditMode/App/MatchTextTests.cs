@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using XRim.App;
 using XRim.Core;
+using XRim.Presentation.Moments;
 using XRim.Rules.Match;
 
 namespace XRim.Tests.EditMode.App
@@ -77,6 +78,18 @@ namespace XRim.Tests.EditMode.App
         {
             Assert.That(MatchOverText.Summary(7, 125.4), Is.EqualTo("7 turns · 2:05"));
             Assert.That(MatchOverText.Summary(1, 9.0), Is.EqualTo("1 turn · 0:09"));
+        }
+
+        [Test]
+        public void TheReplayCaption_SaysWhoDidWhat()
+        {
+            var names = new PerSide<string>("YOU", "BOT");
+
+            Assert.That(MatchLabels.MomentCaption(MomentKind.DodgeCounter, Side.Left, names), Is.EqualTo("YOU: DODGE AND COUNTER!"));
+            Assert.That(MatchLabels.MomentCaption(MomentKind.KnockOut, Side.Right, names), Is.EqualTo("BOT: K.O.!"));
+            Assert.That(MatchLabels.MomentCaption(MomentKind.Trade, null, names), Is.EqualTo("TRADE!"));
+            Assert.That(MatchLabels.MomentCaption(MomentKind.SuddenDeathFinish, null, names), Is.EqualTo("DEAD EVEN!"));
+            Assert.That(MatchLabels.MomentCaption(MomentKind.Requested, Side.Left, names), Is.EqualTo("REPLAY"), "a replay asked for");
         }
     }
 }

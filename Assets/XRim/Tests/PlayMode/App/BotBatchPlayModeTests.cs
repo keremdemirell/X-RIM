@@ -13,6 +13,7 @@ using XRim.App;
 using XRim.Config;
 using XRim.Core;
 using XRim.Networking;
+using XRim.Presentation.Feel;
 using XRim.Rules;
 using XRim.Rules.Events;
 using XRim.Rules.Match;
@@ -64,11 +65,13 @@ namespace XRim.Tests.PlayMode.App
             Ragdoll ten = Template(RagdollSegmentation.TenBodies, rules, simulation, space);
             var world = new Unity2DPhysicsWorld(space, new RagdollPrefabSet(six, ten));
             var results = new List<MatchStats>();
+            FeelConfig feel = tuning.Feel; // Session 13: each turn's time on screen with its hitstops and slow motion, as the Match scene plays it
             try
             {
                 for (uint seed = FirstSeed; seed < FirstSeed + Matches; seed++)
                 {
-                    var stats = new MatchStats(seed);
+                    var stats = new MatchStats(seed, feel != null ? HitStopSettings.From(feel) : null,
+                        feel != null ? SlowMotionSettings.From(feel) : null);
                     IEnumerator match = PlayMatch(world, rules, simulation, stats);
                     while (match.MoveNext()) yield return match.Current;
                     results.Add(stats);
@@ -85,8 +88,7 @@ namespace XRim.Tests.PlayMode.App
             float until = Time.realtimeSinceStartup + SceneUnloadTimeoutSeconds;
             yield return new WaitUntil(() => SceneManager.sceneCount <= scenesBefore || Time.realtimeSinceStartup > until);
 
-            float hitStopSeconds = tuning.Feel != null ? tuning.Feel.HitStopSeconds : 0f;
-            string report = Report(results, rules, simulation, hitStopSeconds, tuning.name);
+            string report = Report(results, rules, simulation, tuning.name);
             string folder = Path.Combine(Application.dataPath, "..", ReportFolderName);
             Directory.CreateDirectory(folder);
             string file = Path.GetFullPath(Path.Combine(folder, ReportFileName));
@@ -135,8 +137,7 @@ namespace XRim.Tests.PlayMode.App
             return ragdoll;
         }
 
-        private static string Report(List<MatchStats> results, RulesSettings rules, SimulationSettings simulation, float hitStopSeconds,
-            string profileName)
+        private static string Report(List<MatchStats> results, RulesSettings rules, SimulationSettings simulation, string profileName)
         {
             CultureInfo c = CultureInfo.InvariantCulture;
             var turns = results.Select(r => r.Turns).OrderBy(t => t).ToList();
@@ -144,8 +145,9 @@ namespace XRim.Tests.PlayMode.App
             double playbackPerTurn = results.Sum(r => r.ExecutedSeconds) / Math.Max(1, turns.Sum());
             double hitsPerMatch = results.Average(r => r.Hits);
             float planning = rules.Match.PlanningDurationSeconds;
-            double playbackPerMatch = results.Average(r => r.ExecutedSeconds + r.Hits * hitStopSeconds);
-            double upperBound = results.Average(r => r.Turns * planning + r.ExecutedSeconds + r.Hits * hitStopSeconds);
+            double onScreenPerTurn = results.Sum(r => r.OnScreenSeconds) / Math.Max(1, turns.Sum());
+            double playbackPerMatch = results.Average(r => r.OnScreenSeconds);
+            double upperBound = results.Average(r => r.Turns * planning + r.OnScreenSeconds);
 
             var text = new StringBuilder();
             text.AppendLine($"X-RIM bot-vs-bot batch, {DateTime.Now.ToString("yyyy-MM-dd HH:mm", c)}");
@@ -165,7 +167,10 @@ namespace XRim.Tests.PlayMode.App
                             $"target 10–20%): {results.Count(r => r.WouldSever)} of {results.Count}.");
             text.AppendLine($"Simulation cost per turn in the Editor: mean {results.SelectMany(r => r.SimulationMs).Average().ToString("0.0", c)} ms, " +
                             $"max {results.SelectMany(r => r.SimulationMs).Max().ToString("0.0", c)} ms.");
-            text.AppendLine($"Match length for people (turns × (planning + playback + {hitStopSeconds.ToString("0.00", c)} s hitstop per hit)): " +
+            text.AppendLine($"On screen with the feel layer (hitstops and slow motion from the Feel asset, Session 13; the camera settling not counted): " +
+                            $"mean {onScreenPerTurn.ToString("0.00", c)} s per turn, worst turn {results.Max(r => r.WorstTurnOnScreenSeconds).ToString("0.00", c)} s, " +
+                            $"worst stretch beyond the recorded turn {results.Max(r => r.WorstStretchSeconds).ToString("0.00", c)} s (the playback hold's extra seconds).");
+            text.AppendLine($"Match length for people (turns × planning + playback on screen): " +
                             $"playback alone {Clock(playbackPerMatch)}; upper bound with the full {planning.ToString("0", c)} s of planning every turn {Clock(upperBound)}.");
             text.AppendLine();
             text.AppendLine("seed  turns  winner  reason               sudden  hits  played s");
@@ -194,9 +199,15 @@ namespace XRim.Tests.PlayMode.App
 
         private sealed class MatchStats
         {
-            public MatchStats(uint seed)
+            private readonly HitStopSettings _hitStops;
+            private readonly SlowMotionSettings _slowMotion;
+
+            /// <param name="hitStops">The feel layer's freezes and slow motion, to time each turn on screen; null counts the recording only.</param>
+            public MatchStats(uint seed, HitStopSettings hitStops, SlowMotionSettings slowMotion)
             {
                 Seed = seed;
+                _hitStops = hitStops;
+                _slowMotion = slowMotion;
             }
 
             public uint Seed { get; }
@@ -208,12 +219,26 @@ namespace XRim.Tests.PlayMode.App
             public bool WouldSever { get; private set; }
             public bool ReachedSuddenDeath { get; private set; }
             public int WallZaps { get; private set; }
+
+            /// <summary>Every turn's time on screen with the feel layer (or its recorded length without a Feel asset).</summary>
+            public double OnScreenSeconds { get; private set; }
+
+            public double WorstTurnOnScreenSeconds { get; private set; }
+
+            /// <summary>The most a turn's time on screen ran past its recorded length.</summary>
+            public double WorstStretchSeconds { get; private set; }
             public List<double> SimulationMs { get; } = new List<double>();
 
             public void Add(TurnResult turn, double simulationMs)
             {
                 Turns++;
                 ExecutedSeconds += turn.Timeline.Duration.Seconds;
+                double onScreen = _hitStops != null && _slowMotion != null
+                    ? FeelDirector.PlannedRealSecondsOf(turn, _hitStops, SlowMotionPlanner.Plan(turn, _slowMotion))
+                    : turn.Timeline.Duration.Seconds;
+                OnScreenSeconds += onScreen;
+                WorstTurnOnScreenSeconds = Math.Max(WorstTurnOnScreenSeconds, onScreen);
+                WorstStretchSeconds = Math.Max(WorstStretchSeconds, onScreen - turn.Timeline.Duration.Seconds);
                 SimulationMs.Add(simulationMs);
                 if (turn.FinalBoard.State.IsSuddenDeath) ReachedSuddenDeath = true;
                 foreach (MatchEvent matchEvent in turn.Timeline.Events)
