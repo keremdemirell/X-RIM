@@ -6,6 +6,7 @@ using XRim.Rules.Events;
 using XRim.Rules.Limbs;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Rules.Status;
 
 namespace XRim.Rules.Combat
@@ -163,10 +164,11 @@ namespace XRim.Rules.Combat
             FighterState victim = _state.Fighters[hit.Victim];
             float speedAtHit = attack.SpeedFraction;
             var context = new DamageContext(hit, attack.Weapon, _settings, attack.BodyMove, attack.CrushedThrough, speedAtHit,
-                attack.ShieldBlockDamageMultiplier, damageTakenBefore[hit.Attacker]);
+                attack.ShieldBlockDamageMultiplier, damageTakenBefore[hit.Attacker], attack.Signature);
             DamageResult damage = _calculator.Calculate(context, _modifiers, victim);
 
             DamageCalculator.ApplyTo(victim, hit.Part, damage);
+            CreditSignatureCharge(hit.Attacker, hit.Victim, damage.HpDamage);
             bool kills = victim.IsDead;
             attack.RegisterHit(hit.Part, _settings.Damage.MaxHitsPerWeaponPerTurn);
             if (!_firstHitTime[hit.Attacker].HasValue) _firstHitTime[hit.Attacker] = hit.Time;
@@ -180,6 +182,16 @@ namespace XRim.Rules.Combat
 
             NotifyTraits(hit, attack, damage, heals);
             return new LandedHit(hit, damage, speedAtHit, attack.SpeedFraction, attack.IsStopped, kills);
+        }
+
+        /// <summary>The HP a landed hit removed counts as damage dealt for the attacker and damage taken for the victim (§8, the bar).</summary>
+        private void CreditSignatureCharge(Side attacker, Side victim, float hpDamage)
+        {
+            ISignatureChargeModel model = _policies.SignatureCharge;
+            if (model == null || hpDamage <= 0f) return;
+
+            model.OnDamageDealt(_state.Fighters[attacker], hpDamage, _settings.Signature);
+            model.OnDamageTaken(_state.Fighters[victim], hpDamage, _settings.Signature);
         }
 
         /// <summary>

@@ -19,6 +19,12 @@ namespace XRim.Input
         public BodyMove BodyMove { get; private set; }
         public bool IsReady { get; private set; }
 
+        /// <summary>
+        /// The signature move set (GDD §8); empty when none is. Its pattern is the path, so <see cref="Stroke"/> is empty meanwhile; a
+        /// stroke, clearing the path or switching weapon cancels it, as the rules do.
+        /// </summary>
+        public SignatureMoveId Signature { get; private set; }
+
         /// <summary>Why the last command was refused; <see cref="CommandRejection.None"/> when it was accepted.</summary>
         public CommandRejection LastRejection { get; private set; }
 
@@ -32,6 +38,7 @@ namespace XRim.Input
             Stroke = WeaponPath.Empty;
             BodyMove = BodyMove.None;
             IsReady = false;
+            Signature = default;
             LastRejection = CommandRejection.None;
             RejectionCount = 0;
         }
@@ -53,14 +60,21 @@ namespace XRim.Input
                     {
                         Weapon = select.Weapon;
                         Stroke = WeaponPath.Empty; // GDD §6 (Decided): switching erases the drawn path
+                        Signature = default;
                     }
 
                     break;
                 case SetPathCommand path:
                     Stroke = path.Path;
+                    Signature = default; // a redraw cancels a signature move (§8)
                     break;
                 case ClearPathCommand _:
                     Stroke = WeaponPath.Empty;
+                    Signature = default;
+                    break;
+                case UseSignatureCommand signature:
+                    Signature = signature.Signature;
+                    Stroke = WeaponPath.Empty; // the pattern is the path now
                     break;
                 case SetBodyMoveCommand body:
                     BodyMove = body.Move;

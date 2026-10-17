@@ -6,6 +6,7 @@ using XRim.Rules.Damage;
 using XRim.Rules.Limbs;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Rules.Status;
 using XRim.Rules.SuddenDeath;
 
@@ -30,7 +31,8 @@ namespace XRim.Rules.Match
     /// <item><b>Planning</b> ends as soon as both players are Ready or the timer ends, whichever comes first
     /// (§3, Decided). Each side's timer is its own constraints' planning duration, normally the same 12 s.</item>
     /// <item><b>Locked:</b> every plan is validated again by <see cref="PlanValidator"/>. A plan that fails runs as an
-    /// idle plan with the same weapon (not in the GDD; it cannot happen with plans built by the sessions). Each side's electric
+    /// idle plan with the same weapon (not in the GDD; it cannot happen with plans built by the sessions). A signature move in a
+    /// locked plan is spent here (§8). Each side's electric
     /// wall then reacts to its locked body move (<see cref="ElectricWallRules.OnPlansLocked"/>, §13).</item>
     /// <item><b>Resolving</b> happens inside <see cref="CompleteExecution"/>: the resolved state is adopted, the idle
     /// counters are updated through <see cref="IIdleTurnPolicy"/>, and <see cref="EndConditionEvaluator"/> decides, with the sudden-death
@@ -122,8 +124,10 @@ namespace XRim.Rules.Match
             Sessions = PerSide<PlanningSession>.Create(side =>
             {
                 PlanningConstraints constraints = Constraints[side];
+                SignatureChargeState charge = SignatureChargeState.Of(Policies.SignatureCharge, State.Fighters[side], Settings.Signature);
+                List<SignatureMoveStats> signatures = SignatureCatalogue.Brought(Settings, Setup.Fighters[side].Signatures);
                 return new PlanningSession(side, State.Fighters[side].CurrentWeapon, Setup.Fighters[side].Loadout,
-                    weaponTips[side], constraints, now + constraints.PlanningDurationSeconds, Settings, Policies);
+                    weaponTips[side], constraints, now + constraints.PlanningDurationSeconds, Settings, Policies, charge, signatures);
             });
             PlanningDeadlineSeconds = Math.Max(Sessions.Left.DeadlineSeconds, Sessions.Right.DeadlineSeconds);
             LockedPlans = null;
@@ -285,6 +289,14 @@ namespace XRim.Rules.Match
                 FighterState fighter = State.Fighters[side];
                 DesperationOptions.OnWeaponLocked(fighter, LockedPlans[side].Weapon, Setup.Fighters[side].Loadout, Settings);
                 fighter.CurrentWeapon = LockedPlans[side].Weapon;
+            }
+
+            // A signature move is spent when its plan locks (§8; designer 2026-10-15): choosing and cancelling in planning is free, a plan
+            // that failed validation became an idle plan and keeps its charge, and a move that executes is spent even if it is interrupted.
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                if (LockedPlans[side].Signature.IsEmpty) continue;
+                Policies.SignatureCharge?.OnUsed(State.Fighters[side], Settings.Signature);
             }
 
             // The electric wall reads each side's locked body move and nothing else (§13: only the input counts, never what happens to

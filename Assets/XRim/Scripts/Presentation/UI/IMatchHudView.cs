@@ -17,5 +17,11 @@ namespace XRim.Presentation.UI
 
         /// <summary>A banner under the timer (sudden death); an empty title hides it.</summary>
         void ShowBanner(string title, string detail);
+
+        /// <summary>
+        /// The name of the signature move a fighter performs, shouted over its HP bar while the turn plays (GDD §8: the absurd name is
+        /// the joke); empty hides it. <paramref name="onScreenLeft"/> follows the view flip like the bar.
+        /// </summary>
+        void ShowSignatureShout(Side side, string text, bool onScreenLeft);
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 
 namespace XRim.Rules.Combat
 {
@@ -15,14 +16,19 @@ namespace XRim.Rules.Combat
 
         /// <param name="weapon">The held weapon, shield or club; null when the dummy holds nothing.</param>
         /// <param name="bodyMove">The planned body move's data; null without one.</param>
-        public TurnAttack(WeaponStats weapon, BodyMoveStats bodyMove = null)
+        /// <param name="signature">What the side's signature move does to this attack's hits (§8); none when left out.</param>
+        public TurnAttack(WeaponStats weapon, BodyMoveStats bodyMove = null, SignatureAttackEffects signature = null)
         {
             Weapon = weapon;
             BodyMove = bodyMove;
+            Signature = signature ?? SignatureAttackEffects.None;
         }
 
         public WeaponStats Weapon { get; }
         public BodyMoveStats BodyMove { get; }
+
+        /// <summary>The signature move this attack performs and its special property (GDD §8); <see cref="SignatureAttackEffects.None"/> for a drawn path.</summary>
+        public SignatureAttackEffects Signature { get; }
         public int HitsLanded { get; private set; }
 
         /// <summary>

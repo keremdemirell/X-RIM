@@ -37,6 +37,9 @@ namespace XRim.Presentation.UI
         private const float DisabledOpacity = 0.4f;
         private const float WholeSecondsAbove = 10f;
         private const int SortingOrder = 100;
+        private const float SignatureButtonWidth = 210f;
+        private const float SignatureChargeHeight = 10f;
+        private const float FullCharge = 1f;
 
         private static readonly Color SelectedColor = new Color(1f, 0.85f, 0.1f, 1f);
         private static readonly Color SelectedTextColor = new Color(0.1f, 0.1f, 0.1f, 1f);
@@ -48,9 +51,13 @@ namespace XRim.Presentation.UI
         private static readonly Color InkEmptyColor = new Color(0.85f, 0.2f, 0.15f);
         private static readonly Color BodyStripColor = new Color(1f, 1f, 1f, 0.06f);
 
+        /// <summary>A charged signature button: a joker card has its own colour, apart from the weapons (placeholder look).</summary>
+        private static readonly Color SignatureColor = new Color(0.5f, 0.2f, 0.8f, 0.95f);
+
         [SerializeField] private UIDocument _document;
 
         private readonly List<WeaponButton> _weaponButtons = new List<WeaponButton>();
+        private readonly List<SignatureButton> _signatureButtons = new List<SignatureButton>();
         private PanelSettings _ownedPanelSettings;
         private VisualElement _root;
         private VisualElement _safe;
@@ -68,6 +75,9 @@ namespace XRim.Presentation.UI
         private Label _opponentLabel;
         private Label _messageLabel;
         private Button _readyButton;
+        private VisualElement _signatureRow;
+        private VisualElement _signatureChargeFill;
+        private Label _signatureChargeLabel;
         private IVisualElementScheduledItem _hideMessage;
         private WeaponId _selected;
         private bool _switchLocked;
@@ -78,8 +88,9 @@ namespace XRim.Presentation.UI
 
         public event Action<WeaponId> WeaponChosen;
         public event Action ReadyPressed;
+        public event Action<SignatureMoveId> SignatureChosen;
 
-        /// <summary>Where the signature move buttons will go (Session 15): an empty row beside the Ready button.</summary>
+        /// <summary>The signature move buttons (GDD §8, Session 15) beside the Ready button: the shared charge above a row of buttons.</summary>
         public VisualElement SignatureSlot { get; private set; }
 
         /// <summary>
@@ -207,8 +218,35 @@ namespace XRim.Presentation.UI
         {
             if (_opponentLabel == null) return;
 
-            SetText(_opponentLabel, state.Weapon.Value.ToUpperInvariant() + (state.IsReady ? "   READY" : "   planning…"));
+            // A charged signature move shows only when its flag allows it (§8, TBD: hidden by default); a chosen move never shows.
+            SetText(_opponentLabel, state.Weapon.Value.ToUpperInvariant() + (state.IsReady ? "   READY" : "   planning…") +
+                                    (state.SignatureChargedVisible ? "   ★ SIGNATURE" : string.Empty));
             _opponentLabel.style.color = state.IsReady ? InkFullColor : TextColor;
+        }
+
+        public void ShowSignatures(IReadOnlyList<SignatureButtonState> buttons, float chargeFraction, string chargeText)
+        {
+            if (SignatureSlot == null) return;
+
+            bool any = buttons != null && buttons.Count > 0;
+            SignatureSlot.style.display = any ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!any)
+            {
+                _signatureRow.Clear();
+                _signatureButtons.Clear();
+                return;
+            }
+
+            if (!SameMoves(buttons)) RebuildSignatureButtons(buttons);
+            for (int i = 0; i < buttons.Count; i++)
+            {
+                StyleSignatureButton(_signatureButtons[i].Button, buttons[i]);
+            }
+
+            float share = Mathf.Clamp01(chargeFraction);
+            _signatureChargeFill.style.width = new Length(share * 100f, LengthUnit.Percent);
+            _signatureChargeFill.style.backgroundColor = share >= FullCharge ? HighlightColor : SignatureColor;
+            SetText(_signatureChargeLabel, chargeText ?? string.Empty);
         }
 
         public void ShowReady(ReadyButtonState state)
@@ -400,14 +438,82 @@ namespace XRim.Presentation.UI
             _bottomCorner.style.flexDirection = FlexDirection.Row;
             _bottomCorner.style.alignItems = Align.FlexEnd;
 
-            SignatureSlot = Plain(_bottomCorner);
-            SignatureSlot.style.flexDirection = FlexDirection.Row;
-            SignatureSlot.style.marginRight = Margin;
+            BuildSignatureSlot();
 
             _readyButton = new Button(() => ReadyPressed?.Invoke());
             StyleButton(_readyButton, ButtonWidth * 1.6f, ButtonHeight * 1.4f, 32);
             _bottomCorner.Add(_readyButton);
             ShowReady(ReadyButtonState.Ready);
+        }
+
+        /// <summary>The signature moves (§8): "SIGNATURE" and the charge word over a thin charge bar, then a row of buttons. Hidden until the presenter shows moves.</summary>
+        private void BuildSignatureSlot()
+        {
+            SignatureSlot = Plain(_bottomCorner);
+            SignatureSlot.style.flexDirection = FlexDirection.Column;
+            SignatureSlot.style.marginRight = Margin;
+            SignatureSlot.style.marginLeft = Margin;
+            SignatureSlot.style.display = DisplayStyle.None;
+
+            VisualElement header = Plain(SignatureSlot);
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.marginLeft = RowGap;
+            header.style.marginRight = RowGap;
+            Text(header, "SIGNATURE", 18, DimTextColor);
+            _signatureChargeLabel = Text(header, string.Empty, 20, TextColor);
+            _signatureChargeLabel.style.marginLeft = RowGap;
+            _signatureChargeLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            VisualElement track = Plain(SignatureSlot);
+            track.style.height = SignatureChargeHeight;
+            track.style.marginTop = 4;
+            track.style.marginBottom = 6;
+            track.style.marginLeft = RowGap;
+            track.style.marginRight = RowGap;
+            track.style.backgroundColor = PanelColor;
+            track.style.flexDirection = FlexDirection.Row;
+            _signatureChargeFill = Plain(track);
+            _signatureChargeFill.style.height = new Length(100f, LengthUnit.Percent);
+
+            _signatureRow = Plain(SignatureSlot);
+            _signatureRow.style.flexDirection = FlexDirection.Row;
+        }
+
+        private bool SameMoves(IReadOnlyList<SignatureButtonState> buttons)
+        {
+            if (buttons.Count != _signatureButtons.Count) return false;
+            for (int i = 0; i < buttons.Count; i++)
+            {
+                if (buttons[i].Move != _signatureButtons[i].Move || buttons[i].Name != _signatureButtons[i].Name) return false;
+            }
+
+            return true;
+        }
+
+        private void RebuildSignatureButtons(IReadOnlyList<SignatureButtonState> buttons)
+        {
+            _signatureRow.Clear();
+            _signatureButtons.Clear();
+            foreach (SignatureButtonState state in buttons)
+            {
+                SignatureMoveId move = state.Move;
+                var button = new Button(() => SignatureChosen?.Invoke(move)) { text = state.Name.ToUpperInvariant() };
+                StyleButton(button, SignatureButtonWidth, ButtonHeight * 1.4f, 18);
+                button.style.whiteSpace = WhiteSpace.Normal; // long absurd names wrap onto two lines
+                button.style.marginLeft = RowGap;
+                button.style.marginRight = RowGap;
+                _signatureRow.Add(button);
+                _signatureButtons.Add(new SignatureButton(move, state.Name, button));
+            }
+        }
+
+        /// <summary>Set: the selection colour. Usable: the joker colour. Otherwise dim, but a tap still goes to the rules, whose refusal says why.</summary>
+        private static void StyleSignatureButton(Button button, SignatureButtonState state)
+        {
+            button.style.backgroundColor = state.Selected ? SelectedColor : state.Usable ? SignatureColor : ButtonColor;
+            button.style.color = state.Selected ? SelectedTextColor : TextColor;
+            button.style.opacity = state.Selected || state.Usable ? 1f : DisabledOpacity;
         }
 
         // ----- layout and refreshing -----
@@ -427,6 +533,7 @@ namespace XRim.Presentation.UI
             Anchor(_opponentBox, false, Margin, LengthUnit.Pixel);
             Anchor(_bottomCorner, false, Margin + Margin, LengthUnit.Pixel);
             _bottomCorner.style.flexDirection = _mirrored ? FlexDirection.RowReverse : FlexDirection.Row;
+            _signatureRow.style.flexDirection = _mirrored ? FlexDirection.RowReverse : FlexDirection.Row;
         }
 
         /// <summary>
@@ -451,6 +558,20 @@ namespace XRim.Presentation.UI
                 button.style.color = selected ? SelectedTextColor : TextColor;
                 button.style.opacity = _switchLocked && !selected ? DisabledOpacity : 1f;
                 button.SetEnabled(!_switchLocked);
+            }
+        }
+
+        private readonly struct SignatureButton
+        {
+            public SignatureMoveId Move { get; }
+            public string Name { get; }
+            public Button Button { get; }
+
+            public SignatureButton(SignatureMoveId move, string name, Button button)
+            {
+                Move = move;
+                Name = name;
+                Button = button;
             }
         }
 

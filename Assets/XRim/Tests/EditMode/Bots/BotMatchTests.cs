@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using XRim.Bots;
 using XRim.Core;
@@ -274,9 +275,30 @@ namespace XRim.Tests.EditMode.Bots
                         TurnPlan plan = input.Plans[side];
                         Assert.That(setup.Fighters[side].Loadout, Contains.Item(plan.Weapon));
                         Assert.That(plan.Path.IsEmpty, Is.False);
+
+                        // A signature move's pattern ignores the ink (§8, designer 2026-10-15); a drawn path never exceeds it.
+                        if (!plan.Signature.IsEmpty) continue;
                         Assert.That(plan.Path.LengthUnits, Is.LessThanOrEqualTo(_settings.FindWeapon(plan.Weapon).InkLengthUnits + 0.5f));
                     }
                 }
+            }
+        }
+
+        [Test]
+        public void TheBots_PlayTheirSignatureMove_OncePerMatch()
+        {
+            var simulator = new ScriptedTurnSimulator();
+            using (var match = new BotMatch(_settings, simulator, LeftSeed, RightSeed))
+            {
+                match.Play(m => m.Windows.Exists(w => w.IsSuddenDeath));
+
+                foreach (Side side in new[] { Side.Left, Side.Right })
+                {
+                    int moves = simulator.Inputs.Count(input => !input.Plans[side].Signature.IsEmpty);
+                    Assert.That(moves, Is.EqualTo(1), $"{side}: a random bot plays its one move within 30 turns (once per match)");
+                }
+
+                foreach (CommandResult result in match.BotResults) Assert.That(result.Accepted, Is.True, result.Rejection.ToString());
             }
         }
 

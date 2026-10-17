@@ -59,7 +59,8 @@ namespace XRim.Simulation.Execution
         {
             Guard.NotNull(context, nameof(context));
             ITurnActions actions = context.Actions;
-            PerSide<TurnAttack> attacks = PerSide<TurnAttack>.Create(side => new TurnAttack(actions.HeldWeapon(side), context.BodyMoves[side]));
+            PerSide<TurnAttack> attacks = PerSide<TurnAttack>.Create(side =>
+                new TurnAttack(actions.HeldWeapon(side), context.BodyMoves[side], context.Signatures[side]));
             _hitResolver = new HitResolver(context.State, context.Rules, context.Policies, attacks);
             _itemResolver = new WeaponContactResolver(context.State, context.Rules, context.Policies, attacks);
         }
@@ -272,7 +273,7 @@ namespace XRim.Simulation.Execution
                 while (!SameHit(_hits[contactIndex], landed.Hit)) contactIndex++;
                 Side attacker = landed.Hit.Attacker;
                 Push(attacker, landed.Hit.Victim, landed.Hit.Part, WeaponMotionIntoVictim(_hitContacts[contactIndex]), landed.SpeedFractionAtHit,
-                    1f, context);
+                    1f, context, _hitResolver.Attacks[attacker].Signature.KnockbackMultiplier);
                 contactIndex++;
 
                 if (landed.StopsWeapon) actions.StopWeapon(attacker, WeaponStopKind.LastHit);
@@ -311,9 +312,11 @@ namespace XRim.Simulation.Execution
         /// <summary>
         /// What the attacker's weapon does to a dummy it hits (or to the holder of a shield that fully blocked it, scaled down): the
         /// part gets a share of the weapon's momentum along its motion, and the dummy is knocked back away from the attacker by a
-        /// distance that grows with the weapon's mass (E1). Both shrink with the share of its speed the weapon had (D26).
+        /// distance that grows with the weapon's mass (E1). Both shrink with the share of its speed the weapon had (D26). A signature
+        /// move's knockback burst (§8) multiplies the knockback distance only.
         /// </summary>
-        private static void Push(Side attacker, Side victim, BodyPart part, Vec2 motion, float speedShare, float scale, TurnContactContext context)
+        private static void Push(Side attacker, Side victim, BodyPart part, Vec2 motion, float speedShare, float scale, TurnContactContext context,
+            float knockbackMultiplier = 1f)
         {
             ITurnActions actions = context.Actions;
             WeaponStats weapon = actions.HeldWeapon(attacker);
@@ -326,7 +329,7 @@ namespace XRim.Simulation.Execution
             actions.ApplyImpulse(victim, part, direction * (momentum * reaction.PartImpulseMomentumFraction * scale));
 
             if (!reaction.KnockbackPersists) return;
-            float distance = weapon.Mass * reaction.KnockbackUnitsPerWeaponMass * speedShare * scale;
+            float distance = weapon.Mass * reaction.KnockbackUnitsPerWeaponMass * speedShare * scale * knockbackMultiplier;
             actions.KnockBack(victim, away * distance);
         }
 

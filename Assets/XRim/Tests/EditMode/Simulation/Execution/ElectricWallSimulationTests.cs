@@ -9,6 +9,7 @@ using XRim.Rules.Match;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Simulation;
 using XRim.Simulation.Execution;
 using XRim.Simulation.Physics;
@@ -179,6 +180,33 @@ namespace XRim.Tests.EditMode.Simulation.Execution
             // The step back alone would end at −450; the bounce throws it forward and the wall's advance shoves it on, in front of the wall.
             Assert.That(FinalTorsoX(result, Side.Left), Is.EqualTo(advanced + TorsoHalfWidth).Within(Tolerance));
             Assert.That(FinalTorsoX(result, Side.Left), Is.GreaterThan(LeftX), "two retreats in a row end ahead of where the dummy started");
+        }
+
+        [Test]
+        public void TheZap_FillsTheKineticEnergyBar_ByTheHpTheWallTook()
+        {
+            _rules.Signature.ChargeMode = SignatureChargeMode.KineticEnergyBar;
+            WarningStandsBehindLeft();
+            ScheduleTouch(Side.Left, BodyPart.LeftLeg, TouchStep, WarningX);
+
+            TurnResult result = Run(BodyMove.StepBack);
+
+            FighterState left = result.FinalBoard.State.Fighters.Left;
+            Assert.That(left.SignatureCharge, Is.EqualTo(Wall.Damage * _rules.Signature.BarChargePerHpDamageTaken).Within(Tolerance),
+                "§8: damage taken fills the bar, the wall's included");
+            Assert.That(result.FinalBoard.State.Fighters.Right.SignatureCharge, Is.EqualTo(0f), "the other dummy took nothing");
+        }
+
+        [Test]
+        public void TheZap_ChangesNoCharge_WithTheOncePerMatchDefault()
+        {
+            WarningStandsBehindLeft();
+            ScheduleTouch(Side.Left, BodyPart.LeftLeg, TouchStep, WarningX);
+
+            TurnResult result = Run(BodyMove.StepBack);
+
+            Assert.That(result.FinalBoard.State.Fighters.Left.SignatureCharge, Is.EqualTo(0f));
+            Assert.That(result.FinalBoard.State.Fighters.Left.SignatureUses, Is.EqualTo(0));
         }
 
         [Test]

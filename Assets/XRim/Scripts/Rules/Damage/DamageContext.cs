@@ -1,6 +1,7 @@
 using XRim.Core;
 using XRim.Rules.Combat;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 
 namespace XRim.Rules.Damage
 {
@@ -32,13 +33,20 @@ namespace XRim.Rules.Damage
         /// </summary>
         public float AttackerHpDamageTaken { get; }
 
+        /// <summary>
+        /// The attacker's signature move this turn and its special property (GDD §8): its damage factor and whether its hits stun.
+        /// <see cref="SignatureAttackEffects.None"/> for a hit from a drawn path.
+        /// </summary>
+        public SignatureAttackEffects Signature { get; }
+
         public HitZone Zone => Hit.Part.ToHitZone();
         public float ZoneMultiplier => Settings.HitZones.MultiplierFor(Zone);
 
         public DamageContext(HitFacts hit, WeaponStats weapon, RulesSettings settings, BodyMoveStats attackerBodyMove = null,
             bool crushedThrough = false, float followThroughSpeedFraction = 1f, float shieldBlockDamageMultiplier = 1f,
-            float attackerHpDamageTaken = 0f)
+            float attackerHpDamageTaken = 0f, SignatureAttackEffects signature = null)
         {
+            Signature = signature ?? SignatureAttackEffects.None;
             Hit = hit;
             Weapon = Guard.NotNull(weapon, nameof(weapon));
             Settings = Guard.NotNull(settings, nameof(settings));

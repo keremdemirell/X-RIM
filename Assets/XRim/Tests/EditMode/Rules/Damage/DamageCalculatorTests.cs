@@ -131,7 +131,7 @@ namespace XRim.Tests.EditMode.Rules.Damage
             var order = new System.Type[]
             {
                 typeof(OffHandDamageModifier), typeof(CrushThroughDamageModifier), typeof(ShieldBlockDamageModifier),
-                typeof(BodyMoveDamageBonusModifier), typeof(FollowThroughDamageModifier),
+                typeof(BodyMoveDamageBonusModifier), typeof(FollowThroughDamageModifier), typeof(SignatureDamageModifier),
             };
 
             Assert.That(System.Linq.Enumerable.Select(_policies.DamageModifiers, modifier => modifier.GetType()), Is.EqualTo(order));

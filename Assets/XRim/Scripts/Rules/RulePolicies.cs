@@ -44,14 +44,14 @@ namespace XRim.Rules
 
         /// <summary>
         /// The "Modifiers" of Damage = BaseDamage × ZoneMultiplier × Modifiers (§11), applied in this order: off hand (§12),
-        /// crush-through (§10), shield reduction (§7, A5), the body move's damage bonus (D13, 0 by default) and the
-        /// follow-through of a weapon that already hit this turn (D26). The weapon traits (<see cref="WeaponTraits"/>, §15) come after
-        /// these.
+        /// crush-through (§10), shield reduction (§7, A5), the body move's damage bonus (D13, 0 by default), the
+        /// follow-through of a weapon that already hit this turn (D26) and a signature move's damage factor (§8, 1 for every other
+        /// hit). The weapon traits (<see cref="WeaponTraits"/>, §15) come after these.
         /// </summary>
         public List<IDamageModifier> DamageModifiers { get; set; } = new List<IDamageModifier>
         {
             new OffHandDamageModifier(), new CrushThroughDamageModifier(), new ShieldBlockDamageModifier(),
-            new BodyMoveDamageBonusModifier(), new FollowThroughDamageModifier(),
+            new BodyMoveDamageBonusModifier(), new FollowThroughDamageModifier(), new SignatureDamageModifier(),
         };
 
         /// <summary>D17 (designer, 2026-10-03: the recommended default): the effect <c>DamageSettings.StunEffect</c> names, for the next turn.</summary>
@@ -100,6 +100,19 @@ namespace XRim.Rules
         /// </summary>
         public IReadOnlyList<IWeaponTrait> WeaponTraits { get; set; } = new IWeaponTrait[] { new LifestealTrait(), new BuildUpTrait() };
 
-        public ISignatureChargeModel SignatureCharge { get; set; }
+        /// <summary>
+        /// §8 (TBD; designer 2026-10-15, "all recommended"): the charge model <c>SignatureSettings.ChargeMode</c> names, once per match
+        /// by default. It holds no state; the charge lives on each <c>FighterState</c>.
+        /// </summary>
+        public ISignatureChargeModel SignatureCharge { get; set; } = new SettingsSignatureChargeModel();
+
+        /// <summary>
+        /// §8 (the catalogue is TBD; designer 2026-10-15: three placeholders): the special properties a signature move can name. Each acts
+        /// only on the hits that move's own swing lands, through the damage modifiers, the knockback and the stun.
+        /// </summary>
+        public IReadOnlyList<ISignatureEffect> SignatureEffects { get; set; } = new ISignatureEffect[]
+        {
+            new KnockbackBurstEffect(), new StunOnHitEffect(), new DamageBoostEffect(),
+        };
     }
 }

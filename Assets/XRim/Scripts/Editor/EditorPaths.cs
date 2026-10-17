@@ -14,6 +14,7 @@ namespace XRim.Editor
         public const string TuningFolder = DataFolder + "/Tuning";
         public const string WeaponsFolder = DataFolder + "/Weapons";
         public const string BodyMovesFolder = DataFolder + "/BodyMoves";
+        public const string SignatureMovesFolder = DataFolder + "/SignatureMoves";
         public const string ScenesFolder = XRimRoot + "/Scenes";
         public const string UiFolder = XRimRoot + "/UI";
         public const string PlaceholderArtFolder = XRimRoot + "/Art/Placeholder";

@@ -11,10 +11,17 @@ namespace XRim.Rules.Match
         /// <summary>The picked loadout slots (GDD §6), visible to both players at match start.</summary>
         public IReadOnlyList<WeaponId> Loadout { get; }
 
-        public FighterSetup(Handedness handedness, IReadOnlyList<WeaponId> loadout)
+        /// <summary>
+        /// The signature moves the player brings (GDD §8). Null: the whole catalogue, which is how every move is available in dev until
+        /// the shop (Session 18) decides what a player owns (§16: earned currency only). Never shown to the opponent.
+        /// </summary>
+        public IReadOnlyList<SignatureMoveId> Signatures { get; }
+
+        public FighterSetup(Handedness handedness, IReadOnlyList<WeaponId> loadout, IReadOnlyList<SignatureMoveId> signatures = null)
         {
             Handedness = handedness;
             Loadout = Guard.NotNull(loadout, nameof(loadout));
+            Signatures = signatures;
         }
     }
 }

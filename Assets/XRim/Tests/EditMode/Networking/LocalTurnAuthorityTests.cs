@@ -106,6 +106,68 @@ namespace XRim.Tests.EditMode.Networking
         }
 
         [Test]
+        public void TheWindow_CarriesEachSidesSignatureOptions_AsTheirSessionsDecided()
+        {
+            Create(new ScriptedTurnSimulator()).Start();
+
+            PlanningWindow window = _windows[0];
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                Assert.That(window.Signatures[side].Moves, Has.Count.EqualTo(3), $"{side}: dev brings the whole placeholder catalogue");
+                Assert.That(window.Signatures[side].Charge.IsAvailable, Is.True, "once per match: charged from turn 1");
+                Assert.That(window.Signatures[side].CanUse, Is.True);
+            }
+        }
+
+        [Test]
+        public void ASpentMove_IsNotChargedInTheNextWindow()
+        {
+            LocalTurnAuthority authority = Create(new ScriptedTurnSimulator());
+            authority.Start();
+
+            Assert.That(authority.Send(Side.Left, new UseSignatureCommand(SignatureMoveIds.FiveFingerExplodingTouch)).Accepted, Is.True);
+            ReadyBoth(authority);
+            authority.Tick(); // resolves the turn; with no playback hold the next planning opens at once
+
+            PlanningWindow next = _windows.Find(window => window.TurnIndex == 1);
+            Assert.That(next, Is.Not.Null);
+            Assert.That(next.Signatures[Side.Left].Charge.IsAvailable, Is.False, "once per match: spent");
+            Assert.That(next.Signatures[Side.Left].CanUse, Is.False);
+            Assert.That(next.Signatures[Side.Right].CanUse, Is.True);
+        }
+
+        [Test]
+        public void TheDebugRefill_ChargesTheMoveAgain_FromTheNextPlanningPhase()
+        {
+            LocalTurnAuthority authority = Create(new ScriptedTurnSimulator());
+            authority.Start();
+            authority.Send(Side.Left, new UseSignatureCommand(SignatureMoveIds.FiveFingerExplodingTouch));
+
+            authority.QueueSignatureRefillForDebug(Side.Left);
+            Assert.That(authority.IsSignatureRefillQueued(Side.Left), Is.True);
+            ReadyBoth(authority);
+            authority.Tick();
+
+            PlanningWindow next = _windows.Find(window => window.TurnIndex == 1);
+            Assert.That(next.Signatures[Side.Left].CanUse, Is.True, "the move used in turn 1 did not eat the refill");
+            Assert.That(next.Board.State.Fighters[Side.Left].SignatureUses, Is.EqualTo(0));
+            Assert.That(authority.IsSignatureRefillQueued(Side.Left), Is.False, "used up");
+            Assert.That(authority.Send(Side.Left, new UseSignatureCommand(SignatureMoveIds.HeadImpactSimulation404)).Accepted, Is.True);
+        }
+
+        [Test]
+        public void ChoosingAMove_RaisesNoPublicChange()
+        {
+            LocalTurnAuthority authority = Create(new ScriptedTurnSimulator());
+            authority.Start();
+            _log.Clear();
+
+            authority.Send(Side.Left, new UseSignatureCommand(SignatureMoveIds.HeadImpactSimulation404));
+
+            Assert.That(_log, Is.Empty, "§8: the chosen move stays hidden until execution");
+        }
+
+        [Test]
         public void WithoutAnInitialPose_TheMatchStartsOnTheStartingBoard()
         {
             Create(new ScriptedTurnSimulator()).Start();

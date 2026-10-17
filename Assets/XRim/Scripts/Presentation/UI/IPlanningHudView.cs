@@ -17,6 +17,9 @@ namespace XRim.Presentation.UI
         /// <summary>The player pressed the Ready button (to be Ready, or to take it back).</summary>
         event Action ReadyPressed;
 
+        /// <summary>The player pressed a signature move's button (GDD §8): to set the move, or, pressed again, to cancel it.</summary>
+        event Action<SignatureMoveId> SignatureChosen;
+
         /// <summary>Shows or hides the whole HUD (it only shows during planning).</summary>
         void SetVisible(bool visible);
 
@@ -51,5 +54,11 @@ namespace XRim.Presentation.UI
 
         /// <summary>A short note, such as why a command was refused; it fades by itself.</summary>
         void ShowMessage(string text);
+
+        /// <summary>
+        /// The player's signature move buttons (GDD §8; placement TBD §4: beside Ready) with the shared charge: a fill from 0 to 1 and a
+        /// word for it ("READY", "CHARGING 40%"). No buttons hides the row.
+        /// </summary>
+        void ShowSignatures(IReadOnlyList<SignatureButtonState> buttons, float chargeFraction, string chargeText);
     }
 }

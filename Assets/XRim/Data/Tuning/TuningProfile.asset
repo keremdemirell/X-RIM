@@ -37,7 +37,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 0e0e5086c5dce024c8d8b9573971ad9c, type: 2}
   - {fileID: 11400000, guid: 2d30d704766c9064f9b9967cd2134b72, type: 2}
   - {fileID: 11400000, guid: cc0c690d2f8fc1149ba6aa5dff112158, type: 2}
-  _signatureMoves: []
+  _signatureMoves:
+  - {fileID: 11400000, guid: 700ad1e8e68ecf140a803116d86bdb0f, type: 2}
+  - {fileID: 11400000, guid: 68eb400733b2776409cafab751a24456, type: 2}
+  - {fileID: 11400000, guid: 5405275c63663b34f885718073208ede, type: 2}
   _simulation: {fileID: 11400000, guid: 12e5dcac9253dae4fb23942c7430ff34, type: 2}
   _economy: {fileID: 11400000, guid: 7ac58b0022897674b84856101450203d, type: 2}
   _input: {fileID: 11400000, guid: 45c287293fb6e4144b47fab0c15f225c, type: 2}

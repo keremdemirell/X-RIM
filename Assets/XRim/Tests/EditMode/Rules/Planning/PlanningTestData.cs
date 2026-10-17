@@ -3,6 +3,7 @@ using XRim.Rules;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 
 namespace XRim.Tests.EditMode.Rules.Planning
 {
@@ -20,12 +21,13 @@ namespace XRim.Tests.EditMode.Rules.Planning
         public static readonly WeaponId[] Loadout = { WeaponIds.Rapier, WeaponIds.Mace, WeaponIds.Shield };
 
         public static PlanningSession CreateSession(RulesSettings settings = null, PlanningConstraints constraints = null,
-            RulePolicies policies = null)
+            RulePolicies policies = null, SignatureChargeState signatureCharge = default,
+            System.Collections.Generic.IReadOnlyList<SignatureMoveStats> signatures = null)
         {
             settings = settings ?? GddStartingValues.CreateRulesSettings();
             constraints = constraints ?? PlanningConstraints.CreateDefault(settings.Match);
             return new PlanningSession(Side.Left, WeaponIds.Rapier, Loadout, new FixedWeaponTipSource(Tip), constraints,
-                DeadlineSeconds, settings, policies ?? new RulePolicies());
+                DeadlineSeconds, settings, policies ?? new RulePolicies(), signatureCharge, signatures);
         }
 
         /// <summary>A straight stroke along y = 100 from x = 150 to <paramref name="toX"/>.</summary>

@@ -4,6 +4,7 @@ using XRim.Rules;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using static XRim.Tests.EditMode.Rules.Planning.PlanningTestData;
 
 namespace XRim.Tests.EditMode.Rules.Planning
@@ -75,8 +76,8 @@ namespace XRim.Tests.EditMode.Rules.Planning
         [Test]
         public void PublicState_ACharge_IsHiddenUnlessTheSettingAllowsIt()
         {
-            RulesSettings hidden = GddStartingValues.CreateRulesSettings();
-            RulesSettings shown = GddStartingValues.CreateRulesSettings();
+            RulesSettings hidden = SignatureTestData.CreateSettings();
+            RulesSettings shown = SignatureTestData.CreateSettings();
             shown.Signature.OpponentSeesCharged = true;
             var policy = new DefaultPublicStatePolicy();
 
@@ -86,15 +87,31 @@ namespace XRim.Tests.EditMode.Rules.Planning
         }
 
         [Test]
-        public void PublicState_AChargeComesFromTheChargeModel()
+        public void PublicState_AChargeComesFromTheChargeTheSessionWasOpenedWith()
         {
-            RulesSettings settings = GddStartingValues.CreateRulesSettings();
+            RulesSettings settings = SignatureTestData.CreateSettings();
             settings.Signature.OpponentSeesCharged = true;
-            var policies = new RulePolicies { SignatureCharge = new AlwaysChargedModel() };
 
-            PlanningSession session = CreateSession(settings, policies: policies);
+            PlanningSession charged = CreateSession(settings, signatureCharge: new SignatureChargeState(true, 1f));
+            PlanningSession empty = CreateSession(settings, signatureCharge: new SignatureChargeState(false, 0.4f));
+            PlanningSession unknown = CreateSession(settings);
 
-            Assert.That(session.PublicState.SignatureChargedVisible, Is.True);
+            Assert.That(charged.PublicState.SignatureChargedVisible, Is.True);
+            Assert.That(empty.PublicState.SignatureChargedVisible, Is.False);
+            Assert.That(unknown.PublicState.SignatureChargedVisible, Is.False, "no charge state, nothing charged");
+        }
+
+        [Test]
+        public void PublicState_AChargeThatCannotBeUsedThisTurn_IsNotShown()
+        {
+            RulesSettings settings = SignatureTestData.CreateSettings();
+            settings.Signature.OpponentSeesCharged = true;
+            PlanningConstraints noSignatures = PlanningConstraints.CreateDefault(settings.Match);
+            noSignatures.CanUseSignature = false;
+
+            PlanningSession session = CreateSession(settings, noSignatures, signatureCharge: SignatureTestData.Charged);
+
+            Assert.That(session.PublicState.SignatureChargedVisible, Is.False, "§14: switched off in sudden death, so nothing is ready");
         }
 
         [Test]
@@ -117,6 +134,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
 
             Assert.That(policies.IdleTurn, Is.InstanceOf<AnyMoveIdleTurnPolicy>());
             Assert.That(policies.PublicState, Is.InstanceOf<DefaultPublicStatePolicy>());
+            Assert.That(policies.SignatureCharge, Is.InstanceOf<SettingsSignatureChargeModel>());
         }
 
         [Test]
@@ -132,23 +150,6 @@ namespace XRim.Tests.EditMode.Rules.Planning
             Assert.That(halved.Id, Is.EqualTo(rapier.Id));
             Assert.That(halved.SpeedUnitsPerSecond, Is.EqualTo(rapier.SpeedUnitsPerSecond));
             Assert.That(rapier.InkLengthUnits, Is.EqualTo(600f));
-        }
-
-        private sealed class AlwaysChargedModel : XRim.Rules.Signature.ISignatureChargeModel
-        {
-            public bool IsAvailable(Side side) => true;
-
-            public void OnDamageDealt(Side side, float hpDamage)
-            {
-            }
-
-            public void OnDamageTaken(Side side, float hpDamage)
-            {
-            }
-
-            public void OnUsed(Side side)
-            {
-            }
         }
     }
 }

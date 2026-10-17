@@ -19,6 +19,8 @@ namespace XRim.Presentation.UI
                 case CommandRejection.InkBudgetExceeded: return "This weapon has no ink.";
                 case CommandRejection.InvalidPath: return "That stroke did not make a path.";
                 case CommandRejection.SignatureUnavailable: return "No signature move is available.";
+                case CommandRejection.SignatureNotCharged: return "Your signature move is not charged.";
+                case CommandRejection.SignatureWrongWeapon: return "That signature move does not work with this weapon.";
                 case CommandRejection.ReadyCancelNotAllowed: return "Ready cannot be cancelled now.";
                 case CommandRejection.DrawingLockedOut: return "Drawing is locked for the last " + lockout + " s of planning.";
                 case CommandRejection.AlreadyReady: return "You are Ready: cancel Ready to change your plan.";

@@ -1,5 +1,6 @@
 using XRim.Core;
 using XRim.Rules.Planning;
+using XRim.Rules.Signature;
 using XRim.Simulation.Recording;
 
 namespace XRim.Networking
@@ -24,8 +25,15 @@ namespace XRim.Networking
         /// </summary>
         public PerSide<IWeaponTipSource> WeaponTips { get; }
 
+        /// <summary>
+        /// What each player may do with signature moves this turn (GDD §8): moves brought, charge, whether one can be used. A player's
+        /// HUD reads only its own side; a server (Session 19) sends each client only theirs, since a chosen move and its charge are
+        /// hidden from the opponent.
+        /// </summary>
+        public PerSide<SignatureOptions> Signatures { get; }
+
         public PlanningWindow(int turnIndex, double deadlineSeconds, PerSide<PlanningConstraints> constraints,
-            bool isSuddenDeath, BoardSnapshot board, PerSide<IWeaponTipSource> weaponTips)
+            bool isSuddenDeath, BoardSnapshot board, PerSide<IWeaponTipSource> weaponTips, PerSide<SignatureOptions> signatures = null)
         {
             TurnIndex = turnIndex;
             DeadlineSeconds = deadlineSeconds;
@@ -33,6 +41,7 @@ namespace XRim.Networking
             IsSuddenDeath = isSuddenDeath;
             Board = Guard.NotNull(board, nameof(board));
             WeaponTips = Guard.NotNull(weaponTips, nameof(weaponTips));
+            Signatures = signatures ?? new PerSide<SignatureOptions>(SignatureOptions.None, SignatureOptions.None);
         }
     }
 }

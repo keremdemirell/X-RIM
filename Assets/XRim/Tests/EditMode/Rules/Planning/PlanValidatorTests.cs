@@ -156,7 +156,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
         }
 
         [Test]
-        public void ASignatureMove_IsRejectedUntilSession15()
+        public void ASignatureMove_WithoutTheContextToJudgeIt_IsRejected()
         {
             CommandResult result = Check(Plan(WeaponIds.Rapier, signature: new SignatureMoveId("head_impact")));
 

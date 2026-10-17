@@ -3,6 +3,7 @@ using XRim.Core;
 using XRim.Networking;
 using XRim.Presentation.Playback;
 using XRim.Presentation.UI;
+using XRim.Rules.Events;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Simulation.Recording;
@@ -11,8 +12,8 @@ namespace XRim.App
 {
     /// <summary>
     /// Feeds the match HUD from the client flow, for one match: each fighter's HP under its own dummy (it follows the view flip,
-    /// GDD §4), the turn counter, and the sudden-death banner (§14: 1 HP each, the first clean hit wins, and which of its capped tries
-    /// this is, designer 2026-10-11).
+    /// GDD §4), the turn counter, the sudden-death banner (§14: 1 HP each, the first clean hit wins, and which of its capped tries
+    /// this is, designer 2026-10-11), and a signature move's name shouted over its fighter while that turn plays (§8).
     /// While planning it shows the frozen board; during and after a turn's playback it shows that turn, the HP dropping as playback
     /// passes each hit. Plain data in, plain data out: no rule lives here.
     /// </summary>
@@ -25,6 +26,8 @@ namespace XRim.App
         private readonly RulesSettings _rules;
         private readonly PerSide<string> _names;
         private readonly PerSide<Shown> _shown = new PerSide<Shown>(null, null);
+        private string _shownShoutScreenLeft;
+        private string _shownShoutScreenRight;
         private string _shownTurn;
         private string _shownBannerDetail;
 
@@ -57,7 +60,46 @@ namespace XRim.App
                 ShowFighter(side, hp, (side == Side.Left) != viewFlipped);
             }
 
+            ShowShouts(showTurn && playbackTime.HasValue ? turn : null, viewFlipped);
             ShowTurn(turnIndex, suddenDeath, shownState != null ? shownState.SuddenDeathRepeats : 0);
+        }
+
+        /// <summary>A signature move's name as the HUD shouts it (§8): "HEAD IMPACT SIMULATION #404!".</summary>
+        public static string ShoutText(string moveName) => string.IsNullOrEmpty(moveName) ? string.Empty : moveName.ToUpperInvariant() + "!";
+
+        /// <summary>The shout for the side's signature move in that turn; empty when it drew its own path (the move stays hidden until the turn plays).</summary>
+        private static string SignatureShoutOf(TurnResult turn, Side side)
+        {
+            foreach (MatchEvent matchEvent in turn.Timeline.Events)
+            {
+                if (matchEvent is SignatureUsedEvent used && used.Side == side) return ShoutText(used.DisplayName);
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Each half of the screen shouts the move of the fighter drawn there (it follows the view flip like the bars); nothing while no
+        /// turn plays. Kept per half, since a flip swaps which fighter a half belongs to.
+        /// </summary>
+        private void ShowShouts(TurnResult playing, bool viewFlipped)
+        {
+            Side onScreenLeft = viewFlipped ? Side.Right : Side.Left;
+            Side onScreenRight = onScreenLeft.Opponent();
+            string left = playing != null ? SignatureShoutOf(playing, onScreenLeft) : string.Empty;
+            string right = playing != null ? SignatureShoutOf(playing, onScreenRight) : string.Empty;
+
+            if (left != _shownShoutScreenLeft)
+            {
+                _shownShoutScreenLeft = left;
+                _view.ShowSignatureShout(onScreenLeft, left, true);
+            }
+
+            if (right != _shownShoutScreenRight)
+            {
+                _shownShoutScreenRight = right;
+                _view.ShowSignatureShout(onScreenRight, right, false);
+            }
         }
 
         /// <summary>

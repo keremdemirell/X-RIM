@@ -5,18 +5,33 @@ using XRim.Rules;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 
 namespace XRim.Bots
 {
     /// <summary>
     /// Debug bot that emits only valid plans, all through the context's seeded <see cref="IRandom"/>: a weapon it can hold
     /// this turn (the loadout plus the §12 extra options: the severed-limb club, the armless body blow; switching only when the
-    /// constraints allow it), a random allowed body move, one stroke that stays
-    /// inside the weapon's ink and reach, and Ready. It always draws, so it never idles and never forfeits.
-    /// Enough to exercise the turn loop offline; not a design for a real AI opponent.
+    /// constraints allow it), a random allowed body move, then either a signature move (§8: sometimes, when its window says one can be
+    /// used and the move works with the weapon) or one stroke that stays inside the weapon's ink and reach, and Ready. It always
+    /// attacks, so it never idles and never forfeits. Enough to exercise the turn loop offline; not a design for a real AI opponent.
     /// </summary>
     public sealed class RandomBotBrain : IBotBrain
     {
+        /// <summary>
+        /// How often the bot plays a signature move when it can (bot behaviour only, not a game rule): about one turn in four, so with the
+        /// once-per-match default a move usually comes in the first few turns.
+        /// </summary>
+        public const float DefaultSignatureChance = 0.25f;
+
+        private readonly float _signatureChance;
+
+        /// <param name="signatureChance">The chance to play a usable signature move instead of drawing (0 never, 1 whenever it can).</param>
+        public RandomBotBrain(float signatureChance = DefaultSignatureChance)
+        {
+            _signatureChance = signatureChance;
+        }
+
         /// <summary>How far toward the opponent the stroke may aim, either side of straight ahead.</summary>
         private const float MaxAimAngleDegrees = 60f;
 
@@ -41,8 +56,33 @@ namespace XRim.Bots
             PlanningConstraints constraints = context.Window.Constraints[context.Side];
             WeaponId weapon = ChooseWeapon(context, constraints);
             BodyMove bodyMove = ChooseBodyMove(context, constraints);
-            WeaponPath path = DrawStroke(context, constraints, weapon);
-            return new TurnPlan(weapon, bodyMove, path, default, true);
+            SignatureMoveId signature = ChooseSignature(context, constraints, weapon);
+
+            // A signature move's pattern is built by the rules when the move is sent, so its plan carries no stroke.
+            WeaponPath path = signature.IsEmpty ? DrawStroke(context, constraints, weapon) : WeaponPath.Empty;
+            return new TurnPlan(weapon, bodyMove, path, signature, true);
+        }
+
+        /// <summary>
+        /// A random usable signature move, at <see cref="DefaultSignatureChance"/> by default, or none. Only moves the rules will take:
+        /// the window says a move can be used this turn, the move works with the weapon, and a move with its own body move has one allowed.
+        /// No random number is drawn when no move can be used, so a bot without signature moves plays exactly as before.
+        /// </summary>
+        private SignatureMoveId ChooseSignature(BotContext context, PlanningConstraints constraints, WeaponId weapon)
+        {
+            SignatureOptions options = context.Window.Signatures[context.Side];
+            if (!options.CanUse) return default;
+
+            var usable = new List<SignatureMoveStats>();
+            foreach (SignatureMoveStats move in options.Moves)
+            {
+                if (!move.AllowsWeapon(weapon)) continue;
+                if (move.OverridesBodyMove && !constraints.IsBodyMoveAllowed(move.BodyMoveOverride)) continue;
+                usable.Add(move);
+            }
+
+            if (usable.Count == 0 || context.Random.NextFloat() >= _signatureChance) return default;
+            return usable[context.Random.NextInt(0, usable.Count)].MoveId;
         }
 
         private static WeaponId ChooseWeapon(BotContext context, PlanningConstraints constraints)

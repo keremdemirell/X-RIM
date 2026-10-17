@@ -621,6 +621,15 @@ namespace XRim.App
             return true;
         }
 
+        /// <summary>
+        /// Debug (the Cheats tab's signature refill, Session 15): this dummy's signature moves are charged again from the next planning
+        /// phase (the once-per-match move back, the bar full). Does nothing between matches.
+        /// </summary>
+        public void QueueSignatureRefill(Side side) => _authority?.QueueSignatureRefillForDebug(side);
+
+        /// <summary>Whether a signature refill waits for the next planning phase for this side (debug).</summary>
+        public bool IsSignatureRefillQueued(Side side) => _authority != null && _authority.IsSignatureRefillQueued(side);
+
         // ----- debug -----
 
         /// <summary>

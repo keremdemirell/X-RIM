@@ -1,17 +1,38 @@
 using System.Collections.Generic;
 using XRim.Core;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 
 namespace XRim.Rules.Paths
 {
-    /// <summary>Makes the live <see cref="PathPreview"/> of a stroke (GDD §6) with the same rules the authority applies to the plan.</summary>
+    /// <summary>
+    /// Makes the live <see cref="PathPreview"/> of a stroke (GDD §6), or of a signature move's pattern (§8), with the same rules the
+    /// authority applies to the plan.
+    /// </summary>
     public sealed class PathPreviewBuilder
     {
         private readonly PathBuilder _builder;
+        private readonly SignaturePathBuilder _signatures;
 
         public PathPreviewBuilder(RulePolicies policies)
         {
             _builder = new PathBuilder(policies);
+            _signatures = new SignaturePathBuilder(policies);
+        }
+
+        /// <summary>
+        /// A signature move's pattern as it will execute (§8: it "draws itself"): the preset is shown as the stroke, the path as the
+        /// rules build it. A move that ignores ink spends none, so the ink meter stays full.
+        /// </summary>
+        public PathPreview BuildSignature(SignatureMoveStats move, Vec2 weaponTipLocal, WeaponStats weapon, PathSettings paths)
+        {
+            Guard.NotNull(move, nameof(move));
+            Guard.NotNull(weapon, nameof(weapon));
+            Guard.NotNull(paths, nameof(paths));
+            BuiltPath built = _signatures.Build(move, weaponTipLocal, weapon, paths);
+            return new PathPreview(new WeaponPath(move.PresetPath), built.Path, built.InvalidTail, built.Inked.ThicknessUnits,
+                built.Inked.BudgetUnits, built.Inked.Ink.CostUnits, ReachLimit.For(paths, weapon), built.WasClampedByReach, built.Inked.WasCut,
+                built.WasCutAtBreak);
         }
 
         /// <param name="stroke">The raw points drawn so far, in the torso frame; none gives an empty preview with all the ink left.</param>

@@ -10,6 +10,7 @@ using XRim.Rules.Match;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Simulation.Drivers;
 using XRim.Simulation.Physics;
 using XRim.Simulation.Recording;
@@ -125,11 +126,14 @@ namespace XRim.Simulation.Execution
             }
 
             var actions = new FighterActions(_world, fighters, clock, simulation.HitReaction);
+            PerSide<SignatureAttackEffects> signatures = PerSide<SignatureAttackEffects>.Create(side =>
+                SignatureAttackEffects.For(PlannedSignature(input.Plans[side]), rules, Policies.SignatureEffects));
             var context = new TurnContactContext(state, rules, Policies, simulation,
-                PerSide<BodyMoveStats>.Create(side => rules.FindBodyMove(moves[side])), actions, recorder);
+                PerSide<BodyMoveStats>.Create(side => rules.FindBodyMove(moves[side])), actions, recorder, signatures);
             _contactHandler.BeginTurn(context);
             RecordBodyMoves(moves, recorder);
             RecordAttacks(input, recorder);
+            RecordSignatures(input, recorder);
 
             PoseSnapshot pose = Capture(state, clock.Now);
             recorder.RecordFrame(clock.Step, clock.Now, pose);
@@ -196,6 +200,8 @@ namespace XRim.Simulation.Execution
 
         private static BodyMove PlannedMove(TurnPlan plan) => plan != null ? plan.BodyMove : BodyMove.None;
 
+        private static SignatureMoveId PlannedSignature(TurnPlan plan) => plan != null ? plan.Signature : default;
+
         /// <summary>
         /// The world's pose, marked with the limbs each dummy has lost by now (GDD §12) and where each electric wall stands (§13), so views
         /// know what to draw where.
@@ -257,6 +263,21 @@ namespace XRim.Simulation.Execution
                 TurnPlan plan = input.Plans[side];
                 WeaponStats weapon = plan.Path.IsEmpty ? null : input.Rules.FindWeapon(plan.Weapon);
                 if (weapon != null) recorder.RecordEvent(new AttackStartedEvent(SimTime.Zero, side, plan.Weapon, weapon.Kind));
+            }
+        }
+
+        /// <summary>
+        /// Each signature move is revealed from the turn's first instant (§8: hidden until execution), with the name playback shouts. Its
+        /// path already drives the weapon and its special property rides on the side's attack; the event changes nothing.
+        /// </summary>
+        private static void RecordSignatures(TurnInput input, TimelineRecorder recorder)
+        {
+            foreach (Side side in BothSides)
+            {
+                SignatureMoveId move = PlannedSignature(input.Plans[side]);
+                if (move.IsEmpty) continue;
+                SignatureMoveStats stats = input.Rules.FindSignatureMove(move);
+                recorder.RecordEvent(new SignatureUsedEvent(SimTime.Zero, side, move, stats != null ? stats.DisplayName : null));
             }
         }
 
@@ -523,6 +544,10 @@ namespace XRim.Simulation.Execution
             {
                 context.Record(matchEvent);
             }
+
+            // The wall's HP counts as damage taken for the Kinetic Energy Bar (§8): the state's HP and HpDamageTaken were already changed.
+            if (zap.HpDamage > 0f)
+                context.Policies.SignatureCharge?.OnDamageTaken(context.State.Fighters[zap.Side], zap.HpDamage, context.Rules.Signature);
 
             if (!zap.IsKnockedInto)
                 fighter.KnockBack(actions.Now, new Vec2(fighter.Side.FacingSign() * zap.BounceDistanceUnits, 0f),

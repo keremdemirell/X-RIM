@@ -4,6 +4,8 @@ using XRim.App;
 using XRim.Core;
 using XRim.Networking;
 using XRim.Presentation.UI;
+using XRim.Rules;
+using XRim.Rules.Events;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
 using XRim.Simulation.Recording;
@@ -46,6 +48,13 @@ namespace XRim.Tests.EditMode.App
                 BannerTitle = title;
                 BannerDetail = detail;
             }
+
+            /// <summary>The shout on each half of the screen: true is the left half.</summary>
+            public readonly Dictionary<bool, string> Shouts = new Dictionary<bool, string>();
+
+            public void ShowSignatureShout(Side side, string text, bool onScreenLeft) => Shouts[onScreenLeft] = text;
+
+            public string ShoutOn(bool screenLeft) => Shouts.TryGetValue(screenLeft, out string text) ? text : string.Empty;
         }
 
         private RulesSettings _settings;
@@ -189,6 +198,66 @@ namespace XRim.Tests.EditMode.App
             Assert.That(_hud.BannerDetail, Is.EqualTo("1 HP each: the first clean hit wins · try 3 of 4"));
         }
 
+
+        // --- Signature moves (GDD §8, Session 15) ------------------------------------------------------
+
+        private void PlayTurnWithSignature(Side side)
+        {
+            _authority.RaisePlanningStarted(Window(0, MaxHp, MaxHp));
+            _authority.RaisePlanningLocked(0);
+            _authority.RaiseTurnResolved(PlayedTurn.Create(_settings, 0,
+                new SignatureUsedEvent(SimTime.Zero, side, SignatureMoveIds.HeadImpactSimulation404, "Head Impact Simulation #404")));
+        }
+
+        [Test]
+        public void ASignatureMove_IsShoutedOverItsFighter_WhileTheTurnPlays()
+        {
+            PlayTurnWithSignature(Side.Right);
+
+            _presenter.Tick(SimTime.FromSeconds(0.2), false);
+
+            Assert.That(_hud.ShoutOn(false), Is.EqualTo("HEAD IMPACT SIMULATION #404!"), "over the right dummy's bar");
+            Assert.That(_hud.ShoutOn(true), Is.Empty);
+        }
+
+        [Test]
+        public void TheShout_IsGoneOncePlaybackStops_AndNeverShowsDuringPlanning()
+        {
+            _authority.RaisePlanningStarted(Window(0, MaxHp, MaxHp));
+            _presenter.Tick(null, false);
+            Assert.That(_hud.ShoutOn(true), Is.Empty, "§8: a chosen move stays hidden until execution");
+
+            PlayTurnWithSignature(Side.Left);
+            _presenter.Tick(SimTime.FromSeconds(0.2), false);
+            Assert.That(_hud.ShoutOn(true), Is.Not.Empty);
+
+            _flow.OnPlaybackFinished();
+            _presenter.Tick(null, false);
+            Assert.That(_hud.ShoutOn(true), Is.Empty);
+        }
+
+        [Test]
+        public void TheShout_FollowsTheViewFlip()
+        {
+            PlayTurnWithSignature(Side.Left);
+            _presenter.Tick(SimTime.FromSeconds(0.2), false);
+
+            _presenter.Tick(SimTime.FromSeconds(0.3), true);
+
+            Assert.That(_hud.ShoutOn(false), Is.Not.Empty, "mirrored: the left dummy is drawn on the right");
+            Assert.That(_hud.ShoutOn(true), Is.Empty, "the old half is cleared");
+        }
+
+        [Test]
+        public void ATurnWithoutAMove_ShoutsNothing()
+        {
+            PlayTurn(0);
+
+            _presenter.Tick(SimTime.FromSeconds(0.2), false);
+
+            Assert.That(_hud.ShoutOn(true), Is.Empty);
+            Assert.That(_hud.ShoutOn(false), Is.Empty);
+        }
 
         [Test]
         public void NothingChanged_SendsNothingAgain()

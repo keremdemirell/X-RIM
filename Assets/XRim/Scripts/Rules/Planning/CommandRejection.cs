@@ -16,5 +16,11 @@ namespace XRim.Rules.Planning
 
         /// <summary>Ready is pressed: the plan is frozen until Ready is cancelled (GDD §3).</summary>
         AlreadyReady = 10,
+
+        /// <summary>The signature move exists but is not charged: the once-per-match use is spent, or the bar is not full (GDD §8).</summary>
+        SignatureNotCharged = 11,
+
+        /// <summary>The signature move is tied to other weapons than the one in hand (GDD §8, TBD: by default a move works with any weapon).</summary>
+        SignatureWrongWeapon = 12,
     }
 }

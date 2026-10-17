@@ -8,6 +8,7 @@ using XRim.Presentation.Arena;
 using XRim.Rules;
 using XRim.Rules.Paths;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Simulation;
 using XRim.Simulation.Drivers;
 using XRim.Simulation.Physics;
@@ -17,7 +18,7 @@ namespace XRim.App
 {
     /// <summary>
     /// One human's live path preview (GDD §6): builds the path the rules will execute from the stroke being drawn (or the last one
-    /// set), with the weapon tip and ink from the planning window, and draws it in the arena: clipped at reach, cut where the ink
+    /// set, or the signature move's pattern, §8), with the weapon tip and ink from the planning window, and draws it in the arena: clipped at reach, cut where the ink
     /// runs out, red after a too-sharp turn, and a faint copy where the body move will carry it. Only the player planning sees theirs.
     /// </summary>
     public sealed class PlanPreviewPresenter : IDisposable
@@ -59,9 +60,19 @@ namespace XRim.App
             }
 
             bool drawing = source.ActiveStroke.Count > 0;
-            IReadOnlyList<Vec2> stroke = drawing ? source.ActiveStroke : source.Draft.Stroke.Points;
             Vec2 tip = source.Window.WeaponTips[source.Side].TipLocal(source.Draft.Weapon);
-            Preview = _builder.Build(stroke, tip, weapon, _rules.Paths);
+            SignatureMoveStats move = drawing ? null : SignatureCatalogue.Find(source.Window.Signatures[source.Side].Moves, source.Draft.Signature);
+            if (move != null)
+            {
+                // A signature move draws itself (GDD §8): its pattern, as the rules will play it.
+                Preview = _builder.BuildSignature(move, tip, weapon, _rules.Paths);
+            }
+            else
+            {
+                IReadOnlyList<Vec2> stroke = drawing ? source.ActiveStroke : source.Draft.Stroke.Points;
+                Preview = _builder.Build(stroke, tip, weapon, _rules.Paths);
+            }
+
             BoardSnapshot board = source.Window.Board;
             _view.Show(Preview, TurnStartRoot.Of(board.Pose.Get(source.Side)), source.Side, _space, MoveFrame(source), drawing);
         }

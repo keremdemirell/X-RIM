@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using XRim.Core;
 using XRim.Input;
@@ -9,6 +11,7 @@ using XRim.Rules.Match;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 
 namespace XRim.App
 {
@@ -19,6 +22,8 @@ namespace XRim.App
     /// be taken back (D9, flagged), the weapon and body move set so far, the ink left (D7) and the opponent's public state: weapon
     /// and Ready, nothing else. What the player presses goes out as the same planning commands as the touches, so the rules decide;
     /// every refusal shows as a short note. Plain data in, plain data out: no rule lives here.
+    /// The signature buttons (GDD §8) show the moves the player brought and their charge, as the authority's window says; a tap sets
+    /// a move (its pattern becomes the path and the preview), a tap on the move already set cancels it (as clearing the path does).
     /// <see cref="Source"/> is the human the HUD serves; it can change (the sandbox's hot-seat toggle).
     /// </summary>
     public sealed class PlanningHudPresenter : IDisposable
@@ -27,6 +32,12 @@ namespace XRim.App
 
         /// <summary>Shown as planning opens while the player's own electric wall stands behind their dummy (GDD §13).</summary>
         public const string WallBehindYouMessage = "ELECTRIC WALL BEHIND YOU: STEP BACK AGAIN AND IT ZAPS";
+
+        /// <summary>The signature charge words (§8): a move can be used, the charge is there but moves are off this turn (§14), filling, empty or spent.</summary>
+        public const string SignatureReadyText = "READY";
+        public const string SignatureOffThisTurnText = "NOT THIS TURN";
+        public const string SignatureNotChargedText = "NOT CHARGED";
+        public const string SignatureChargingText = "CHARGING ";
 
         private readonly IPlanningHudView _hud;
         private readonly ITurnAuthority _authority;
@@ -47,6 +58,10 @@ namespace XRim.App
         private ReadyButtonState? _shownReady;
         private int _shownInkPercent = -1;
         private PublicPlanningState? _shownOpponent;
+        private readonly List<SignatureButtonState> _signatureButtons = new List<SignatureButtonState>();
+        private readonly List<SignatureButtonState> _shownSignatureButtons = new List<SignatureButtonState>();
+        private float _shownSignatureCharge = -1f;
+        private string _shownSignatureText;
 
         public PlanningHudPresenter(IPlanningHudView hud, ITurnAuthority authority, MatchSetup setup, MatchSettings match)
         {
@@ -56,6 +71,7 @@ namespace XRim.App
             _match = Guard.NotNull(match, nameof(match));
             _hud.WeaponChosen += OnWeaponChosen;
             _hud.ReadyPressed += OnReadyPressed;
+            _hud.SignatureChosen += OnSignatureChosen;
             _authority.PublicStateChanged += OnPublicStateChanged;
             _authority.PlanningLocked += OnPlanningLocked;
         }
@@ -71,6 +87,7 @@ namespace XRim.App
         {
             _hud.WeaponChosen -= OnWeaponChosen;
             _hud.ReadyPressed -= OnReadyPressed;
+            _hud.SignatureChosen -= OnSignatureChosen;
             _authority.PublicStateChanged -= OnPublicStateChanged;
             _authority.PlanningLocked -= OnPlanningLocked;
         }
@@ -99,6 +116,7 @@ namespace XRim.App
             ShowReady(draft, inLockout);
             ShowInk(preview);
             ShowOpponent(source.Side.Opponent(), window);
+            ShowSignatures(window.Signatures[source.Side], draft);
             ShowRefusals(draft);
         }
 
@@ -120,6 +138,9 @@ namespace XRim.App
             _shownInkPercent = -1;
             _shownOpponent = null;
             _shownMirrored = null;
+            _shownSignatureButtons.Clear();
+            _shownSignatureCharge = -1f;
+            _shownSignatureText = null;
             _hud.SetLoadout(window.Constraints[source.Side].AvailableWeapons(_setup.Fighters[source.Side].Loadout));
             _hud.ShowMessage(window.Board.State.Walls[source.Side].IsUp ? WallBehindYouMessage : string.Empty);
         }
@@ -196,6 +217,53 @@ namespace XRim.App
             _hud.ShowOpponent(state);
         }
 
+        /// <summary>
+        /// One button per move the player brought (§8): usable when the window says a move can be used, the move works with the weapon in
+        /// hand and Ready does not freeze the plan; set when the draft holds it. The charge fill and its word are shared by all buttons.
+        /// </summary>
+        private void ShowSignatures(SignatureOptions options, PlanDraft draft)
+        {
+            _signatureButtons.Clear();
+            foreach (SignatureMoveStats move in options.Moves)
+            {
+                bool usable = options.CanUse && move.AllowsWeapon(draft.Weapon) && !draft.IsReady;
+                _signatureButtons.Add(new SignatureButtonState(move.MoveId, move.DisplayName, usable, draft.Signature == move.MoveId));
+            }
+
+            float charge = Mathf.Clamp01(options.Charge.ChargeFraction);
+            string text = ChargeText(options);
+            if (SameButtons(_signatureButtons, _shownSignatureButtons) && Mathf.Approximately(charge, _shownSignatureCharge) &&
+                text == _shownSignatureText) return;
+
+            _shownSignatureButtons.Clear();
+            _shownSignatureButtons.AddRange(_signatureButtons);
+            _shownSignatureCharge = charge;
+            _shownSignatureText = text;
+            _hud.ShowSignatures(_shownSignatureButtons.ToArray(), charge, text);
+        }
+
+        /// <summary>The charge in a word: ready, charged but off this turn (§14), filling up (the bar), or not charged (empty, or the once-per-match move spent).</summary>
+        public static string ChargeText(SignatureOptions options)
+        {
+            Guard.NotNull(options, nameof(options));
+            if (options.CanUse) return SignatureReadyText;
+            if (options.Charge.IsAvailable) return SignatureOffThisTurnText;
+            float charge = Mathf.Clamp01(options.Charge.ChargeFraction);
+            if (charge <= 0f) return SignatureNotChargedText;
+            return SignatureChargingText + Mathf.FloorToInt(charge * PercentSteps).ToString(CultureInfo.InvariantCulture) + "%";
+        }
+
+        private static bool SameButtons(List<SignatureButtonState> a, List<SignatureButtonState> b)
+        {
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (!a[i].Equals(b[i])) return false;
+            }
+
+            return true;
+        }
+
         private void ShowRefusals(PlanDraft draft)
         {
             if (draft.RejectionCount == _shownRejectionCount) return;
@@ -209,6 +277,14 @@ namespace XRim.App
         {
             if (_source == null) return;
             _source.Send(new SetReadyCommand(!_source.Draft.IsReady));
+        }
+
+        /// <summary>A tap sets the move; a tap on the move already set cancels it, which is clearing the path (§8: its pattern is the path).</summary>
+        private void OnSignatureChosen(SignatureMoveId move)
+        {
+            if (_source == null) return;
+            if (_source.Draft.Signature == move) _source.Send(new ClearPathCommand());
+            else _source.Send(new UseSignatureCommand(move));
         }
 
         private void OnPublicStateChanged(Side side, PublicPlanningState state) => _publicStates[side] = state;

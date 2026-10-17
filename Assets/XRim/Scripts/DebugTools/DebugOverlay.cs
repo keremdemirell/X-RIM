@@ -221,6 +221,8 @@ namespace XRim.DebugTools
             GUILayout.Space(Margin);
             DrawDoubleKnockOut();
             GUILayout.Space(Margin);
+            DrawSignatures(window);
+            GUILayout.Space(Margin);
             DrawWalls(window);
             GUILayout.Space(Margin);
             GUILayout.Label("Planned: save/load scenario (board + both plans).");
@@ -309,6 +311,26 @@ namespace XRim.DebugTools
             GUILayout.EndHorizontal();
             GUI.enabled = true;
             if (queued.Count > 0) GUILayout.Label("Queued: " + string.Join(", ", queued));
+        }
+
+        /// <summary>
+        /// Session 15: each player's signature charge in the window being planned (§8), and a refill from the next planning phase (the
+        /// once-per-match move back, the Kinetic Energy Bar full), so every move can be tried in one match.
+        /// </summary>
+        private void DrawSignatures(PlanningWindow window)
+        {
+            GUILayout.Label("Signature moves (charge mode: " + _bootstrap.RulesSettings.Signature.ChargeMode + "):");
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                string charge = window != null ? PlanningHudPresenter.ChargeText(window.Signatures[side]) : "wait for the next planning phase";
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"  {side}: {charge}");
+                bool queued = _bootstrap.IsSignatureRefillQueued(side);
+                GUI.enabled = !queued;
+                if (GUILayout.Button(queued ? "Refill queued (next turn)" : $"Refill {side} (next turn)")) _bootstrap.QueueSignatureRefill(side);
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+            }
         }
 
         /// <summary>Each player's wall as the board being planned (or the turn just played) has it (§13).</summary>

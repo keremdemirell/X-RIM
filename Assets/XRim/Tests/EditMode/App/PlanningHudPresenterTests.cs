@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using XRim.App;
 using XRim.Core;
@@ -11,6 +12,7 @@ using XRim.Rules.Arena;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Tests.EditMode.Input;
 using XRim.Tests.EditMode.Networking;
 
@@ -29,6 +31,12 @@ namespace XRim.Tests.EditMode.App
         {
             public event Action<WeaponId> WeaponChosen;
             public event Action ReadyPressed;
+            public event Action<SignatureMoveId> SignatureChosen;
+
+            public IReadOnlyList<SignatureButtonState> Signatures { get; private set; } = new SignatureButtonState[0];
+            public float SignatureCharge { get; private set; } = -1f;
+            public string SignatureText { get; private set; }
+            public int SignatureCalls { get; private set; }
 
             public bool Visible { get; private set; }
             public bool Mirrored { get; private set; }
@@ -86,9 +94,19 @@ namespace XRim.Tests.EditMode.App
 
             public void ShowMessage(string text) => Messages.Add(text);
 
+            public void ShowSignatures(IReadOnlyList<SignatureButtonState> buttons, float chargeFraction, string chargeText)
+            {
+                Signatures = buttons;
+                SignatureCharge = chargeFraction;
+                SignatureText = chargeText;
+                SignatureCalls++;
+            }
+
             public void PressWeapon(WeaponId weapon) => WeaponChosen?.Invoke(weapon);
 
             public void PressReady() => ReadyPressed?.Invoke();
+
+            public void PressSignature(SignatureMoveId move) => SignatureChosen?.Invoke(move);
         }
 
         private FakeHud _hud;
@@ -376,9 +394,180 @@ namespace XRim.Tests.EditMode.App
 
             _hud.PressReady();
             _hud.PressWeapon(WeaponIds.Mace);
+            _hud.PressSignature(SignatureMoveIds.FiveFingerExplodingTouch);
             _authority.RaisePublicStateChanged(Side.Right, new PublicPlanningState(WeaponIds.Spear, true, false));
 
             Assert.That(_rig.Sink.Commands, Is.Empty);
+        }
+
+        // --- Signature moves (GDD §8, Session 15) --------------------------------------------------
+
+        /// <summary>A new planning phase for the left player whose window gives these signature options.</summary>
+        private void PlanWithSignatures(SignatureOptions left)
+        {
+            PlanningWindow rig = _rig.Window;
+            var window = new PlanningWindow(rig.TurnIndex, rig.DeadlineSeconds, rig.Constraints, rig.IsSuddenDeath, rig.Board, rig.WeaponTips,
+                new PerSide<SignatureOptions>(left, SignatureOptions.None));
+            _left.OnPlanningStarted(window, _rig.Sink);
+        }
+
+        private static SignatureOptions Options(bool canUse = true, bool charged = true, float fraction = 1f, params SignatureMoveStats[] moves) =>
+            new SignatureOptions(moves.Length > 0 ? moves : GddStartingValues.CreateSignatureMoves().ToArray(),
+                new SignatureChargeState(charged, fraction), canUse);
+
+        [Test]
+        public void TheSignatureButtons_ShowTheMovesTheWindowGives_ReadyToUse()
+        {
+            PlanWithSignatures(Options());
+
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.Signatures.Count, Is.EqualTo(3));
+            Assert.That(_hud.Signatures[1].Name, Is.EqualTo("Head Impact Simulation #404"));
+            Assert.That(_hud.Signatures[1].Move, Is.EqualTo(SignatureMoveIds.HeadImpactSimulation404));
+            Assert.That(_hud.Signatures, Has.All.Matches<SignatureButtonState>(button => button.Usable && !button.Selected));
+            Assert.That(_hud.SignatureCharge, Is.EqualTo(1f));
+            Assert.That(_hud.SignatureText, Is.EqualTo(PlanningHudPresenter.SignatureReadyText));
+        }
+
+        [Test]
+        public void WithoutMoves_TheRowIsHidden()
+        {
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.Signatures, Is.Empty, "the window gives no signature options");
+        }
+
+        [Test]
+        public void ATap_SetsTheMove_AndASecondTapCancelsIt()
+        {
+            PlanWithSignatures(Options());
+            _presenter.Tick(1.0, null);
+
+            _hud.PressSignature(SignatureMoveIds.WhiplashCalibrationSpin);
+            _presenter.Tick(1.1, null);
+
+            Assert.That(_rig.Sink.Only<UseSignatureCommand>().Signature, Is.EqualTo(SignatureMoveIds.WhiplashCalibrationSpin));
+            Assert.That(_left.Draft.Signature, Is.EqualTo(SignatureMoveIds.WhiplashCalibrationSpin));
+            Assert.That(_hud.Signatures[2].Selected, Is.True);
+            Assert.That(_hud.Signatures[0].Selected, Is.False);
+
+            _hud.PressSignature(SignatureMoveIds.WhiplashCalibrationSpin);
+            _presenter.Tick(1.2, null);
+
+            Assert.That(_rig.Sink.Commands[_rig.Sink.Commands.Count - 1], Is.InstanceOf<ClearPathCommand>(), "the second tap clears the path");
+            Assert.That(_left.Draft.Signature.IsEmpty, Is.True);
+            Assert.That(_hud.Signatures[2].Selected, Is.False);
+        }
+
+        [Test]
+        public void TappingAnotherMove_SwitchesToIt()
+        {
+            PlanWithSignatures(Options());
+            _hud.PressSignature(SignatureMoveIds.FiveFingerExplodingTouch);
+
+            _hud.PressSignature(SignatureMoveIds.HeadImpactSimulation404);
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_rig.Sink.Commands[_rig.Sink.Commands.Count - 1], Is.InstanceOf<UseSignatureCommand>());
+            Assert.That(_left.Draft.Signature, Is.EqualTo(SignatureMoveIds.HeadImpactSimulation404));
+        }
+
+        [Test]
+        public void ARedraw_CancelsTheMoveOnTheButtonsToo()
+        {
+            PlanWithSignatures(Options());
+            _hud.PressSignature(SignatureMoveIds.FiveFingerExplodingTouch);
+
+            _left.Send(new SetPathCommand(new WeaponPath(new[] { new Vec2(150f, 100f), new Vec2(300f, 100f) })));
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.Signatures, Has.None.Matches<SignatureButtonState>(button => button.Selected));
+        }
+
+        [Test]
+        public void ARefusedTap_ShowsWhy()
+        {
+            PlanWithSignatures(Options(canUse: false, charged: false, fraction: 0f));
+            _presenter.Tick(1.0, null);
+            _rig.Sink.Result = CommandResult.Reject(CommandRejection.SignatureNotCharged);
+
+            _hud.PressSignature(SignatureMoveIds.FiveFingerExplodingTouch);
+            _presenter.Tick(1.1, null);
+
+            Assert.That(_hud.Messages[_hud.Messages.Count - 1], Is.EqualTo(RejectionMessages.Text(CommandRejection.SignatureNotCharged, 1.5f)));
+            Assert.That(_left.Draft.Signature.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void AnEmptyCharge_DimsEveryButton()
+        {
+            PlanWithSignatures(Options(canUse: false, charged: false, fraction: 0f));
+
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.Signatures, Has.None.Matches<SignatureButtonState>(button => button.Usable));
+            Assert.That(_hud.SignatureText, Is.EqualTo(PlanningHudPresenter.SignatureNotChargedText));
+        }
+
+        [Test]
+        public void AFillingBar_ShowsHowFull()
+        {
+            PlanWithSignatures(Options(canUse: false, charged: false, fraction: 0.42f));
+
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.SignatureCharge, Is.EqualTo(0.42f).Within(1e-6f));
+            Assert.That(_hud.SignatureText, Is.EqualTo(PlanningHudPresenter.SignatureChargingText + "42%"));
+        }
+
+        [Test]
+        public void ChargedButSwitchedOffThisTurn_SaysSo()
+        {
+            PlanWithSignatures(Options(canUse: false, charged: true, fraction: 1f));
+
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.SignatureText, Is.EqualTo(PlanningHudPresenter.SignatureOffThisTurnText), "§14: sudden death can switch them off");
+            Assert.That(_hud.Signatures, Has.None.Matches<SignatureButtonState>(button => button.Usable));
+        }
+
+        [Test]
+        public void AMoveTiedToAnotherWeapon_IsDim_UntilThatWeaponIsInHand()
+        {
+            SignatureMoveStats maceOnly = GddStartingValues.CreateSignatureMoves()[0];
+            maceOnly.AllowedWeaponIds.Add(WeaponIds.Mace.Value);
+            PlanWithSignatures(Options(true, true, 1f, maceOnly));
+
+            _presenter.Tick(1.0, null);
+            Assert.That(_hud.Signatures[0].Usable, Is.False, "the rapier is in hand");
+
+            _hud.PressWeapon(WeaponIds.Mace);
+            _presenter.Tick(1.1, null);
+            Assert.That(_hud.Signatures[0].Usable, Is.True);
+        }
+
+        [Test]
+        public void Ready_DimsTheButtons()
+        {
+            PlanWithSignatures(Options());
+
+            _hud.PressReady();
+            _presenter.Tick(1.0, null);
+
+            Assert.That(_hud.Signatures, Has.None.Matches<SignatureButtonState>(button => button.Usable));
+        }
+
+        [Test]
+        public void NothingChanged_TheButtonsAreNotSentAgain()
+        {
+            PlanWithSignatures(Options());
+            _presenter.Tick(1.0, null);
+            int calls = _hud.SignatureCalls;
+
+            _presenter.Tick(1.1, null);
+
+            Assert.That(_hud.SignatureCalls, Is.EqualTo(calls));
         }
     }
 }

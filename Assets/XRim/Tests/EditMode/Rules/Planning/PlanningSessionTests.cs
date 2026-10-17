@@ -315,10 +315,10 @@ namespace XRim.Tests.EditMode.Rules.Planning
             Assert.That(session.CurrentPlan.Path.IsEmpty, Is.False, "the refused commands changed nothing");
         }
 
-        // --- Signature moves (Session 15) ------------------------------------------------------
+        // --- Signature moves (Session 15; the full set is in PlanningSessionSignatureTests) ---------
 
         [Test]
-        public void UseSignature_IsRefusedUntilSession15()
+        public void UseSignature_AMoveTheCatalogueDoesNotHave_IsRefused()
         {
             PlanningSession session = CreateSession();
 

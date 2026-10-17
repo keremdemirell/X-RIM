@@ -20,6 +20,7 @@ namespace XRim.Editor
             EditorPaths.EnsureFolder(EditorPaths.TuningFolder);
             EditorPaths.EnsureFolder(EditorPaths.WeaponsFolder);
             EditorPaths.EnsureFolder(EditorPaths.BodyMovesFolder);
+            EditorPaths.EnsureFolder(EditorPaths.SignatureMovesFolder);
 
             var created = new List<string>();
             TuningProfile profile = LoadOrCreate<TuningProfile>(EditorPaths.TuningProfilePath, created);
@@ -57,6 +58,14 @@ namespace XRim.Editor
                 AddToList(profileObject, TuningProfile.FieldNames.BodyMoves, LoadOrCreateSettings<BodyMoveDefinition, BodyMoveStats>(path, stats, created));
             }
 
+            // GDD §8: the placeholder signature moves (Session 15), one asset each, named after the move without spaces or signs.
+            foreach (SignatureMoveStats stats in GddStartingValues.CreateSignatureMoves())
+            {
+                string path = $"{EditorPaths.SignatureMovesFolder}/{AssetName(stats.DisplayName)}.asset";
+                AddToList(profileObject, TuningProfile.FieldNames.SignatureMoves,
+                    LoadOrCreateSettings<SignatureMoveDefinition, SignatureMoveStats>(path, stats, created));
+            }
+
             profileObject.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
@@ -66,6 +75,18 @@ namespace XRim.Editor
             Debug.Log(created.Count == 0
                 ? "[XRim] All default tuning assets already exist; nothing was overwritten."
                 : $"[XRim] Created {created.Count} tuning assets (existing assets were left untouched):\n{string.Join("\n", created)}", profile);
+        }
+
+        /// <summary>Letters and digits only: "Head Impact Simulation #404" → "HeadImpactSimulation404".</summary>
+        private static string AssetName(string displayName)
+        {
+            var name = new System.Text.StringBuilder(displayName.Length);
+            foreach (char c in displayName)
+            {
+                if (char.IsLetterOrDigit(c)) name.Append(c);
+            }
+
+            return name.ToString();
         }
 
         private static T LoadOrCreate<T>(string path, List<string> created) where T : ScriptableObject

@@ -42,6 +42,18 @@ namespace XRim.Rules.Settings
             return null;
         }
 
+        /// <summary>The catalogue's move of this id (GDD §8); null when there is none.</summary>
+        public SignatureMoveStats FindSignatureMove(SignatureMoveId id)
+        {
+            if (id.IsEmpty) return null;
+            foreach (SignatureMoveStats move in SignatureMoves)
+            {
+                if (move.MoveId == id) return move;
+            }
+
+            return null;
+        }
+
         public BodyMoveStats FindBodyMove(BodyMove move)
         {
             foreach (BodyMoveStats stats in BodyMoves)
@@ -130,6 +142,19 @@ namespace XRim.Rules.Settings
             if (SuddenDeath == null) issues.Add("Sudden death: the settings are missing.");
             else if (SuddenDeath.MaxRepeatsWithoutHit < 0) issues.Add("Sudden death: the repeats without a hit must not be negative.");
 
+            if (Signature == null)
+            {
+                issues.Add("Signature: the settings are missing.");
+            }
+            else
+            {
+                if (Signature.MovesPerMatch < 0) issues.Add("Signature: the moves per match must not be negative (0 turns them off).");
+                if (Signature.BarChargePerHpDamageDealt < 0f || Signature.BarChargePerHpDamageTaken < 0f)
+                    issues.Add("Signature: the Kinetic Energy Bar fill rates must not be negative.");
+                if (Signature.KnockbackBurstMultiplier < 0f || Signature.DamageBoostMultiplier < 0f)
+                    issues.Add("Signature: the effect multipliers must not be negative.");
+            }
+
             if (Traits == null)
             {
                 issues.Add("Traits: the settings are missing.");
@@ -166,6 +191,8 @@ namespace XRim.Rules.Settings
                         issues.Add($"Weapons: '{weapon.Id}' rigidity break window must not be negative.");
                 }
             }
+
+            ValidateSignatureMoves(issues);
 
             var seenMoves = new HashSet<BodyMove>();
             foreach (BodyMoveStats move in BodyMoves)
@@ -238,6 +265,32 @@ namespace XRim.Rules.Settings
                 {
                     if (stronger == weaker || !IsStrictlyStronger(stronger, weaker)) continue;
                     issues.Add($"Weapons: '{stronger.Id}' is strictly stronger than '{weaker.Id}' (GDD §16: weapons are sidegrades).");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The signature catalogue (GDD §8): every move has a unique id and a pattern, lists only weapons that exist, and a move that
+        /// defines its own body move names a real one.
+        /// </summary>
+        private void ValidateSignatureMoves(ICollection<string> issues)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (SignatureMoveStats move in SignatureMoves)
+            {
+                if (string.IsNullOrEmpty(move.Id)) issues.Add("Signature moves: a move has no id.");
+                else if (!seen.Add(move.Id)) issues.Add($"Signature moves: duplicate id '{move.Id}'.");
+
+                if (move.PresetPath == null || move.PresetPath.Count < 1)
+                    issues.Add($"Signature moves: '{move.Id}' has no pattern (it needs at least one point).");
+                if (move.OverridesBodyMove && move.BodyMoveOverride != BodyMove.None && FindBodyMove(move.BodyMoveOverride) == null && BodyMoves.Count > 0)
+                    issues.Add($"Signature moves: '{move.Id}' names a body move the settings have no data for.");
+
+                if (move.AllowedWeaponIds == null || Weapons.Count == 0) continue;
+                foreach (string weaponId in move.AllowedWeaponIds)
+                {
+                    if (FindWeapon(new WeaponId(weaponId)) == null)
+                        issues.Add($"Signature moves: '{move.Id}' is tied to unknown weapon '{weaponId}'.");
                 }
             }
         }

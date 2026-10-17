@@ -114,5 +114,60 @@ namespace XRim.Tests.EditMode.Input
 
             Assert.That(draft.Stroke.Points, Is.Empty);
         }
+
+        // --- Signature moves (GDD §8, Session 15) --------------------------------------------------
+
+        private static readonly SignatureMoveId Move = SignatureMoveIds.FiveFingerExplodingTouch;
+
+        [Test]
+        public void AnAcceptedMove_IsRemembered_InPlaceOfTheStroke()
+        {
+            PlanDraft draft = Fresh();
+            draft.Record(new SetPathCommand(Stroke), CommandResult.Ok);
+
+            draft.Record(new UseSignatureCommand(Move), CommandResult.Ok);
+
+            Assert.That(draft.Signature, Is.EqualTo(Move));
+            Assert.That(draft.Stroke.Points, Is.Empty, "the pattern is the path now");
+        }
+
+        [Test]
+        public void ARefusedMove_ChangesNothing()
+        {
+            PlanDraft draft = Fresh();
+            draft.Record(new SetPathCommand(Stroke), CommandResult.Ok);
+
+            draft.Record(new UseSignatureCommand(Move), CommandResult.Reject(CommandRejection.SignatureNotCharged));
+
+            Assert.That(draft.Signature.IsEmpty, Is.True);
+            Assert.That(draft.Stroke, Is.SameAs(Stroke));
+        }
+
+        [Test]
+        public void ARedrawClearingOrASwitch_CancelsTheMove_AsTheRulesDo()
+        {
+            PlanDraft draft = Fresh();
+
+            draft.Record(new UseSignatureCommand(Move), CommandResult.Ok);
+            draft.Record(new SetPathCommand(Stroke), CommandResult.Ok);
+            Assert.That(draft.Signature.IsEmpty, Is.True, "a redraw");
+
+            draft.Record(new UseSignatureCommand(Move), CommandResult.Ok);
+            draft.Record(new ClearPathCommand(), CommandResult.Ok);
+            Assert.That(draft.Signature.IsEmpty, Is.True, "clearing");
+
+            draft.Record(new UseSignatureCommand(Move), CommandResult.Ok);
+            draft.Record(new SelectWeaponCommand(WeaponIds.Rapier), CommandResult.Ok);
+            Assert.That(draft.Signature, Is.EqualTo(Move), "the same weapon is not a switch");
+            draft.Record(new SelectWeaponCommand(WeaponIds.Mace), CommandResult.Ok);
+            Assert.That(draft.Signature.IsEmpty, Is.True, "a switch");
+
+            draft.Record(new UseSignatureCommand(Move), CommandResult.Ok);
+            draft.Record(new SetBodyMoveCommand(BodyMove.Lunge), CommandResult.Ok);
+            Assert.That(draft.Signature, Is.EqualTo(Move), "a swipe keeps it");
+
+            draft.Reset(WeaponIds.Rapier);
+            Assert.That(draft.Signature.IsEmpty, Is.True, "a new planning phase");
+        }
     }
 }

@@ -3,6 +3,7 @@ using XRim.Rules;
 using XRim.Rules.Events;
 using XRim.Rules.Match;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Simulation.Recording;
 
 namespace XRim.Simulation.Execution
@@ -33,9 +34,14 @@ namespace XRim.Simulation.Execution
         /// <summary>When each side landed its first valid hit this turn, for the sudden-death rules (§14). The handler sets it.</summary>
         public PerSide<SimTime?> FirstValidHitTime { get; } = new PerSide<SimTime?>(null, null);
 
+        /// <summary>Each side's signature move this turn and its special property (GDD §8); <see cref="SignatureAttackEffects.None"/> without one.</summary>
+        public PerSide<SignatureAttackEffects> Signatures { get; }
+
         public TurnContactContext(MatchState state, RulesSettings rules, RulePolicies policies, SimulationSettings simulation,
-            PerSide<BodyMoveStats> bodyMoves, ITurnActions actions, TimelineRecorder recorder)
+            PerSide<BodyMoveStats> bodyMoves, ITurnActions actions, TimelineRecorder recorder,
+            PerSide<SignatureAttackEffects> signatures = null)
         {
+            Signatures = signatures ?? new PerSide<SignatureAttackEffects>(SignatureAttackEffects.None, SignatureAttackEffects.None);
             State = Guard.NotNull(state, nameof(state));
             Rules = Guard.NotNull(rules, nameof(rules));
             Policies = Guard.NotNull(policies, nameof(policies));

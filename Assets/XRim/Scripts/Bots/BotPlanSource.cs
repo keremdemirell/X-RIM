@@ -35,7 +35,12 @@ namespace XRim.Bots
             }
 
             sink.Send(new SetBodyMoveCommand(plan.BodyMove));
-            if (!plan.Path.IsEmpty)
+            if (!plan.Signature.IsEmpty)
+            {
+                // The tap a human makes (§8): the rules draw the pattern.
+                sink.Send(new UseSignatureCommand(plan.Signature));
+            }
+            else if (!plan.Path.IsEmpty)
             {
                 sink.Send(new SetPathCommand(plan.Path));
             }

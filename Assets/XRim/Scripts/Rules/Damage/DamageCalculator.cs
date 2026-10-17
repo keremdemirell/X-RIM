@@ -14,7 +14,8 @@ namespace XRim.Rules.Damage
     /// <item>the HP it removes, through the no-instant-KO rule (<see cref="IInstantKoPolicy"/>, D27);</item>
     /// <item>for an arm or leg, the limb damage it adds, at most the per-hit cap (§11), and whether that brings the limb to
     /// its durability (Session 11 severs it);</item>
-    /// <item>for the head, whether it stuns: damage strictly above the stun threshold, measured before the D27 clamp.</item>
+    /// <item>for the head, whether it stuns: damage strictly above the stun threshold, measured before the D27 clamp; any hit of a
+    /// signature move whose special property is a stun stuns too (§8).</item>
     /// </list>
     /// The calculation reads the victim but never changes it; <see cref="ApplyTo"/> does.
     /// </summary>
@@ -55,7 +56,8 @@ namespace XRim.Rules.Damage
                 seversLimb = before < durability && before + limbDamage >= durability;
             }
 
-            bool stuns = context.Zone == HitZone.Head && damage > settings.HeadStunThreshold;
+            // A strong head hit stuns (§11); so does every hit of a signature move whose special property is a stun (§8).
+            bool stuns = (context.Zone == HitZone.Head && damage > settings.HeadStunThreshold) || context.Signature.StunsOnHit;
             return new DamageResult(damage, hpDamage, limbDamage, stuns, seversLimb);
         }
 

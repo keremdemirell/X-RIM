@@ -8,7 +8,8 @@ namespace XRim.Presentation.UI
 {
     /// <summary>
     /// The match HUD (UI Toolkit built in code, placeholder look): an HP bar under each dummy at the bottom of the screen, the turn
-    /// counter between them, and a banner under the planning timer (sudden death). Nothing in it catches a touch, so drawing and
+    /// counter between them, a banner under the planning timer (sudden death), and a signature move's name shouted over its fighter's
+    /// bar while the turn plays (§8). Nothing in it catches a touch, so drawing and
     /// swiping work right through it. It sits under the planning HUD and between the body zone and the Ready corner (D23 layout).
     /// </summary>
     public sealed class MatchHud : MonoBehaviour, IMatchHudView
@@ -20,6 +21,7 @@ namespace XRim.Presentation.UI
         private const float BottomMargin = 10f;
         private const float BannerTop = 160f;
         private const float PercentScale = 100f;
+        private const float ShoutBottom = 96f;
 
         private static readonly Color BannerColor = new Color(1f, 0.35f, 0.2f, 1f);
 
@@ -34,6 +36,8 @@ namespace XRim.Presentation.UI
         private VisualElement _banner;
         private Label _bannerTitle;
         private Label _bannerDetail;
+        private Label _shoutLeft;
+        private Label _shoutRight;
         private bool _visible = true;
 
         /// <summary>Makes the HUD on a new GameObject of its own (see <see cref="PlanningHud.Create"/>).</summary>
@@ -101,6 +105,15 @@ namespace XRim.Presentation.UI
             SetText(_bannerDetail, detail ?? string.Empty);
         }
 
+        public void ShowSignatureShout(Side side, string text, bool onScreenLeft)
+        {
+            Label shout = onScreenLeft ? _shoutLeft : _shoutRight;
+            if (shout == null) return;
+            bool show = !string.IsNullOrEmpty(text);
+            shout.style.visibility = show ? Visibility.Visible : Visibility.Hidden;
+            SetText(shout, text ?? string.Empty);
+        }
+
         // ----- building -----
 
         private void Build(VisualElement root)
@@ -128,6 +141,38 @@ namespace XRim.Presentation.UI
             _screenRight = BuildBlock(row, true);
 
             BuildBanner();
+            BuildShouts();
+        }
+
+        /// <summary>A row over the HP bars, laid out like them, where a signature move's name is shouted over its fighter's bar (§8).</summary>
+        private void BuildShouts()
+        {
+            VisualElement row = Plain(_root);
+            Absolute(row);
+            row.style.left = 0;
+            row.style.right = 0;
+            row.style.bottom = ShoutBottom;
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.justifyContent = Justify.Center;
+            _shoutLeft = BuildShout(row);
+            VisualElement gap = Plain(row);
+            gap.style.width = CentreWidth;
+            _shoutRight = BuildShout(row);
+        }
+
+        private static Label BuildShout(VisualElement row)
+        {
+            VisualElement cell = Plain(row);
+            cell.style.width = BlockWidth;
+            cell.style.alignItems = Align.Center;
+            Label shout = Text(cell, string.Empty, 32, HighlightColor);
+            shout.style.unityFontStyleAndWeight = FontStyle.Bold;
+            shout.style.whiteSpace = WhiteSpace.Normal;
+            shout.style.unityTextAlign = TextAnchor.MiddleCenter;
+            shout.style.backgroundColor = PanelColor;
+            Pad(shout, 16f, 6f);
+            shout.style.visibility = Visibility.Hidden;
+            return shout;
         }
 
         /// <summary>A name, the HP and a bar that empties toward the outer edge of the screen.</summary>

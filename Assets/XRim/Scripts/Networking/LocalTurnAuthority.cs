@@ -4,6 +4,7 @@ using XRim.Rules;
 using XRim.Rules.Match;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Simulation;
 using XRim.Simulation.Drivers;
 using XRim.Simulation.Execution;
@@ -44,6 +45,7 @@ namespace XRim.Networking
         private readonly IWeaponTipLocator _weaponTips;
         private readonly PoseSnapshot _initialPose;
 
+        private readonly PerSide<bool> _refillQueued = new PerSide<bool>(false, false);
         private BoardSnapshot _board;
         private PerSide<PublicPlanningState> _publicStates;
         private bool _planningLockedAnnounced;
@@ -131,6 +133,16 @@ namespace XRim.Networking
             _board.State.TurnIndex = turnIndex;
         }
 
+        /// <summary>
+        /// Debug (the Cheats tab, Session 15): this dummy's signature moves are charged again when the next planning phase opens: the
+        /// once-per-match uses back to none, the Kinetic Energy Bar full (§8). Queued, so a move used in the turn being planned does not
+        /// eat the refill. Only the rules state between turns changes.
+        /// </summary>
+        public void QueueSignatureRefillForDebug(Side side) => _refillQueued[side] = true;
+
+        /// <summary>The sides whose signature refill waits for the next planning phase (debug).</summary>
+        public bool IsSignatureRefillQueued(Side side) => _refillQueued[side];
+
         public void NotifyPlaybackFinished(int turnIndex)
         {
             if (!_holding || _hold.Mode != PlaybackHoldMode.ClientReport || turnIndex != _heldTurnIndex) return;
@@ -143,13 +155,30 @@ namespace XRim.Networking
         {
             _holding = false;
             _planningLockedAnnounced = false;
+            ApplySignatureRefills();
 
             PerSide<IWeaponTipSource> tips = PerSide<IWeaponTipSource>.Create(side => _weaponTips.ForSide(_board, side));
             Machine.BeginPlanning(tips);
             _publicStates = PerSide<PublicPlanningState>.Create(side => Machine.PublicStateOf(side));
 
+            PerSide<SignatureOptions> signatures = PerSide<SignatureOptions>.Create(side => SignatureOptions.Of(Machine.Sessions[side]));
             RaisePlanningStarted(new PlanningWindow(Machine.State.TurnIndex, Machine.PlanningDeadlineSeconds,
-                Machine.Constraints, Machine.State.IsSuddenDeath, _board.Clone(), tips));
+                Machine.Constraints, Machine.State.IsSuddenDeath, _board.Clone(), tips, signatures));
+        }
+
+        /// <summary>A queued debug refill (§8): the rules state and the board the window carries both get it, before the sessions open.</summary>
+        private void ApplySignatureRefills()
+        {
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                if (!_refillQueued[side]) continue;
+                _refillQueued[side] = false;
+                foreach (FighterState fighter in new[] { Machine.State.Fighters[side], _board.State.Fighters[side] })
+                {
+                    fighter.SignatureCharge = KineticEnergyBarChargeModel.FullBar;
+                    fighter.SignatureUses = 0;
+                }
+            }
         }
 
         private void ResolveTurn()

@@ -7,6 +7,7 @@ using XRim.Rules;
 using XRim.Rules.Paths;
 using XRim.Rules.Planning;
 using XRim.Rules.Settings;
+using XRim.Rules.Signature;
 using XRim.Tests.EditMode.Networking;
 using XRim.Tests.EditMode.Rules.Planning;
 
@@ -189,6 +190,92 @@ namespace XRim.Tests.EditMode.Bots
                 Assert.That(session.Weapon, Is.EqualTo(WeaponIds.BodyBlow), $"seed {seed}");
                 Assert.That(session.CurrentPath.WasClampedByReach, Is.False, $"seed {seed}: inside its own reach");
                 Assert.That(session.CurrentPath.Inked.WasCut, Is.False, $"seed {seed}");
+            }
+        }
+
+        // --- Signature moves (GDD §8, Session 15) ------------------------------------------------------
+
+        /// <summary>The usual test window, offering the left bot the placeholder moves with this charge.</summary>
+        private PlanningWindow WindowWithSignatures(bool canUse, System.Collections.Generic.IReadOnlyList<SignatureMoveStats> moves = null)
+        {
+            PlanningWindow plain = NetworkingSanityTests.CreateWindow(_settings);
+            var options = new SignatureOptions(moves ?? _settings.SignatureMoves, new SignatureChargeState(canUse, canUse ? 1f : 0f), canUse);
+            return new PlanningWindow(plain.TurnIndex, plain.DeadlineSeconds, plain.Constraints, plain.IsSuddenDeath, plain.Board,
+                plain.WeaponTips, new PerSide<SignatureOptions>(options, SignatureOptions.None));
+        }
+
+        private PlanningSession ChargedSession(PlanningWindow window) =>
+            PlanningTestData.CreateSession(_settings, window.Constraints[Side.Left], signatureCharge: new SignatureChargeState(true, 1f));
+
+        [Test]
+        public void WhenAMoveCanBeUsed_SomePlansUseOne_AndEveryPlanIsAccepted()
+        {
+            PlanningWindow window = WindowWithSignatures(true);
+            var validator = new PlanValidator(_settings, new RulePolicies());
+            var used = new HashSet<SignatureMoveId>();
+            int signaturePlans = 0;
+
+            for (uint seed = 1; seed <= Seeds; seed++)
+            {
+                PlanningSession session = ChargedSession(window);
+                var results = new List<CommandResult>();
+                new BotPlanSource(Side.Left, new RandomBotBrain(), PlanningTestData.Loadout, _settings, new XorShiftRandom(seed))
+                    .OnPlanningStarted(window, new SessionSink(session, results));
+
+                foreach (CommandResult result in results) Assert.That(result.Accepted, Is.True, $"seed {seed}: {result.Rejection}");
+                Assert.That(validator.Validate(session).Accepted, Is.True, $"seed {seed}");
+                Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(session.CurrentPlan), Is.False, $"seed {seed}: never idle");
+                if (session.CurrentPlan.Signature.IsEmpty) continue;
+                signaturePlans++;
+                used.Add(session.CurrentPlan.Signature);
+                Assert.That(session.CurrentPlan.Path.IsEmpty, Is.False, $"seed {seed}: the rules drew the pattern");
+            }
+
+            Assert.That(signaturePlans, Is.InRange(Seeds / 10, Seeds / 2), "about one turn in four");
+            Assert.That(used, Has.Count.EqualTo(3), "every placeholder move gets played");
+        }
+
+        [Test]
+        public void WhenNoMoveCanBeUsed_TheBotAlwaysDraws_ExactlyAsBefore()
+        {
+            PlanningWindow offered = WindowWithSignatures(false);
+            PlanningWindow plain = NetworkingSanityTests.CreateWindow(_settings);
+
+            for (uint seed = 1; seed <= Seeds; seed++)
+            {
+                TurnPlan withOptions = Plan(offered, seed);
+                TurnPlan without = Plan(plain, seed);
+
+                Assert.That(withOptions.Signature.IsEmpty, Is.True, $"seed {seed}");
+                Assert.That(withOptions.Path.Points, Is.EqualTo(without.Path.Points), $"seed {seed}: no random number spent on it");
+            }
+        }
+
+        [Test]
+        public void ATiedMove_IsNeverPlayed_WithAnotherWeapon()
+        {
+            SignatureMoveStats maceOnly = GddStartingValues.CreateSignatureMoves()[0];
+            maceOnly.AllowedWeaponIds.Add(WeaponIds.Mace.Value);
+            PlanningWindow window = WindowWithSignatures(true, new[] { maceOnly });
+
+            for (uint seed = 1; seed <= Seeds; seed++)
+            {
+                TurnPlan plan = new RandomBotBrain(1f).PlanTurn(Context(window, seed));
+
+                if (plan.Weapon == WeaponIds.Mace) Assert.That(plan.Signature, Is.EqualTo(maceOnly.MoveId), $"seed {seed}: chance 1 with the mace");
+                else Assert.That(plan.Signature.IsEmpty, Is.True, $"seed {seed}: {plan.Weapon} cannot play it");
+            }
+        }
+
+        [Test]
+        public void TheChance_IsTheBotsOwnSetting()
+        {
+            PlanningWindow window = WindowWithSignatures(true);
+
+            for (uint seed = 1; seed <= Seeds; seed++)
+            {
+                Assert.That(new RandomBotBrain(0f).PlanTurn(Context(window, seed)).Signature.IsEmpty, Is.True, $"seed {seed}: never");
+                Assert.That(new RandomBotBrain(1f).PlanTurn(Context(window, seed)).Signature.IsEmpty, Is.False, $"seed {seed}: always");
             }
         }
 

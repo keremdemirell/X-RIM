@@ -35,6 +35,15 @@ namespace XRim.Rules.Match
 
         /// <summary>This dummy landed a hit in the turn being resolved. The match machine clears it at the end of every turn.</summary>
         public bool HitLandedThisTurn { get; set; }
+
+        /// <summary>
+        /// The Kinetic Energy Bar (GDD §8, TBD), from 0 (empty) to 1 (full): filled by the HP damage this dummy deals and takes, emptied
+        /// by a signature move. Only the bar charge model touches it; it never goes down any other way and carries into sudden death.
+        /// </summary>
+        public float SignatureCharge { get; set; }
+
+        /// <summary>How many signature moves this dummy has used in the match (§8): spent when a plan holding one locks.</summary>
+        public int SignatureUses { get; set; }
         public int ConsecutiveIdleTurns { get; set; }
         public List<IStatusEffect> Statuses { get; } = new List<IStatusEffect>();
 
@@ -99,7 +108,7 @@ namespace XRim.Rules.Match
             {
                 ConsecutiveIdleTurns = ConsecutiveIdleTurns, HeldLimb = HeldLimb, HpBeforeSuddenDeath = HpBeforeSuddenDeath,
                 HpDamageTaken = HpDamageTaken, LifestealHitCount = LifestealHitCount, LifestealDamageDealt = LifestealDamageDealt,
-                HitLandedThisTurn = HitLandedThisTurn,
+                HitLandedThisTurn = HitLandedThisTurn, SignatureCharge = SignatureCharge, SignatureUses = SignatureUses,
             };
             _limbDamage.CopyTo(copy._limbDamage, 0);
             _severed.CopyTo(copy._severed, 0);

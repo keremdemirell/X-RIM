@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using XRim.Core;
+using XRim.Rules.Signature;
 
 namespace XRim.Rules.Settings
 {
@@ -17,8 +18,45 @@ namespace XRim.Rules.Settings
             var settings = new RulesSettings();
             settings.Weapons.AddRange(CreateWeapons());
             settings.BodyMoves.AddRange(CreateBodyMoves());
+            settings.SignatureMoves.AddRange(CreateSignatureMoves());
             return settings;
         }
+
+        /// <summary>
+        /// GDD §8: the catalogue is TBD; designer 2026-10-15 approved three clearly flagged placeholders. Patterns are in the torso frame
+        /// like a drawn stroke (the shoulder at (0, 100), a standing opponent's head about (700, 145) at the starting gap, the floor at
+        /// −180), built for the rapier's reach (640 from the shoulder); a shorter weapon's reach clamps them (D4). Each plays at the held
+        /// weapon's own speed after a lead-in from where its tip rests in the low guard (the rapier's about (306, −157)), so each starts near
+        /// the guard: with the rapier (900 units/s) the touch ends after about 0.6 s, the head impact 0.9 s and the whiplash 1 s of the
+        /// 1.5 s turn. A slow mace (250 units/s) covers only about 375 units in a turn, so it plays only the start of a pattern (the
+        /// mace is slow by design). Every pattern point and number is a placeholder.
+        /// </summary>
+        public static List<SignatureMoveStats> CreateSignatureMoves() => new List<SignatureMoveStats>
+        {
+            // A straight jab rising from below the chest to chest height: short, direct, the soonest of the three to arrive.
+            new SignatureMoveStats
+            {
+                Id = SignatureMoveIds.FiveFingerExplodingTouch.Value, DisplayName = "5 Finger Exploding Touch", DesignIsTbd = true,
+                PresetPath = new List<Vec2> { new Vec2(250f, 0f), new Vec2(450f, 100f), new Vec2(630f, 110f) },
+                SpecialEffectId = SignatureEffectIds.KnockbackBurst,
+            },
+
+            // Up over the top and hammering down to head height.
+            new SignatureMoveStats
+            {
+                Id = SignatureMoveIds.HeadImpactSimulation404.Value, DisplayName = "Head Impact Simulation #404", DesignIsTbd = true,
+                PresetPath = new List<Vec2> { new Vec2(300f, 250f), new Vec2(480f, 330f), new Vec2(620f, 160f) },
+                SpecialEffectId = SignatureEffectIds.StunOnHit,
+            },
+
+            // A wide sweep at full reach, rising from just above the floor through legs, body and head to high above.
+            new SignatureMoveStats
+            {
+                Id = SignatureMoveIds.WhiplashCalibrationSpin.Value, DisplayName = "Whiplash Calibration Spin", DesignIsTbd = true,
+                PresetPath = new List<Vec2> { new Vec2(420f, -120f), new Vec2(620f, 60f), new Vec2(560f, 330f), new Vec2(380f, 480f) },
+                SpecialEffectId = SignatureEffectIds.DamageBoost,
+            },
+        };
 
         public static List<WeaponStats> CreateWeapons() => new List<WeaponStats>
         {
