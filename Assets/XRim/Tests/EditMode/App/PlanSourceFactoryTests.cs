@@ -71,6 +71,29 @@ namespace XRim.Tests.EditMode.App
         }
 
         [Test]
+        public void ByDefault_EveryBotIsTheHeuristicOne()
+        {
+            Assert.That(((BotPlanSource)Create(MatchMode.HumanVsBot)[1]).Brain, Is.InstanceOf<HeuristicBotBrain>());
+            IReadOnlyList<IPlanSource> watched = Create(MatchMode.BotVsBot);
+            Assert.That(((BotPlanSource)watched[0]).Brain, Is.InstanceOf<HeuristicBotBrain>());
+            Assert.That(((BotPlanSource)watched[1]).Brain, Is.InstanceOf<HeuristicBotBrain>());
+        }
+
+        [Test]
+        public void TheBotsSettings_PickEachBotsBrain()
+        {
+            var bots = new BotSettings { VersusBrain = BotBrainKind.Random, WatchLeftBrain = BotBrainKind.Heuristic, WatchRightBrain = BotBrainKind.Random };
+
+            IPlanSource versus = PlanSourceFactory.Create(MatchMode.HumanVsBot, _setup, _settings, Human, new XorShiftRandom(TestData.Seed), Side.Left, bots)[1];
+            IReadOnlyList<IPlanSource> watched = PlanSourceFactory.Create(MatchMode.BotVsBot, _setup, _settings, Human, new XorShiftRandom(TestData.Seed),
+                Side.Left, bots);
+
+            Assert.That(((BotPlanSource)versus).Brain, Is.InstanceOf<RandomBotBrain>());
+            Assert.That(((BotPlanSource)watched[0]).Brain, Is.InstanceOf<HeuristicBotBrain>());
+            Assert.That(((BotPlanSource)watched[1]).Brain, Is.InstanceOf<RandomBotBrain>());
+        }
+
+        [Test]
         public void TheSandbox_GetsItsSourcesFromTheDebugTools()
         {
             Assert.Throws<ArgumentException>(() => Create(MatchMode.Sandbox));

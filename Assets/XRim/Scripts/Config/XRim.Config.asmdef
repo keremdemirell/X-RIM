@@ -5,7 +5,8 @@
         "XRim.Core",
         "XRim.Rules",
         "XRim.Simulation",
-        "XRim.Economy"
+        "XRim.Economy",
+        "XRim.Bots"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

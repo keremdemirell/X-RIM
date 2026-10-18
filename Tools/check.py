@@ -54,6 +54,10 @@ SHIP_PLATFORMS = ("Android", "iOS")
 
 COMPILE_TIMEOUT_SECONDS = 300
 RUNNER_TIMEOUT_SECONDS = 600
+
+# Safety (designer, 2026-10-18): the check does not run while the system drive or the project drive has less than this free, so its
+# compile output can never be what tips a nearly full disk over (a runaway VS Code log filled C: on 2026-10-17).
+MINIMUM_FREE_BYTES = 10 * 1024 ** 3
 RUNNER_SOURCE = PROJECT_ROOT + "/Tools/TestRunner/XRimTestRunner.cs"
 SCRIPT_ASSEMBLIES_DIR = PROJECT_ROOT + "/Library/ScriptAssemblies"   # read only: full package DLLs for tests
 NUNIT_FILE_NAME = "nunit.framework.dll"
@@ -1551,10 +1555,33 @@ def parse_arguments(argv: List[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def low_disk_space_problem() -> Optional[str]:
+    """None when the system drive and the project drive each have at least MINIMUM_FREE_BYTES free; otherwise what is wrong."""
+    roots: List[str] = []
+    for path in (os.environ.get("SystemDrive", "") + os.sep, PROJECT_ROOT):
+        root = os.path.splitdrive(os.path.abspath(path))[0] + os.sep
+        if root not in roots:
+            roots.append(root)
+    for root in roots:
+        try:
+            free = shutil.disk_usage(root).free
+        except OSError:
+            continue
+        if free < MINIMUM_FREE_BYTES:
+            return (f"{root} has only {free / 1024 ** 3:.1f} GB free; the check needs at least {MINIMUM_FREE_BYTES / 1024 ** 3:.0f} GB "
+                    "on the system drive and the project drive. Free some space, then run it again.")
+    return None
+
+
 def main(argv: List[str]) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     arguments = parse_arguments(argv)
+    problem = low_disk_space_problem()
+    if problem is not None:
+        print(f"ERROR: {problem}")
+        print("\nCHECK FAILED")
+        return 1
     try:
         return Checker(arguments).run()
     except CheckError as error:

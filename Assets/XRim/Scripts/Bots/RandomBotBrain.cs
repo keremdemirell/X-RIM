@@ -53,7 +53,7 @@ namespace XRim.Bots
         public TurnPlan PlanTurn(BotContext context)
         {
             Guard.NotNull(context, nameof(context));
-            PlanningConstraints constraints = context.Window.Constraints[context.Side];
+            PlanningConstraints constraints = context.Constraints;
             WeaponId weapon = ChooseWeapon(context, constraints);
             BodyMove bodyMove = ChooseBodyMove(context, constraints);
             SignatureMoveId signature = ChooseSignature(context, constraints, weapon);
@@ -70,7 +70,7 @@ namespace XRim.Bots
         /// </summary>
         private SignatureMoveId ChooseSignature(BotContext context, PlanningConstraints constraints, WeaponId weapon)
         {
-            SignatureOptions options = context.Window.Signatures[context.Side];
+            SignatureOptions options = context.Signatures;
             if (!options.CanUse) return default;
 
             var usable = new List<SignatureMoveStats>();
@@ -87,7 +87,7 @@ namespace XRim.Bots
 
         private static WeaponId ChooseWeapon(BotContext context, PlanningConstraints constraints)
         {
-            WeaponId current = context.Window.Board.State.Fighters[context.Side].CurrentWeapon;
+            WeaponId current = context.CurrentWeapon;
             List<WeaponId> available = constraints.AvailableWeapons(context.Loadout);
             if (!constraints.CanSwitchWeapon || available.Count == 0) return current;
 
@@ -117,7 +117,7 @@ namespace XRim.Bots
             PathSettings paths = context.Settings.Paths;
             IRandom random = context.Random;
 
-            Vec2 tip = context.Window.WeaponTips[context.Side].TipLocal(weapon);
+            Vec2 tip = context.WeaponTips.TipLocal(weapon);
             float reach = ReachLimit.For(paths, stats).RadiusUnits;
             float aimDegrees = (random.NextFloat() * 2f - 1f) * MaxAimAngleDegrees;
             float reachShare = MinReachShare + random.NextFloat() * (MaxReachShare - MinReachShare);

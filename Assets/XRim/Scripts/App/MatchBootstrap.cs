@@ -29,6 +29,7 @@ using XRim.Simulation;
 using XRim.Simulation.Execution;
 using XRim.Simulation.Physics;
 using XRim.Simulation.Recording;
+using XRim.Simulation.Scenarios;
 using XRim.Simulation.Settings;
 using XRim.Simulation.Unity2D;
 using PanelSettings = UnityEngine.UIElements.PanelSettings;
@@ -125,6 +126,7 @@ namespace XRim.App
         private InstantReplay _replay;
         private TurnResult _replayedTurn;
         private bool _replayHoldsTurn;
+        private TurnResult _scenarioOnScreen;
         private bool _infiniteInk;
         private ScriptableObject _ownedAudio;
         private ElectricWallView _wallView;
@@ -179,6 +181,9 @@ namespace XRim.App
         public RulesSettings RulesSettings { get; private set; }
 
         public SimulationSettings SimulationSettings { get; private set; }
+
+        /// <summary>Which bot plays where, and how the heuristic bot plays (Session 16), from the same snapshot as the rules.</summary>
+        public BotSettings BotSettings { get; private set; }
         public RulePolicies Policies { get; private set; }
         public ArenaSpace Space { get; private set; }
 
@@ -330,9 +335,9 @@ namespace XRim.App
             float delta = Time.unscaledDeltaTime;
             if (_started)
             {
-                // The clock stands still while it is frozen (debug) and while a replay plays: a replay shows a turn that is over, so it must
-                // never eat planning time or run out the wait for the playback report.
-                bool clockStopped = IsPlanningTimerFrozen || _replay.IsPlaying;
+                // The clock stands still while it is frozen (debug) and while a replay or a saved scenario plays: they show a turn that is
+                // not the one being planned, so they must never eat planning time or run out the wait for the playback report.
+                bool clockStopped = IsPlanningTimerFrozen || _replay.IsPlaying || _scenarioOnScreen != null;
                 if (_hotSeat != null) _hotSeat.Advance(clockStopped ? 0.0 : delta); // hot-seat runs the planning timer per player
                 else if (!clockStopped) _clock.Advance(delta);
                 _humans?.TickInput();
@@ -393,7 +398,8 @@ namespace XRim.App
         {
             PrepareMatch(mode, loadouts);
             var random = new XorShiftRandom(_setup.RandomSeed);
-            IReadOnlyList<IPlanSource> sources = PlanSourceFactory.Create(mode, _setup, RulesSettings, side => _humans.Add(side), random, HumanSide);
+            IReadOnlyList<IPlanSource> sources = PlanSourceFactory.Create(mode, _setup, RulesSettings, side => _humans.Add(side), random, HumanSide,
+                BotSettings);
 
             // Hot-seat: it must follow the authority before the plan sources are bound, so planning opens behind the cover.
             if (mode == MatchMode.HotSeat)
@@ -557,6 +563,7 @@ namespace XRim.App
         {
             DisposeLoadoutPick();
             _playbackReportPending = false;
+            _scenarioOnScreen = null;
             StopReplay();
 
             _shownHotSeatStage = HotSeatStage.Idle;
@@ -641,19 +648,89 @@ namespace XRim.App
             TurnInput last = LastTurnInput;
             if (last == null) return false;
 
+            SnapshotCurrentTuning("Re-simulation", out RulesSettings rules, out SimulationSettings simulation);
+            LastResimulation = _simulator.Simulate(new TurnInput(last.Board, last.Plans, rules, simulation));
+            Play(LastResimulation);
+            return true;
+        }
+
+        /// <summary>The tuning as it is now (live edits included), validated, each issue logged under this name.</summary>
+        private void SnapshotCurrentTuning(string context, out RulesSettings rules, out SimulationSettings simulation)
+        {
             var issues = new List<string>();
-            RulesSettings rules = _tuning.BuildRulesSettings(issues);
-            SimulationSettings simulation = _tuning.BuildSimulationSettings(issues);
+            rules = _tuning.BuildRulesSettings(issues);
+            simulation = _tuning.BuildSimulationSettings(issues);
             rules.Validate(issues);
             simulation.Validate(issues);
             foreach (string issue in issues)
             {
-                Debug.LogWarning($"[XRim] Re-simulation: {issue}", _tuning);
+                Debug.LogWarning($"[XRim] {context}: {issue}", _tuning);
+            }
+        }
+
+        // ----- scenarios (Session 16) -----
+
+        /// <summary>The last saved scenario played by <see cref="PlayScenario"/> (the Playback tab marks it); null before one.</summary>
+        public TurnResult LastScenarioReplay { get; private set; }
+
+        /// <summary>True once a turn has been simulated in this match, so <see cref="CaptureLastTurn"/> has one to save.</summary>
+        public bool CanCaptureLastTurn => _simulator != null && _simulator.LastInput != null && _simulator.LastResult != null;
+
+        /// <summary>True when a saved scenario can play: between turns (planning), nothing playing, no hot-seat cover up.</summary>
+        public bool CanPlayScenario =>
+            _composed && _flow != null && _flow.Phase == ClientPhase.Planning && !_playback.IsPlaying && !_replay.IsPlaying &&
+            (_hotSeat == null || _hotSeat.Stage != HotSeatStage.Cover);
+
+        /// <summary>
+        /// Debug (the Playback tab's Save, Session 16): the last simulated turn as a scenario: its board, both plans, the settings and the
+        /// physics scale. It is exactly what its file will hold: it goes through the JSON text once, is resolved again on a dummy built from
+        /// its own settings (<see cref="HeadlessPhysics"/>), and keeps that outcome as the one a replay must repeat.
+        /// <paramref name="differences"/> says how that replay differs from the turn as played: empty when it is the same turn; otherwise a
+        /// debug cheat (a forced sever, KO or stun, which a scenario does not keep) was on, or the scene's dummy prefabs are older than the
+        /// tuning. Null when no turn has been simulated yet.
+        /// </summary>
+        public Scenario CaptureLastTurn(string name, out List<string> differences)
+        {
+            differences = new List<string>();
+            if (!CanCaptureLastTurn) return null;
+
+            TurnResult played = _simulator.LastResult;
+            string note = string.Format(CultureInfo.InvariantCulture, "Turn {0} of a {1} match, saved from the Playback tab.",
+                played.TurnIndex + 1, _mode);
+            var scenario = new Scenario(name, note, _simulator.LastInput, Space.WorldUnitsPerArenaUnit);
+            Scenario saved = ScenarioJson.Read(ScenarioJson.Write(scenario, DateTime.Now));
+            TurnResult replayed = HeadlessPhysics.SimulateOnce(saved.Input, new ArenaSpace(saved.WorldUnitsPerArenaUnit));
+            ScenarioOutcome expected = ScenarioOutcome.Of(replayed);
+            differences = ScenarioComparison.Differences(ScenarioOutcome.Of(played), expected, ScenarioTolerance.Exact);
+            return saved.WithExpected(expected);
+        }
+
+        /// <summary>
+        /// Debug (the Playback tab's scenario list, Session 16): resolves a saved scenario again, on a dummy built from the settings it
+        /// plays with, and plays it. Display only: the match carries on from where it was. With its own settings it repeats the recorded
+        /// turn; with the current tuning it shows what the tuning changes. The planning clock stands still while it plays, and the board
+        /// being planned comes back after it. Returns the replayed turn, or null when a scenario cannot play now
+        /// (<see cref="CanPlayScenario"/>).
+        /// </summary>
+        public TurnResult PlayScenario(Scenario scenario, bool withCurrentTuning)
+        {
+            Guard.NotNull(scenario, nameof(scenario));
+            if (!CanPlayScenario) return null;
+
+            TurnInput input = scenario.Input;
+            float worldUnitsPerArenaUnit = scenario.WorldUnitsPerArenaUnit;
+            if (withCurrentTuning)
+            {
+                SnapshotCurrentTuning("Scenario replay", out RulesSettings rules, out SimulationSettings simulation);
+                input = new TurnInput(input.Board, input.Plans, rules, simulation);
+                worldUnitsPerArenaUnit = Space.WorldUnitsPerArenaUnit;
             }
 
-            LastResimulation = _simulator.Simulate(new TurnInput(last.Board, last.Plans, rules, simulation));
-            Play(LastResimulation);
-            return true;
+            TurnResult result = HeadlessPhysics.SimulateOnce(input, new ArenaSpace(worldUnitsPerArenaUnit));
+            LastScenarioReplay = result;
+            Play(result);
+            _scenarioOnScreen = result;
+            return result;
         }
 
         /// <summary>True when <see cref="ReplayLastTurn"/> can play: between turns (planning), nothing playing, no hot-seat cover up.</summary>
@@ -844,8 +921,10 @@ namespace XRim.App
             var issues = new List<string>();
             RulesSettings = _tuning.BuildRulesSettings(issues);
             SimulationSettings = _tuning.BuildSimulationSettings(issues);
+            BotSettings = _tuning.BuildBotSettings(issues);
             RulesSettings.Validate(issues);
             SimulationSettings.Validate(issues);
+            BotSettings.Validate(issues);
             foreach (string issue in issues)
             {
                 Debug.LogWarning($"[XRim] {issue}", _tuning);
@@ -1017,6 +1096,7 @@ namespace XRim.App
         private void Play(TurnResult result)
         {
             StopReplay(); // a turn played (or re-simulated) while a replay shows ends the replay
+            _scenarioOnScreen = null; // and so does a saved scenario's (PlayScenario marks its own play after this)
             MatchViewsTo(result.FinalBoard.Pose);
             _playback.Play(result);
         }
@@ -1100,6 +1180,14 @@ namespace XRim.App
 
         private void OnPlaybackFinished(TurnResult result)
         {
+            if (result == _scenarioOnScreen)
+            {
+                // A saved scenario played during planning (debug): back to the board being planned, the clock running again.
+                _scenarioOnScreen = null;
+                if (_flow != null && _flow.Phase == ClientPhase.Planning) ShowBoard(_flow.CurrentWindow.Board);
+                return;
+            }
+
             if (_flow == null || _replay.IsPlaying) return; // an instant replay ends itself
             LogPlayedTurn(result);
             if (TryStartReplay(result)) return;

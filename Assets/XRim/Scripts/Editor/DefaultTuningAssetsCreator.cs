@@ -45,6 +45,7 @@ namespace XRim.Editor
             Assign<BalanceTargetsConfig>(profileObject, TuningProfile.FieldNames.BalanceTargets, "BalanceTargets", created);
             Assign<DisplayConfig>(profileObject, TuningProfile.FieldNames.Display, "Display", created);
             Assign<AudioConfig>(profileObject, TuningProfile.FieldNames.Audio, "Audio", created);
+            Assign<BotConfig>(profileObject, TuningProfile.FieldNames.Bots, "Bots", created);
 
             foreach (WeaponStats stats in GddStartingValues.CreateWeapons())
             {

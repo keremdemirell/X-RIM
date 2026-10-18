@@ -64,6 +64,13 @@ namespace XRim.Tests.PlayMode.Simulation
         /// <summary>Arm durability whose 35% cap (6.3) a rapier arm hit (6.4) exceeds: the third capped hit severs.</summary>
         private const float ThreeCappedRapierHitsDurability = 18f;
 
+        /// <summary>
+        /// No guard tip cap: Session 14's <see cref="RagdollSettings.GuardMaxTipDistanceUnits"/> (400) would rest a rapier held at full
+        /// reach with its tip 400 from the shoulder instead of 640, so the right blade would lie along its own arm and the chop would meet
+        /// that blade (a blade contact, no hit) before the arm. The three-hit scenario keeps the guard it was built with (Session 11).
+        /// </summary>
+        private const float UncappedGuardTipUnits = float.MaxValue;
+
         private const float Tolerance = 1e-3f;
 
         private SimulationMode2D _previousMode;
@@ -178,8 +185,12 @@ namespace XRim.Tests.PlayMode.Simulation
         {
             _rules.Damage.ArmDurability = ThreeCappedRapierHitsDurability;
             _body.GuardHandReachFraction = 1f;
+            _body.GuardMaxTipDistanceUnits = UncappedGuardTipUnits;
             _simulation.HitReaction.KnockbackPersists = false;
-            var highGuard = new RagdollSettings { GuardAngleDegrees = HighGuardDegrees, GuardHandReachFraction = 1f };
+            var highGuard = new RagdollSettings
+            {
+                GuardAngleDegrees = HighGuardDegrees, GuardHandReachFraction = 1f, GuardMaxTipDistanceUnits = UncappedGuardTipUnits,
+            };
             MatchState state = State(WeaponIds.Rapier, WeaponIds.Rapier);
             TurnResult turn = null;
 

@@ -1,0 +1,554 @@
+{
+    "Profile": "TuningProfile",
+    "StartedAt": "2026-10-18T19:14:42",
+    "Spec": {
+        "MatchesPerRun": 100,
+        "FirstSeed": 1,
+        "RandomLoadouts": true,
+        "TurnLimit": 150,
+        "Matchups": [
+            {
+                "First": 0,
+                "Second": 1
+            },
+            {
+                "First": 0,
+                "Second": 0
+            }
+        ],
+        "SweepDurability": true,
+        "DurabilityFactors": [
+            0.6000000238418579,
+            0.800000011920929,
+            1.25
+        ]
+    },
+    "Rules": {
+        "Match": {
+            "PlanningDurationSeconds": 12.0,
+            "TurnCap": 30,
+            "ExecutionHardCapSeconds": 1.5,
+            "WeaponSwitchLockoutSeconds": 1.5,
+            "AllowReadyCancel": true,
+            "AllowReadyCancelDuringLockout": false,
+            "AllowDrawingDuringLockout": true,
+            "BothForfeitRule": 0
+        },
+        "Paths": {
+            "SampleSpacingUnits": 10.0,
+            "ArmLengthUnits": 240.0,
+            "ShoulderOffsetUnits": {
+                "X": 0.0,
+                "Y": 100.0
+            },
+            "PathTiltsWithTorsoLean": false
+        },
+        "Damage": {
+            "MaxHp": 100.0,
+            "PerHitLimbCapFraction": 0.3499999940395355,
+            "ArmDurability": 40.0,
+            "LegDurability": 50.0,
+            "OffHandDamageMultiplier": 0.800000011920929,
+            "LimbLoss": {
+                "LegLossPenalty": 1,
+                "AnySeveredLimbCanBeWielded": true,
+                "DroppedWeaponIsLost": false,
+                "Retrieval": 0
+            },
+            "HeadStunThreshold": 30.0,
+            "StunEffect": 0,
+            "StunPlanningDurationFraction": 0.5,
+            "StunInkLengthFraction": 0.5,
+            "InterruptRule": 1,
+            "InterruptDamageThreshold": 10.0,
+            "MaxHitsPerWeaponPerTurn": 3,
+            "RestingWeaponsDealDamage": false
+        },
+        "HitZones": {
+            "HeadMultiplier": 2.5,
+            "TorsoMultiplier": 1.0,
+            "ArmMultiplier": 0.800000011920929,
+            "LegMultiplier": 0.699999988079071
+        },
+        "Clash": {
+            "HardClashAngleDegrees": 30.0,
+            "CrushRatio": 1.5,
+            "CrushThroughDamageMultiplier": 0.699999988079071,
+            "MassWeight": 1.0,
+            "SpeedWeight": 0.004999999888241291,
+            "GlancingSimilarMassBandFraction": 0.20000000298023225,
+            "MaxResolvedContactsPerWeaponPair": 1,
+            "ShieldBlock": {
+                "Rule": 0,
+                "PartialBlockDamageMultiplier": 0.5,
+                "SquareHitMinAngleDegrees": 30.0,
+                "RimFraction": 0.20000000298023225,
+                "HeavyWeapon": 0,
+                "HeavyWeaponMinMass": 10.0
+            }
+        },
+        "ElectricWall": {
+            "Damage": 10.0,
+            "BounceDistanceUnits": 80.0,
+            "AdvanceDistanceUnits": 50.0,
+            "SpawnOffsetBehindUnits": 60.0,
+            "DamageGrowthPerConsecutiveRetreat": 0.0,
+            "DamageWhenKnockedInto": false,
+            "ActiveInSuddenDeath": false
+        },
+        "Arena": {
+            "WidthUnits": 2000.0,
+            "StartingGapUnits": 700.0
+        },
+        "Loadout": {
+            "RequireShieldSlot": false,
+            "SeveredLimbIsExtraOption": true,
+            "DefaultLoadoutWeaponIds": [
+                "rapier",
+                "mace",
+                "shield"
+            ]
+        },
+        "Signature": {
+            "ChargeMode": 0,
+            "MovesPerMatch": 1,
+            "OpponentSeesCharged": false,
+            "BarChargePerHpDamageDealt": 0.004999999888241291,
+            "BarChargePerHpDamageTaken": 0.009999999776482582,
+            "KnockbackBurstMultiplier": 3.0,
+            "DamageBoostMultiplier": 1.5
+        },
+        "SuddenDeath": {
+            "BoardMode": 0,
+            "MaxRepeatsWithoutHit": 3,
+            "AllowWeaponSwitching": true,
+            "AllowSignatureMoves": true
+        },
+        "Traits": {
+            "LifestealEnabled": false,
+            "BuildUpEnabled": false,
+            "LifestealHitsNeeded": 3,
+            "LifestealHitCounting": 0,
+            "LifestealRecoveredFraction": 0.30000001192092898,
+            "BuildUpGrowthPerHpDamageTaken": 0.004999999888241291,
+            "BuildUpMaxBonusFraction": 0.5
+        },
+        "Weapons": [
+            {
+                "Id": "rapier",
+                "DisplayName": "Rapier",
+                "Kind": 0,
+                "DesignIsTbd": false,
+                "InkLengthUnits": 600.0,
+                "InkThicknessUnits": 10.0,
+                "LengthUnits": 400.0,
+                "Mass": 2.0,
+                "SpeedUnitsPerSecond": 900.0,
+                "BaseDamage": 8.0,
+                "Rigidity": {
+                    "Enabled": false,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.30000001192092898,
+                "KnockbackImpulse": 0.0,
+                "TraitIds": []
+            },
+            {
+                "Id": "sword",
+                "DisplayName": "Sword",
+                "Kind": 0,
+                "DesignIsTbd": true,
+                "InkLengthUnits": 400.0,
+                "InkThicknessUnits": 15.0,
+                "LengthUnits": 320.0,
+                "Mass": 5.0,
+                "SpeedUnitsPerSecond": 600.0,
+                "BaseDamage": 12.0,
+                "Rigidity": {
+                    "Enabled": false,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.5,
+                "KnockbackImpulse": 0.0,
+                "TraitIds": []
+            },
+            {
+                "Id": "mace",
+                "DisplayName": "Mace",
+                "Kind": 0,
+                "DesignIsTbd": false,
+                "InkLengthUnits": 200.0,
+                "InkThicknessUnits": 30.0,
+                "LengthUnits": 220.0,
+                "Mass": 10.0,
+                "SpeedUnitsPerSecond": 250.0,
+                "BaseDamage": 20.0,
+                "Rigidity": {
+                    "Enabled": false,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.699999988079071,
+                "KnockbackImpulse": 0.0,
+                "TraitIds": []
+            },
+            {
+                "Id": "spear",
+                "DisplayName": "Spear",
+                "Kind": 0,
+                "DesignIsTbd": true,
+                "InkLengthUnits": 800.0,
+                "InkThicknessUnits": 8.0,
+                "LengthUnits": 500.0,
+                "Mass": 4.0,
+                "SpeedUnitsPerSecond": 700.0,
+                "BaseDamage": 10.0,
+                "Rigidity": {
+                    "Enabled": true,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.30000001192092898,
+                "KnockbackImpulse": 0.0,
+                "TraitIds": []
+            },
+            {
+                "Id": "shield",
+                "DisplayName": "Shield",
+                "Kind": 1,
+                "DesignIsTbd": true,
+                "InkLengthUnits": 150.0,
+                "InkThicknessUnits": 40.0,
+                "LengthUnits": 150.0,
+                "Mass": 8.0,
+                "SpeedUnitsPerSecond": 400.0,
+                "BaseDamage": 3.0,
+                "Rigidity": {
+                    "Enabled": false,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.5,
+                "KnockbackImpulse": 5.0,
+                "TraitIds": []
+            },
+            {
+                "Id": "severed_limb",
+                "DisplayName": "Severed limb",
+                "Kind": 2,
+                "DesignIsTbd": true,
+                "InkLengthUnits": 200.0,
+                "InkThicknessUnits": 25.0,
+                "LengthUnits": 200.0,
+                "Mass": 6.0,
+                "SpeedUnitsPerSecond": 300.0,
+                "BaseDamage": 10.0,
+                "Rigidity": {
+                    "Enabled": false,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.5,
+                "KnockbackImpulse": 0.0,
+                "TraitIds": []
+            },
+            {
+                "Id": "body_blow",
+                "DisplayName": "Body blow",
+                "Kind": 3,
+                "DesignIsTbd": true,
+                "InkLengthUnits": 200.0,
+                "InkThicknessUnits": 50.0,
+                "LengthUnits": 160.0,
+                "Mass": 2.0,
+                "SpeedUnitsPerSecond": 350.0,
+                "BaseDamage": 8.0,
+                "Rigidity": {
+                    "Enabled": false,
+                    "BendThresholdDegrees": 15.0,
+                    "BendCostK": 0.019999999552965165,
+                    "BreakAngleDegrees": 90.0,
+                    "BreakWindowUnits": 20.0
+                },
+                "HasSwingArmour": false,
+                "SpeedKeptAfterHitFraction": 0.30000001192092898,
+                "KnockbackImpulse": 0.0,
+                "TraitIds": []
+            }
+        ],
+        "BodyMoves": [
+            {
+                "Move": 1,
+                "DisplacementUnits": {
+                    "X": 0.0,
+                    "Y": -70.0
+                },
+                "DurationSeconds": 0.25,
+                "LeanDegrees": 10.0,
+                "StrideUnits": 40.0,
+                "FootLiftUnits": 0.0,
+                "IsLeanInPlace": false,
+                "LeanInPlaceDegrees": 0.0,
+                "WeaponSpeedBonusFraction": 0.0,
+                "DamageBonusFraction": 0.0,
+                "StandsUpFromLowStance": false
+            },
+            {
+                "Move": 2,
+                "DisplacementUnits": {
+                    "X": 120.0,
+                    "Y": -20.0
+                },
+                "DurationSeconds": 0.3499999940395355,
+                "LeanDegrees": 12.0,
+                "StrideUnits": 140.0,
+                "FootLiftUnits": 0.0,
+                "IsLeanInPlace": false,
+                "LeanInPlaceDegrees": 0.0,
+                "WeaponSpeedBonusFraction": 0.0,
+                "DamageBonusFraction": 0.0,
+                "StandsUpFromLowStance": false
+            },
+            {
+                "Move": 3,
+                "DisplacementUnits": {
+                    "X": -100.0,
+                    "Y": -10.0
+                },
+                "DurationSeconds": 0.30000001192092898,
+                "LeanDegrees": -8.0,
+                "StrideUnits": 60.0,
+                "FootLiftUnits": 0.0,
+                "IsLeanInPlace": false,
+                "LeanInPlaceDegrees": -25.0,
+                "WeaponSpeedBonusFraction": 0.0,
+                "DamageBonusFraction": 0.0,
+                "StandsUpFromLowStance": false
+            },
+            {
+                "Move": 4,
+                "DisplacementUnits": {
+                    "X": 0.0,
+                    "Y": 80.0
+                },
+                "DurationSeconds": 0.4000000059604645,
+                "LeanDegrees": 0.0,
+                "StrideUnits": 0.0,
+                "FootLiftUnits": 100.0,
+                "IsLeanInPlace": false,
+                "LeanInPlaceDegrees": 0.0,
+                "WeaponSpeedBonusFraction": 0.0,
+                "DamageBonusFraction": 0.0,
+                "StandsUpFromLowStance": false
+            },
+            {
+                "Move": 0,
+                "DisplacementUnits": {
+                    "X": 0.0,
+                    "Y": 0.0
+                },
+                "DurationSeconds": 0.30000001192092898,
+                "LeanDegrees": 0.0,
+                "StrideUnits": 0.0,
+                "FootLiftUnits": 0.0,
+                "IsLeanInPlace": false,
+                "LeanInPlaceDegrees": 0.0,
+                "WeaponSpeedBonusFraction": 0.0,
+                "DamageBonusFraction": 0.0,
+                "StandsUpFromLowStance": false
+            }
+        ],
+        "SignatureMoves": [
+            {
+                "Id": "five_finger_exploding_touch",
+                "DisplayName": "5 Finger Exploding Touch",
+                "DesignIsTbd": true,
+                "PresetPath": [
+                    {
+                        "X": 250.0,
+                        "Y": 0.0
+                    },
+                    {
+                        "X": 450.0,
+                        "Y": 100.0
+                    },
+                    {
+                        "X": 630.0,
+                        "Y": 110.0
+                    }
+                ],
+                "AllowedWeaponIds": [],
+                "ConsumesInk": false,
+                "OverridesBodyMove": false,
+                "BodyMoveOverride": 0,
+                "SpecialEffectId": "knockback_burst"
+            },
+            {
+                "Id": "head_impact_simulation_404",
+                "DisplayName": "Head Impact Simulation #404",
+                "DesignIsTbd": true,
+                "PresetPath": [
+                    {
+                        "X": 300.0,
+                        "Y": 250.0
+                    },
+                    {
+                        "X": 480.0,
+                        "Y": 330.0
+                    },
+                    {
+                        "X": 620.0,
+                        "Y": 160.0
+                    }
+                ],
+                "AllowedWeaponIds": [],
+                "ConsumesInk": false,
+                "OverridesBodyMove": false,
+                "BodyMoveOverride": 0,
+                "SpecialEffectId": "stun_on_hit"
+            },
+            {
+                "Id": "whiplash_calibration_spin",
+                "DisplayName": "Whiplash Calibration Spin",
+                "DesignIsTbd": true,
+                "PresetPath": [
+                    {
+                        "X": 420.0,
+                        "Y": -120.0
+                    },
+                    {
+                        "X": 620.0,
+                        "Y": 60.0
+                    },
+                    {
+                        "X": 560.0,
+                        "Y": 330.0
+                    },
+                    {
+                        "X": 380.0,
+                        "Y": 480.0
+                    }
+                ],
+                "AllowedWeaponIds": [],
+                "ConsumesInk": false,
+                "OverridesBodyMove": false,
+                "BodyMoveOverride": 0,
+                "SpecialEffectId": "damage_boost"
+            }
+        ]
+    },
+    "Simulation": {
+        "StepRateHz": 240,
+        "SettleLinearSpeedUnitsPerSecond": 5.0,
+        "SettleAngularSpeedDegreesPerSecond": 10.0,
+        "SettleStepsRequired": 6,
+        "RecordEveryNthStep": 1,
+        "WeaponDriver": 0,
+        "Segmentation": 10,
+        "GravityUnitsPerSecondSquared": 3924.0,
+        "WeaponMotor": {
+            "FrequencyHz": 12.0,
+            "DampingRatio": 1.0,
+            "AngularFrequencyHz": 12.0,
+            "AngularDampingRatio": 1.0,
+            "MaxAccelerationUnitsPerSecondSquared": 60000.0,
+            "MaxAngularAccelerationDegreesPerSecondSquared": 60000.0
+        },
+        "RootDrive": {
+            "Mode": 0,
+            "MaxAccelerationUnitsPerSecondSquared": 20000.0,
+            "MaxAngularAccelerationDegreesPerSecondSquared": 20000.0,
+            "CorrectionFraction": 0.30000001192092898
+        },
+        "Ragdoll": {
+            "HeadDiameterUnits": 50.0,
+            "TorsoWidthUnits": 60.0,
+            "TorsoHeightUnits": 120.0,
+            "ArmWidthUnits": 24.0,
+            "LegWidthUnits": 28.0,
+            "LegLengthUnits": 180.0,
+            "UpperSegmentFraction": 0.5,
+            "HeadMass": 2.0,
+            "TorsoMass": 10.0,
+            "ArmMass": 2.0,
+            "LegMass": 4.0,
+            "NeckMinDegrees": -30.0,
+            "NeckMaxDegrees": 30.0,
+            "ShoulderMinDegrees": -120.0,
+            "ShoulderMaxDegrees": 220.0,
+            "ElbowMinDegrees": 0.0,
+            "ElbowMaxDegrees": 140.0,
+            "HipMinDegrees": -30.0,
+            "HipMaxDegrees": 90.0,
+            "KneeMinDegrees": -130.0,
+            "KneeMaxDegrees": 0.0,
+            "JointServoGainPerSecond": 20.0,
+            "JointServoMaxAngularAccelerationDegreesPerSecondSquared": 36000.0,
+            "ServoWeaponArm": false,
+            "WeaponArmFollowFrequencyHz": 20.0,
+            "WeaponArmFollowDampingRatio": 1.0,
+            "WeaponArmFollowMaxAccelerationUnitsPerSecondSquared": 200000.0,
+            "GuardAngleDegrees": -40.0,
+            "GuardHandReachFraction": 0.0,
+            "GuardMaxTipDistanceUnits": 400.0
+        },
+        "HitReaction": {
+            "ReleaseSpeedFraction": 1.0,
+            "RecoilDistanceUnits": 30.0,
+            "PartImpulseMomentumFraction": 0.800000011920929,
+            "KnockbackPersists": true,
+            "KnockbackUnitsPerWeaponMass": 9.0,
+            "KnockbackSeconds": 0.15000000596046449
+        },
+        "ClashReaction": {
+            "ReboundSpeedFraction": 0.75,
+            "KnockOffMomentumFraction": 0.800000011920929,
+            "KnockOffFreeSeconds": 0.25,
+            "BlockKnockbackFraction": 0.5
+        },
+        "SeverReaction": {
+            "PopBackSpeedUnitsPerSecond": 200.0,
+            "PopUpSpeedUnitsPerSecond": 320.0,
+            "PopSpinDegreesPerSecond": 600.0
+        }
+    },
+    "Bots": {
+        "VersusBrain": 0,
+        "WatchLeftBrain": 0,
+        "WatchRightBrain": 0,
+        "Heuristic": {
+            "AimErrorUnits": 25.0,
+            "MistakeChance": 0.10000000149011612,
+            "SignatureChance": 0.6000000238418579,
+            "DuckChance": 0.5,
+            "SwingChance": 0.3499999940395355,
+            "HeadAimChance": 0.25,
+            "ShieldGuardChance": 0.5,
+            "RetreatChance": 0.5,
+            "JumpChance": 0.10000000149011612,
+            "LowHpFraction": 0.3499999940395355,
+            "DamagedLimbFocusFraction": 0.5
+        }
+    },
+    "AssumedPlanningSecondsPerTurn": 6.0
+}

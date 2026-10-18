@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c13420fdc0f527241838c322c5382ffd, type: 3}
+  m_Name: Bots
+  m_EditorClassIdentifier: XRim.Config::XRim.Config.BotConfig
+  _settings:
+    VersusBrain: 0
+    WatchLeftBrain: 0
+    WatchRightBrain: 0
+    Heuristic:
+      AimErrorUnits: 25
+      MistakeChance: 0.1
+      SignatureChance: 0.6
+      DuckChance: 0.5
+      SwingChance: 0.35
+      HeadAimChance: 0.25
+      ShieldGuardChance: 0.5
+      RetreatChance: 0.5
+      JumpChance: 0.1
+      LowHpFraction: 0.35
+      DamagedLimbFocusFraction: 0.5

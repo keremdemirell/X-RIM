@@ -36,6 +36,9 @@ namespace XRim.App
         /// <summary>The last turn's board, plans and settings; null before the first turn.</summary>
         public TurnInput LastInput { get; private set; }
 
+        /// <summary>What <see cref="LastInput"/> resolved to (Session 16: a saved scenario is checked against it); null before the first turn.</summary>
+        public TurnResult LastResult { get; private set; }
+
         /// <summary>Wall-clock time the last simulation took (debug: device cost of a turn).</summary>
         public double LastSimulationMilliseconds { get; private set; }
 
@@ -67,6 +70,7 @@ namespace XRim.App
             _watch.Stop();
             LastSimulationMilliseconds = _watch.Elapsed.TotalMilliseconds;
             Timing.Add(LastSimulationMilliseconds);
+            LastResult = result;
             return result;
         }
     }

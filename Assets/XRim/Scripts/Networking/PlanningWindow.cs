@@ -32,8 +32,15 @@ namespace XRim.Networking
         /// </summary>
         public PerSide<SignatureOptions> Signatures { get; }
 
+        /// <summary>
+        /// What each side shows the other as planning opens (Session 16): its weapon, Ready, a charged signature move only when that is
+        /// shown (GDD §3, §6, §8). Without one from the authority: the board's weapons, nobody Ready, no charge shown.
+        /// </summary>
+        public PerSide<PublicPlanningState> PublicStates { get; }
+
         public PlanningWindow(int turnIndex, double deadlineSeconds, PerSide<PlanningConstraints> constraints,
-            bool isSuddenDeath, BoardSnapshot board, PerSide<IWeaponTipSource> weaponTips, PerSide<SignatureOptions> signatures = null)
+            bool isSuddenDeath, BoardSnapshot board, PerSide<IWeaponTipSource> weaponTips, PerSide<SignatureOptions> signatures = null,
+            PerSide<PublicPlanningState> publicStates = null)
         {
             TurnIndex = turnIndex;
             DeadlineSeconds = deadlineSeconds;
@@ -42,6 +49,8 @@ namespace XRim.Networking
             Board = Guard.NotNull(board, nameof(board));
             WeaponTips = Guard.NotNull(weaponTips, nameof(weaponTips));
             Signatures = signatures ?? new PerSide<SignatureOptions>(SignatureOptions.None, SignatureOptions.None);
+            PublicStates = publicStates ?? PerSide<PublicPlanningState>.Create(side =>
+                new PublicPlanningState(board.State.Fighters[side].CurrentWeapon, false, false));
         }
     }
 }

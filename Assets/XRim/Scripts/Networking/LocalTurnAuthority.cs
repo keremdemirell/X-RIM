@@ -163,7 +163,8 @@ namespace XRim.Networking
 
             PerSide<SignatureOptions> signatures = PerSide<SignatureOptions>.Create(side => SignatureOptions.Of(Machine.Sessions[side]));
             RaisePlanningStarted(new PlanningWindow(Machine.State.TurnIndex, Machine.PlanningDeadlineSeconds,
-                Machine.Constraints, Machine.State.IsSuddenDeath, _board.Clone(), tips, signatures));
+                Machine.Constraints, Machine.State.IsSuddenDeath, _board.Clone(), tips, signatures,
+                new PerSide<PublicPlanningState>(_publicStates.Left, _publicStates.Right)));
         }
 
         /// <summary>A queued debug refill (§8): the rules state and the board the window carries both get it, before the sessions open.</summary>

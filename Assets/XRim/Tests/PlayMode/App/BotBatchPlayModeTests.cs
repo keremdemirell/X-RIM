@@ -1,253 +1,93 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
-using XRim.App;
+using XRim.Bots;
+using XRim.Bots.Balance;
 using XRim.Config;
-using XRim.Core;
-using XRim.Networking;
 using XRim.Presentation.Feel;
-using XRim.Rules;
-using XRim.Rules.Events;
-using XRim.Rules.Match;
 using XRim.Rules.Settings;
 using XRim.Simulation;
-using XRim.Simulation.Execution;
-using XRim.Simulation.Recording;
-using XRim.Simulation.Settings;
 using XRim.Simulation.Unity2D;
-using Object = UnityEngine.Object;
 
 namespace XRim.Tests.PlayMode.App
 {
     /// <summary>
-    /// Measures how long matches between two random debug bots run on the real physics and rules, with the project's tuning
-    /// (GDD §1: target match length is TBD, so this measures, it decides nothing). Headless: no playback, no screen. Explicit, so it
-    /// runs only when picked in the Test Runner; it writes Logs/XRimBotBatch.txt. The random bot is not a human, so its numbers are a
-    /// baseline for the turn loop, not a prediction of real matches.
+    /// A short bot-vs-bot balance batch from the Test Runner (Sessions 09 and 16): the same engine-free batch the Editor's XRim → Balance →
+    /// Run Bot Batch… plays, here 20 matches of the heuristic bot against the random one on real physics with the project's tuning, its report
+    /// written to Logs/XRimBotBatch.txt. Explicit, so it runs only when picked. The full batch with the durability sweep is the Editor window's.
     /// </summary>
     public sealed class BotBatchPlayModeTests
     {
         private const int Matches = 20;
-        private const uint FirstSeed = 1u;
-
-        /// <summary>A safety net only: sudden death repeats turns until somebody hits.</summary>
-        private const int TurnLimit = 150;
-
         private const string ReportFolderName = "Logs";
         private const string ReportFileName = "XRimBotBatch.txt";
         private const float SceneUnloadTimeoutSeconds = 5f;
-        private const int SecondsPerMinute = 60;
+
+        /// <summary>Turns played per frame: the scenes the turns leave behind unload between frames.</summary>
+        private const int TurnsPerFrame = 4;
 
         [UnityTest]
-        [Explicit("Runs 20 bot-vs-bot matches on real physics (about a minute); run it by hand from the Test Runner.")]
+        [Explicit("Plays 20 bot-vs-bot matches on real physics (under a minute); run it by hand from the Test Runner.")]
         [Category("BotBatch")]
-        public IEnumerator BotVsBot_Batch_MeasuresMatchLength()
+        public IEnumerator HeuristicAgainstRandom_Batch_WritesAReport()
         {
             TuningProfile tuning = ProjectTuning.Load();
             if (tuning == null) Assert.Ignore("No tuning profile: run XRim/Setup/Create Default Tuning Assets first.");
 
-            SimulationMode2D previousMode = Physics2D.simulationMode;
-            Physics2D.simulationMode = SimulationMode2D.Script;
             int scenesBefore = SceneManager.sceneCount;
             var issues = new List<string>();
             RulesSettings rules = tuning.BuildRulesSettings(issues);
             SimulationSettings simulation = tuning.BuildSimulationSettings(issues);
-            ArenaSpace space = tuning.ArenaSpace;
-            Ragdoll six = Template(RagdollSegmentation.SixBodies, rules, simulation, space);
-            Ragdoll ten = Template(RagdollSegmentation.TenBodies, rules, simulation, space);
-            var world = new Unity2DPhysicsWorld(space, new RagdollPrefabSet(six, ten));
-            var results = new List<MatchStats>();
-            FeelConfig feel = tuning.Feel; // Session 13: each turn's time on screen with its hitstops and slow motion, as the Match scene plays it
+            BotSettings bots = tuning.BuildBotSettings(issues);
+            BalanceTargetsConfig targetsAsset = tuning.BalanceTargets != null ? tuning.BalanceTargets : ScriptableObject.CreateInstance<BalanceTargetsConfig>();
+            BalanceTargets targets = targetsAsset.CreateTargets();
+            if (tuning.BalanceTargets == null) Object.Destroy(targetsAsset);
+            var spec = new BalanceBatchSpec
+            {
+                MatchesPerRun = Matches, SweepDurability = false,
+                Matchups = new List<BalanceMatchup> { new BalanceMatchup(BotBrainKind.Heuristic, BotBrainKind.Random) },
+            };
+
+            FeelConfig feel = tuning.Feel;
+            HitStopSettings hitStops = feel != null ? HitStopSettings.From(feel) : null;
+            SlowMotionSettings slowMotion = feel != null ? SlowMotionSettings.From(feel) : null;
+            var physics = new HeadlessPhysics(rules, simulation, tuning.ArenaSpace);
+            var batch = new BalanceBatch(spec, () => tuning.BuildRulesSettings(new List<string>()), simulation, bots, physics.CreateSimulator(),
+                feel != null ? turn => FeelDirector.PlannedRealSecondsOf(turn, hitStops, SlowMotionPlanner.Plan(turn, slowMotion)) : null);
             try
             {
-                for (uint seed = FirstSeed; seed < FirstSeed + Matches; seed++)
+                bool more = true;
+                while (more)
                 {
-                    var stats = new MatchStats(seed, feel != null ? HitStopSettings.From(feel) : null,
-                        feel != null ? SlowMotionSettings.From(feel) : null);
-                    IEnumerator match = PlayMatch(world, rules, simulation, stats);
-                    while (match.MoveNext()) yield return match.Current;
-                    results.Add(stats);
+                    for (int i = 0; i < TurnsPerFrame && more; i++) more = batch.Step();
+                    yield return null;
                 }
             }
             finally
             {
-                world.Dispose();
-                Object.Destroy(six.gameObject);
-                Object.Destroy(ten.gameObject);
-                Physics2D.simulationMode = previousMode;
+                batch.Dispose();
+                physics.Dispose();
             }
 
             float until = Time.realtimeSinceStartup + SceneUnloadTimeoutSeconds;
             yield return new WaitUntil(() => SceneManager.sceneCount <= scenesBefore || Time.realtimeSinceStartup > until);
 
-            string report = Report(results, rules, simulation, tuning.name);
+            string report = BalanceReport.Write(batch.Results, spec, targets, rules,
+                new[] { $"From the Test Runner, tuning profile '{tuning.name}', {simulation.Segmentation}, {simulation.StepRateHz} Hz." });
             string folder = Path.Combine(Application.dataPath, "..", ReportFolderName);
             Directory.CreateDirectory(folder);
             string file = Path.GetFullPath(Path.Combine(folder, ReportFileName));
             File.WriteAllText(file, report);
-            Debug.Log($"[XRim] Bot batch saved to {file}\n{report}");
+            Debug.Log($"[XRim] Bot batch saved to {file}");
 
-            Assert.That(results.All(r => r.Finished), Is.True, "every match ended (sudden death always ends, Session 12)");
-        }
-
-        /// <summary>One match, one turn per frame, exactly as the Match scene's bot vs bot plays it minus the screen.</summary>
-        private static IEnumerator PlayMatch(Unity2DPhysicsWorld world, RulesSettings rules, SimulationSettings simulation, MatchStats stats)
-        {
-            var policies = new RulePolicies();
-            var simulator = new RecordingTurnSimulator(new TurnSimulator(world, policies));
-            MatchSetup setup = CreateSetup(rules, stats.Seed);
-            var authority = new LocalTurnAuthority(setup, rules, simulation, policies, simulator, new ManualClock());
-            authority.TurnResolved += turn => stats.Add(turn, simulator.LastSimulationMilliseconds);
-            authority.MatchEnded += outcome => stats.Outcome = outcome;
-
-            IReadOnlyList<IPlanSource> bots = PlanSourceFactory.Create(MatchMode.BotVsBot, setup, rules, NoHuman, new XorShiftRandom(stats.Seed));
-            using (new PlanSourceBinder(authority, bots))
+            Assert.That(batch.MatchesDone, Is.EqualTo(Matches));
+            foreach (BalanceMatchRecord record in batch.Results[0].Records)
             {
-                authority.Start();
-                while (!stats.Finished && stats.Turns < TurnLimit)
-                {
-                    authority.Tick(); // one turn per call: the bots are Ready at once and there is no playback to wait for
-                    yield return null;
-                }
-            }
-        }
-
-        private static IPlanSource NoHuman(Side side) => throw new InvalidOperationException("Bot vs bot asks for no human.");
-
-        /// <summary>Both right-handed with the default loadout (D8), as the Match scene sets them up.</summary>
-        private static MatchSetup CreateSetup(RulesSettings rules, uint seed)
-        {
-            var loadout = rules.Loadout.DefaultLoadoutWeaponIds.Select(id => new WeaponId(id)).ToList();
-            return new MatchSetup(PerSide<FighterSetup>.Create(_ => new FighterSetup(Handedness.Right, loadout)), seed);
-        }
-
-        private static Ragdoll Template(RagdollSegmentation segmentation, RulesSettings rules, SimulationSettings simulation, ArenaSpace space)
-        {
-            Ragdoll ragdoll = PlaceholderRagdollBuilder.Build(new RagdollBuildSpec(simulation.Ragdoll, rules.Paths, segmentation, space,
-                rules.Weapons, null));
-            ragdoll.gameObject.SetActive(false);
-            return ragdoll;
-        }
-
-        private static string Report(List<MatchStats> results, RulesSettings rules, SimulationSettings simulation, string profileName)
-        {
-            CultureInfo c = CultureInfo.InvariantCulture;
-            var turns = results.Select(r => r.Turns).OrderBy(t => t).ToList();
-            double meanTurns = turns.Average();
-            double playbackPerTurn = results.Sum(r => r.ExecutedSeconds) / Math.Max(1, turns.Sum());
-            double hitsPerMatch = results.Average(r => r.Hits);
-            float planning = rules.Match.PlanningDurationSeconds;
-            double onScreenPerTurn = results.Sum(r => r.OnScreenSeconds) / Math.Max(1, turns.Sum());
-            double playbackPerMatch = results.Average(r => r.OnScreenSeconds);
-            double upperBound = results.Average(r => r.Turns * planning + r.OnScreenSeconds);
-
-            var text = new StringBuilder();
-            text.AppendLine($"X-RIM bot-vs-bot batch, {DateTime.Now.ToString("yyyy-MM-dd HH:mm", c)}");
-            text.AppendLine($"{results.Count} matches, RandomBotBrain on both sides (seeds {FirstSeed}–{FirstSeed + Matches - 1}), tuning profile '{profileName}', " +
-                            $"{simulation.Segmentation}, {simulation.StepRateHz.ToString("0", c)} Hz, turn cap {rules.Match.TurnCap}.");
-            text.AppendLine("The random bot draws a random valid stroke every turn and never idles: a baseline for the loop, not a human.");
-            text.AppendLine();
-            text.AppendLine($"Ends: KO {Count(results, MatchEndReason.KnockOut)}, forfeit {Count(results, MatchEndReason.Forfeit)}, " +
-                            $"sudden-death hit {Count(results, MatchEndReason.SuddenDeathHit)}, sudden death out of tries: more HP " +
-                            $"{Count(results, MatchEndReason.SuddenDeathMoreHp)}, coin toss {Count(results, MatchEndReason.SuddenDeathCoinToss)}, " +
-                            $"unfinished at {TurnLimit} turns {results.Count(r => !r.Finished)}.");
-            text.AppendLine($"Electric-wall zaps (GDD §13): {results.Sum(r => r.WallZaps)} in all, in {results.Count(r => r.WallZaps > 0)} of {results.Count} matches.");
-            text.AppendLine($"Turns per match: mean {meanTurns.ToString("0.0", c)}, median {Median(turns).ToString("0.0", c)}, " +
-                            $"min {turns.First()}, max {turns.Last()}. Sudden death reached in {results.Count(r => r.ReachedSuddenDeath)} of {results.Count}.");
-            text.AppendLine($"Executed (played back) seconds per turn: mean {playbackPerTurn.ToString("0.00", c)}. " +
-                            $"Hits per match: mean {hitsPerMatch.ToString("0.0", c)}; matches with a would-sever hit (dismemberment comes in Session 11; " +
-                            $"target 10–20%): {results.Count(r => r.WouldSever)} of {results.Count}.");
-            text.AppendLine($"Simulation cost per turn in the Editor: mean {results.SelectMany(r => r.SimulationMs).Average().ToString("0.0", c)} ms, " +
-                            $"max {results.SelectMany(r => r.SimulationMs).Max().ToString("0.0", c)} ms.");
-            text.AppendLine($"On screen with the feel layer (hitstops and slow motion from the Feel asset, Session 13; the camera settling not counted): " +
-                            $"mean {onScreenPerTurn.ToString("0.00", c)} s per turn, worst turn {results.Max(r => r.WorstTurnOnScreenSeconds).ToString("0.00", c)} s, " +
-                            $"worst stretch beyond the recorded turn {results.Max(r => r.WorstStretchSeconds).ToString("0.00", c)} s (the playback hold's extra seconds).");
-            text.AppendLine($"Match length for people (turns × planning + playback on screen): " +
-                            $"playback alone {Clock(playbackPerMatch)}; upper bound with the full {planning.ToString("0", c)} s of planning every turn {Clock(upperBound)}.");
-            text.AppendLine();
-            text.AppendLine("seed  turns  winner  reason               sudden  hits  played s");
-            foreach (MatchStats r in results)
-            {
-                string reason = r.Outcome != null ? r.Outcome.Reason.ToString() : "unfinished";
-                string winner = r.Outcome != null ? r.Outcome.Winner.ToString() : "-";
-                text.AppendLine(string.Format(c, "{0,4}  {1,5}  {2,-6}  {3,-19}  {4,-6}  {5,4}  {6,8:0.00}", r.Seed, r.Turns, winner, reason,
-                    r.ReachedSuddenDeath ? "yes" : "no", r.Hits, r.ExecutedSeconds));
-            }
-
-            return text.ToString();
-        }
-
-        private static int Count(List<MatchStats> results, MatchEndReason reason) =>
-            results.Count(r => r.Outcome != null && r.Outcome.Reason == reason);
-
-        private static double Median(List<int> sorted) =>
-            sorted.Count % 2 == 1 ? sorted[sorted.Count / 2] : (sorted[sorted.Count / 2 - 1] + sorted[sorted.Count / 2]) * 0.5;
-
-        private static string Clock(double seconds)
-        {
-            int total = (int)Math.Round(seconds);
-            return string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}", total / SecondsPerMinute, total % SecondsPerMinute);
-        }
-
-        private sealed class MatchStats
-        {
-            private readonly HitStopSettings _hitStops;
-            private readonly SlowMotionSettings _slowMotion;
-
-            /// <param name="hitStops">The feel layer's freezes and slow motion, to time each turn on screen; null counts the recording only.</param>
-            public MatchStats(uint seed, HitStopSettings hitStops, SlowMotionSettings slowMotion)
-            {
-                Seed = seed;
-                _hitStops = hitStops;
-                _slowMotion = slowMotion;
-            }
-
-            public uint Seed { get; }
-            public MatchOutcome Outcome { get; set; }
-            public bool Finished => Outcome != null;
-            public int Turns { get; private set; }
-            public double ExecutedSeconds { get; private set; }
-            public int Hits { get; private set; }
-            public bool WouldSever { get; private set; }
-            public bool ReachedSuddenDeath { get; private set; }
-            public int WallZaps { get; private set; }
-
-            /// <summary>Every turn's time on screen with the feel layer (or its recorded length without a Feel asset).</summary>
-            public double OnScreenSeconds { get; private set; }
-
-            public double WorstTurnOnScreenSeconds { get; private set; }
-
-            /// <summary>The most a turn's time on screen ran past its recorded length.</summary>
-            public double WorstStretchSeconds { get; private set; }
-            public List<double> SimulationMs { get; } = new List<double>();
-
-            public void Add(TurnResult turn, double simulationMs)
-            {
-                Turns++;
-                ExecutedSeconds += turn.Timeline.Duration.Seconds;
-                double onScreen = _hitStops != null && _slowMotion != null
-                    ? FeelDirector.PlannedRealSecondsOf(turn, _hitStops, SlowMotionPlanner.Plan(turn, _slowMotion))
-                    : turn.Timeline.Duration.Seconds;
-                OnScreenSeconds += onScreen;
-                WorstTurnOnScreenSeconds = Math.Max(WorstTurnOnScreenSeconds, onScreen);
-                WorstStretchSeconds = Math.Max(WorstStretchSeconds, onScreen - turn.Timeline.Duration.Seconds);
-                SimulationMs.Add(simulationMs);
-                if (turn.FinalBoard.State.IsSuddenDeath) ReachedSuddenDeath = true;
-                foreach (MatchEvent matchEvent in turn.Timeline.Events)
-                {
-                    if (matchEvent is ElectricWallEvent wall && wall.HpDamage > 0f) WallZaps++;
-                    if (!(matchEvent is HitLandedEvent hit)) continue;
-                    Hits++;
-                    if (hit.Damage.SeversLimb) WouldSever = true;
-                }
+                Assert.That(record.Finished, Is.True, $"seed {record.Seed} ended (sudden death always ends, Session 12)");
             }
         }
     }

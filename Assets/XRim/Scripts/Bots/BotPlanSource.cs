@@ -17,6 +17,9 @@ namespace XRim.Bots
 
         public Side Side { get; }
 
+        /// <summary>The brain that plans this side (which one plays is a tuning choice, Session 16).</summary>
+        public IBotBrain Brain => _brain;
+
         public BotPlanSource(Side side, IBotBrain brain, IReadOnlyList<WeaponId> loadout, RulesSettings settings, IRandom random)
         {
             Side = side;

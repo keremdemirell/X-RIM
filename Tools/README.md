@@ -14,6 +14,7 @@ python Tools/check.py --verbose             # response files, dropped references
 Run it from the project root in Git Bash or PowerShell, after every batch of changes. It prints `CHECK PASSED` and exits with code 0, or it prints `CHECK FAILED` and exits with code 1.
 
 - **Speed.** A run takes about 6 s. The first run after a reboot takes about 25 s while the compiler server starts.
+- **Disk safety.** The check refuses to run (`CHECK FAILED`, with the drive and its free space) while the system drive or the project drive has less than 10 GB free (designer, 2026-10-18), so its output can never tip a nearly full disk over.
 - **Unity can be open or closed.** The tool only reads `Library/` and `Assets/`, and it writes only to `Temp/XRimCheck/`, which git ignores and Unity deletes when it closes.
 - **Unity location.** The tool expects Unity at `S:/Unity_Editor/Editor`. To use another install, set `XRIM_UNITY_EDITOR` to the folder that contains `Unity.exe`.
 

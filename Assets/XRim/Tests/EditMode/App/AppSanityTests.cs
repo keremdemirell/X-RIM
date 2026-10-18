@@ -43,7 +43,7 @@ namespace XRim.Tests.EditMode.App
         }
 
         [Test]
-        public void RecordingSimulator_RemembersTheLastTurnsInput()
+        public void RecordingSimulator_RemembersTheLastTurnsInputAndResult()
         {
             RulesSettings settings = GddStartingValues.CreateRulesSettings();
             var simulator = new RecordingTurnSimulator(new StubTurnSimulator());
@@ -51,9 +51,11 @@ namespace XRim.Tests.EditMode.App
                 settings, new SimulationSettings());
 
             Assert.That(simulator.LastInput, Is.Null);
-            simulator.Simulate(input);
+            Assert.That(simulator.LastResult, Is.Null);
+            TurnResult result = simulator.Simulate(input);
 
             Assert.That(simulator.LastInput, Is.SameAs(input));
+            Assert.That(simulator.LastResult, Is.SameAs(result), "a saved scenario is checked against it (Session 16)");
         }
 
         [Test]

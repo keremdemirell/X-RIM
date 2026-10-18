@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using XRim.Bots;
 using XRim.Economy;
 using XRim.Rules.Settings;
 using XRim.Simulation;
@@ -41,6 +42,9 @@ namespace XRim.Config
         [SerializeField] private BalanceTargetsConfig _balanceTargets;
         [SerializeField] private DisplayConfig _display;
         [SerializeField] private AudioConfig _audio;
+
+        [Header("Bots (practice and development opponents; never rules)")]
+        [SerializeField] private BotConfig _bots;
 
         public InputConfig InputConfig => _input;
 
@@ -85,13 +89,16 @@ namespace XRim.Config
 
         public EconomySettings BuildEconomySettings(ICollection<string> issues) => Snapshot(_economy, nameof(_economy), issues);
 
+        /// <summary>Which bot plays where and how the heuristic bot plays (Session 16); code defaults while the slot is empty.</summary>
+        public BotSettings BuildBotSettings(ICollection<string> issues) => Snapshot(_bots, nameof(_bots), issues);
+
         /// <summary>Every settings asset that wraps an engine-free settings class, for the inspector and tuning panel.</summary>
         public IEnumerable<SettingsConfigBase> SettingsConfigs()
         {
             SettingsConfigBase[] singles =
             {
                 _match, _paths, _damage, _hitZones, _clash, _electricWall, _arena, _loadout, _signature, _suddenDeath, _traits,
-                _simulation, _economy,
+                _simulation, _economy, _bots,
             };
             foreach (SettingsConfigBase config in singles)
             {
@@ -177,6 +184,7 @@ namespace XRim.Config
             public const string BalanceTargets = nameof(_balanceTargets);
             public const string Display = nameof(_display);
             public const string Audio = nameof(_audio);
+            public const string Bots = nameof(_bots);
         }
     }
 }

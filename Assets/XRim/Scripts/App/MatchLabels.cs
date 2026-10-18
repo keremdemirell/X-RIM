@@ -23,8 +23,8 @@ namespace XRim.App
             switch (mode)
             {
                 case MatchMode.HotSeat: return new MenuOption("HOT-SEAT", "Two players, one device: plan in turn behind a cover screen");
-                case MatchMode.HumanVsBot: return new MenuOption("VS RANDOM BOT", "You on the left against the random debug bot");
-                case MatchMode.BotVsBot: return new MenuOption("BOT VS BOT (WATCH)", "Two random bots fight it out");
+                case MatchMode.HumanVsBot: return new MenuOption("VS BOT", "You on the left against a practice bot (the Bots tuning asset picks which)");
+                case MatchMode.BotVsBot: return new MenuOption("BOT VS BOT (WATCH)", "Two practice bots fight it out");
                 default: throw new ArgumentOutOfRangeException(nameof(mode), mode, "The picker does not offer this mode.");
             }
         }

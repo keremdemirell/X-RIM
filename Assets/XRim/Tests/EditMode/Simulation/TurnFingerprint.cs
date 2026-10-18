@@ -45,6 +45,10 @@ namespace XRim.Tests.EditMode.Simulation
             return text.ToString();
         }
 
+        /// <summary>A frozen board with exact floats: its rules state (limbs included) and every pose value, so two boards can be compared.</summary>
+        public static string OfBoard(BoardSnapshot board) =>
+            "state " + State(board.State) + Environment.NewLine + "pose " + Describe(board.Pose, MaxDepth);
+
         /// <summary>The state's public values plus each fighter's limb damage and severed limbs (kept privately).</summary>
         private static string State(MatchState state)
         {
