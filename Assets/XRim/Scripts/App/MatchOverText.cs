@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using XRim.Core;
+using XRim.Economy;
 using XRim.Rules;
 using XRim.Rules.Match;
 
@@ -39,6 +40,27 @@ namespace XRim.App
                     return "sudden death ran out of tries, level on HP: a coin toss";
                 default:
                     throw new ArgumentOutOfRangeException(nameof(outcome), outcome.Reason, "Unknown end reason.");
+            }
+        }
+
+        /// <summary>
+        /// The line about what the match paid (GDD §16): "+100 BOLTS" (with "(MATCH CAP)" when the farming guard cut it), "WIN TO EARN 100 BOLTS"
+        /// after losing to the bot, and nothing for a match that pays nothing (hot-seat, practice).
+        /// </summary>
+        public static string RewardLine(RewardReceipt receipt, EconomySettings economy)
+        {
+            Guard.NotNull(economy, nameof(economy));
+            string name = economy.EarnedCurrencyName.ToUpperInvariant();
+            switch (receipt.Decision)
+            {
+                case RewardDecision.Paid:
+                    return string.Format(CultureInfo.InvariantCulture, "+{0} {1}{2}", receipt.Paid.Value, name, receipt.WasCapped ? " (MATCH CAP)" : string.Empty);
+                case RewardDecision.NothingEarned:
+                    return receipt.Kind == MatchKind.VersusBot && economy.RewardPerWin > 0
+                        ? string.Format(CultureInfo.InvariantCulture, "WIN TO EARN {0} {1}", economy.RewardPerWin, name)
+                        : string.Empty;
+                default:
+                    return string.Empty;
             }
         }
 

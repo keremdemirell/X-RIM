@@ -1,25 +1,15 @@
 using NUnit.Framework;
 using XRim.App;
 using XRim.Core;
+using XRim.Economy;
 using XRim.Presentation.Moments;
 using XRim.Rules.Match;
 
 namespace XRim.Tests.EditMode.App
 {
-    /// <summary>The words the match scene shows: names per mode, the picker, the cover screen and the match-over screen.</summary>
+    /// <summary>The words the match scene shows: names per mode, the cover screen and the match-over screen (the menus are ShellLabels).</summary>
     public sealed class MatchTextTests
     {
-        [Test]
-        public void ThePicker_OffersHotSeatBotAndWatch_InThatOrder()
-        {
-            Assert.That(MatchLabels.PickerModes(), Is.EqualTo(new[] { MatchMode.HotSeat, MatchMode.HumanVsBot, MatchMode.BotVsBot }));
-            foreach (MatchMode mode in MatchLabels.PickerModes())
-            {
-                Assert.That(MatchLabels.Option(mode).Title, Is.Not.Empty);
-                Assert.That(MatchLabels.Option(mode).Detail, Is.Not.Empty);
-            }
-        }
-
         [Test]
         public void FighterNames_SayWhoIsWho_InEachMode()
         {
@@ -71,6 +61,48 @@ namespace XRim.Tests.EditMode.App
             {
                 Assert.That(MatchOverText.Reason(new MatchOutcome(Side.Left, reason, 10), names), Is.Not.Empty, reason.ToString());
             }
+        }
+
+        [Test]
+        public void TheRewardLine_SaysWhatTheMatchPaid()
+        {
+            var economy = new EconomySettings();
+
+            Assert.That(MatchOverText.RewardLine(new RewardReceipt(MatchKind.VersusBot, new EarnedAmount(100), new EarnedAmount(100), RewardDecision.Paid), economy),
+                Is.EqualTo("+100 BOLTS"));
+            Assert.That(MatchOverText.RewardLine(new RewardReceipt(MatchKind.VersusBot, new EarnedAmount(300), new EarnedAmount(150), RewardDecision.Paid), economy),
+                Is.EqualTo("+150 BOLTS (MATCH CAP)"));
+        }
+
+        [Test]
+        public void AfterLosingToTheBot_TheRewardLineSaysWhatAWinWouldEarn()
+        {
+            var economy = new EconomySettings();
+            var lost = new RewardReceipt(MatchKind.VersusBot, EarnedAmount.Zero, EarnedAmount.Zero, RewardDecision.NothingEarned);
+
+            Assert.That(MatchOverText.RewardLine(lost, economy), Is.EqualTo("WIN TO EARN 100 BOLTS"));
+
+            economy.RewardPerWin = 0;
+            Assert.That(MatchOverText.RewardLine(lost, economy), Is.Empty, "nothing to promise when a win pays nothing");
+        }
+
+        [Test]
+        public void AMatchThatPaysNothing_HasNoRewardLine()
+        {
+            var economy = new EconomySettings();
+
+            Assert.That(MatchOverText.RewardLine(new RewardReceipt(MatchKind.HotSeat, EarnedAmount.Zero, EarnedAmount.Zero, RewardDecision.ModeDoesNotPay), economy), Is.Empty);
+            Assert.That(MatchOverText.RewardLine(new RewardReceipt(MatchKind.Practice, EarnedAmount.Zero, EarnedAmount.Zero, RewardDecision.NothingEarned), economy), Is.Empty,
+                "practice never promises a reward");
+        }
+
+        [Test]
+        public void TheRewardLine_UsesTheCurrencyNameFromTheSettings()
+        {
+            var economy = new EconomySettings { EarnedCurrencyName = "Scrap" };
+
+            Assert.That(MatchOverText.RewardLine(new RewardReceipt(MatchKind.VersusBot, new EarnedAmount(5), new EarnedAmount(5), RewardDecision.Paid), economy),
+                Is.EqualTo("+5 SCRAP"));
         }
 
         [Test]

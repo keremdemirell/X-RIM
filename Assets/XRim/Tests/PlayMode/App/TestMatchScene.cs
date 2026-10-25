@@ -31,7 +31,7 @@ namespace XRim.Tests.PlayMode.App
             holder.SetActive(false);
             created.Add(holder);
             var bootstrap = holder.AddComponent<MatchBootstrap>();
-            bootstrap.Configure(tuning, six, ten, arenaRoot.transform, null, MatchMode.HumanVsBot, true);
+            bootstrap.Configure(tuning, six, ten, arenaRoot.transform, null, MatchMode.HumanVsBot, MatchStartup.WaitForCaller);
             holder.SetActive(true);
             return bootstrap;
         }

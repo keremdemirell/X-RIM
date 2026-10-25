@@ -51,13 +51,6 @@ namespace XRim.Config
         [GddTbd("§4–5", "Overall feel of the dual-zone scheme", Proposal = "Validate in prototype")]
         [SerializeField] private bool _tapInBodyZoneClearsMove = true;
 
-        [Tooltip("D24, GDD §4: developer stand-in for the first-launch handedness pick (Session 18). Left mirrors the screen " +
-                 "layout (own dummy and body zone on the right). The sandbox toggles it live; the dummy's weapon hand is not " +
-                 "affected until the real pick exists.")]
-        [GddTbd("§4", "Can handedness be changed later? Separate mirrored-layout toggle", Proposal = "Changeable in settings; no separate toggle")]
-        [Placeholder("Developer setting until the first-launch pick exists (Session 18)")]
-        [SerializeField] private Handedness _devHandedness = Handedness.Right;
-
         [Tooltip("GDD §18: the reference resolution is TBD.")]
         [GddTbd("§18", "Arena unit scale and reference resolution")]
         [Placeholder("§18 reference resolution is TBD")]
@@ -71,7 +64,6 @@ namespace XRim.Config
         public float SwipeAxisToleranceDegrees => _swipeAxisToleranceDegrees;
         public float TapMaxTravelScreenFraction => _tapMaxTravelScreenFraction;
         public bool TapInBodyZoneClearsMove => _tapInBodyZoneClearsMove;
-        public Handedness DevHandedness => _devHandedness;
         public Vector2Int ReferenceResolution => _referenceResolution;
     }
 }

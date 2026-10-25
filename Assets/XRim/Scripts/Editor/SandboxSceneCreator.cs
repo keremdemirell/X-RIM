@@ -14,7 +14,7 @@ namespace XRim.Editor
         [MenuItem(EditorPaths.MenuSetup + "Create Sandbox Scene", priority = 3)]
         public static void Create()
         {
-            if (!MatchSceneBuilder.Build(EditorPaths.SandboxScenePath, "Sandbox", MatchMode.Sandbox, false, false)) return;
+            if (!MatchSceneBuilder.Build(EditorPaths.SandboxScenePath, "Sandbox", MatchMode.Sandbox, MatchStartup.WaitForCaller, false)) return;
 
             Debug.Log($"[XRim] Created {EditorPaths.SandboxScenePath}. Press Play and plan both sides with the mouse (the sandbox panel " +
                       "at the top right lists the keys). XRim/Setup/Create Match Scene builds the scene that plays real matches.");

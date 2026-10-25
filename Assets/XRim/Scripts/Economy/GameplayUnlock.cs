@@ -12,11 +12,15 @@ namespace XRim.Economy
         public GameplayUnlockKind Kind { get; }
         public EarnedAmount Price { get; }
 
-        public GameplayUnlock(string id, GameplayUnlockKind kind, EarnedAmount price)
+        /// <summary>A new player already owns it (it is in the starting inventory).</summary>
+        public bool StartsOwned { get; }
+
+        public GameplayUnlock(string id, GameplayUnlockKind kind, EarnedAmount price, bool startsOwned = false)
         {
             Id = Guard.NotNull(id, nameof(id));
             Kind = kind;
             Price = price;
+            StartsOwned = startsOwned;
         }
     }
 }

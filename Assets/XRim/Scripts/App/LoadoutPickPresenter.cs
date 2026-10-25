@@ -177,7 +177,7 @@ namespace XRim.App
             string confirm = _session.CanConfirm ? MatchLabels.LoadoutLockIn
                 : missing > 0 ? MatchLabels.LoadoutPickMore(missing)
                 : MatchLabels.LoadoutShieldNeeded;
-            string note = _notice ?? _session.Problem ?? MatchLabels.LoadoutNote;
+            string note = _notice ?? _session.Problem ?? (options.Count <= RuleConstants.LoadoutSlotCount ? MatchLabels.LoadoutFewWeapons : MatchLabels.LoadoutNote);
             _screens.ShowLoadoutPicker(MatchLabels.LoadoutTitle(_mode, _session.PickingSide), note, choices, confirm, _session.CanConfirm);
         }
 

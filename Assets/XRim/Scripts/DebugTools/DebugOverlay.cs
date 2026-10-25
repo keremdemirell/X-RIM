@@ -185,11 +185,14 @@ namespace XRim.DebugTools
         /// </summary>
         private void DrawCheats()
         {
+            if (_bootstrap != null) DrawProfile();
             if (_bootstrap == null || _bootstrap.Authority == null)
             {
-                GUILayout.Label("Start a match to use the cheats.");
+                GUILayout.Label("Start a match to use the other cheats.");
                 return;
             }
+
+            GUILayout.Space(Margin);
 
             DrawTimerAndInk();
             GUILayout.Space(Margin);
@@ -226,6 +229,28 @@ namespace XRim.DebugTools
             DrawWalls(window);
             GUILayout.Space(Margin);
             GUILayout.Label("Planned: save/load scenario (board + both plans).");
+        }
+
+        /// <summary>
+        /// Session 18: the player's money and profile, in the menus too. Grants add to the wallet (saved at once); the reset erases the
+        /// saved profile and starts over as a first launch, which is how to see the handedness question again on a phone.
+        /// </summary>
+        private void DrawProfile()
+        {
+            MetaShell shell = _bootstrap.Shell;
+            if (shell == null)
+            {
+                GUILayout.Label("No profile in this scene (the sandbox, or a scene that starts a mode at once).");
+                return;
+            }
+
+            GUILayout.Label("Profile: " + ShellLabels.WalletLine(shell.Economy, shell.Profile.Wallet));
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("+100 earned")) _bootstrap.GrantCurrency(100, 0);
+            if (GUILayout.Button("+1000 earned")) _bootstrap.GrantCurrency(1000, 0);
+            if (GUILayout.Button("+50 premium")) _bootstrap.GrantCurrency(0, 50);
+            GUILayout.EndHorizontal();
+            if (GUILayout.Button("Reset profile (back to a first launch)")) _bootstrap.ResetProfile();
         }
 
         /// <summary>

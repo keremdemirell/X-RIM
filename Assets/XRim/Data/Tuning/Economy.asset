@@ -13,9 +13,72 @@ MonoBehaviour:
   m_Name: Economy
   m_EditorClassIdentifier: XRim.Config::XRim.Config.EconomyConfig
   _settings:
-    RewardPerWin: 0
+    EarnedCurrencyName: Bolts
+    PremiumCurrencyName: Gears
+    RewardPerWin: 100
     RewardPerHit: 0
     RewardPerParry: 0
-    PerMatchRewardCap: 0
+    PerMatchRewardCap: 150
     FriendMatchRewardMultiplier: 1
     PremiumEarnableInPlay: 0
+    PaysInVersusBot: 1
+    PaysInHotSeat: 0
+    PaysInPractice: 0
+    Unlockables:
+    - Id: rapier
+      Kind: 0
+      EarnedPrice: 0
+      StartsOwned: 1
+    - Id: mace
+      Kind: 0
+      EarnedPrice: 0
+      StartsOwned: 1
+    - Id: shield
+      Kind: 1
+      EarnedPrice: 0
+      StartsOwned: 1
+    - Id: sword
+      Kind: 0
+      EarnedPrice: 300
+      StartsOwned: 0
+    - Id: spear
+      Kind: 0
+      EarnedPrice: 300
+      StartsOwned: 0
+    - Id: five_finger_exploding_touch
+      Kind: 2
+      EarnedPrice: 0
+      StartsOwned: 1
+    - Id: head_impact_simulation_404
+      Kind: 2
+      EarnedPrice: 400
+      StartsOwned: 0
+    - Id: whiplash_calibration_spin
+      Kind: 2
+      EarnedPrice: 400
+      StartsOwned: 0
+    Cosmetics:
+    - Id: neon_sparks
+      DisplayName: Neon Sparks
+      Kind: 3
+      EarnedPrice: 250
+      PremiumPrice: 50
+      HasEffectYet: 1
+    - Id: hazard_stripes
+      DisplayName: Hazard Stripes
+      Kind: 0
+      EarnedPrice: 250
+      PremiumPrice: 0
+      HasEffectYet: 0
+    - Id: night_shift
+      DisplayName: Night Shift
+      Kind: 2
+      EarnedPrice: 0
+      PremiumPrice: 50
+      HasEffectYet: 0
+    - Id: drill_sergeant
+      DisplayName: Drill Sergeant
+      Kind: 4
+      EarnedPrice: 250
+      PremiumPrice: 50
+      HasEffectYet: 0

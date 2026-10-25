@@ -237,7 +237,7 @@ namespace XRim.Tests.PlayMode.App
             GameObject holder = Track(new GameObject("MatchBootstrap"));
             holder.SetActive(false);
             var bootstrap = holder.AddComponent<MatchBootstrap>();
-            bootstrap.Configure(tuning, six, ten, arenaRoot, null, MatchMode.HumanVsBot, true, null, camera);
+            bootstrap.Configure(tuning, six, ten, arenaRoot, null, MatchMode.HumanVsBot, MatchStartup.WaitForCaller, null, camera);
             holder.SetActive(true);
             return bootstrap;
         }

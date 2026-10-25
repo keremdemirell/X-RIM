@@ -6,6 +6,7 @@ using XRim.Bots;
 using XRim.Config;
 using XRim.Core;
 using XRim.Core.Gdd;
+using XRim.Economy;
 using XRim.Input;
 using XRim.Networking;
 using XRim.Presentation.Arena;
@@ -17,6 +18,7 @@ using XRim.Presentation.Moments;
 using XRim.Presentation.Playback;
 using XRim.Presentation.UI;
 using XRim.Presentation.Vfx;
+using XRim.Profile;
 using XRim.Rules;
 using XRim.Rules.Arena;
 using XRim.Rules.Limbs;
@@ -46,8 +48,9 @@ namespace XRim.App
     /// through touch, the random debug bot).
     /// The authority holds each next planning phase until playback has finished (<see cref="PlaybackHoldMode.ClientReport"/>, reported
     /// by the flow), so the replay never eats planning time.
-    /// Modes: the Match scene shows the mode picker (hot-seat through <see cref="HotSeatCoordinator"/> and its cover screen, vs the
-    /// random bot, bot vs bot to watch; D25 dev opponents); the sandbox's debug tools plan both sides and hand their sources to
+    /// Modes: the Match scene shows the game's menus (Session 18, <see cref="MetaShell"/>: the first-launch handedness pick, then Play with
+    /// hot-seat through <see cref="HotSeatCoordinator"/> and its cover screen, vs the bot, and practice; D25 dev opponents); the sandbox's
+    /// debug tools plan both sides and hand their sources to
     /// <see cref="StartMatch"/>. Sudden death plays as the rules have it (GDD §14, Session 12): 1 HP, the first clean hit wins, a tie or a
     /// turn without a hit is played again a capped number of times, then the fallback decides; the electric walls are drawn on the board
     /// (<see cref="ElectricWallView"/>).
@@ -75,11 +78,12 @@ namespace XRim.App
         [Tooltip("Root of all tuning. Create one with XRim/Setup/Create Default Tuning Assets.")]
         [SerializeField] private TuningProfile _tuning;
 
-        [Tooltip("The mode started at Play, unless the mode picker is shown.")]
+        [Tooltip("The mode started at Play when Startup is Start Mode.")]
         [SerializeField] private MatchMode _mode = MatchMode.BotVsBot;
 
-        [Tooltip("Show the mode picker at Play (the Match scene) instead of starting the mode above.")]
-        [SerializeField] private bool _pickModeAtStart;
+        [Tooltip("Show Menu (the game: the handedness question, then the main menu, with the player profile), Start Mode (the mode above at once, " +
+                 "no profile), or Wait For Caller (tests and tools).")]
+        [SerializeField] private MatchStartup _startup = MatchStartup.ShowMenu;
 
         [Tooltip("The placeholder dummy prefabs (XRim/Setup/Build Placeholder Dummies), one per segmentation (D2).")]
         [SerializeField] private Ragdoll _sixBodies;
@@ -145,6 +149,11 @@ namespace XRim.App
         private PlanningHud _planningHud;
         private MatchHud _matchHud;
         private MatchScreens _screens;
+        private ShellScreens _shellScreens;
+        private MetaShell _shell;
+        private MatchRequest _request;
+        private MatchSummaryTally _tally;
+        private bool _rewardSettled;
         private LoadoutPickPresenter _loadoutPick;
         private PerSide<IReadOnlyList<WeaponId>> _lastPicks;
         private bool _snapshotUnused;
@@ -176,6 +185,12 @@ namespace XRim.App
 
         /// <summary>The mode of the current (or last) match.</summary>
         public MatchMode Mode => _mode;
+
+        /// <summary>The current (or last) match as the menu asked for it: its mode, what it counts as for earned currency, the practice bot.</summary>
+        public MatchRequest Request => _request;
+
+        /// <summary>The game's menus and the player profile (Session 18); null in the sandbox, in tests and tools, and when the scene starts a mode directly.</summary>
+        public MetaShell Shell => _shell;
 
         /// <summary>The snapshot the current match uses. Live tuning edits apply to the next snapshot.</summary>
         public RulesSettings RulesSettings { get; private set; }
@@ -284,7 +299,7 @@ namespace XRim.App
         /// </summary>
         /// <param name="camera">The match camera (its <see cref="FixedSideCameraDirector"/>, if any, directs it); null finds the main camera.</param>
         public void Configure(TuningProfile tuning, Ragdoll sixBodies, Ragdoll tenBodies, Transform arenaRoot, Sprite square,
-            MatchMode mode, bool pickModeAtStart, PanelSettings hudPanelSettings = null, Camera camera = null)
+            MatchMode mode, MatchStartup startup, PanelSettings hudPanelSettings = null, Camera camera = null)
         {
             if (_composed) throw new InvalidOperationException("Configure the match scene before it starts.");
             _hudPanelSettings = hudPanelSettings;
@@ -300,7 +315,8 @@ namespace XRim.App
             _arenaRoot = arenaRoot;
             _square = square;
             _mode = mode;
-            _pickModeAtStart = pickModeAtStart;
+            _request = MatchRequest.For(mode);
+            _startup = startup;
         }
 
         /// <summary>A screen area that belongs to something else (the debug overlay): touches landing there never draw or swipe.</summary>
@@ -318,11 +334,11 @@ namespace XRim.App
                 IsPlanningTimerFrozen = true;
                 Debug.Log("[XRim] Sandbox mode: waiting for the debug sandbox to plan both sides.", this);
             }
-            else if (_pickModeAtStart)
+            else if (_startup == MatchStartup.ShowMenu)
             {
-                ShowModePicker();
+                ShowMenu();
             }
-            else
+            else if (_startup == MatchStartup.StartMode)
             {
                 BeginMatch(_mode);
             }
@@ -368,13 +384,20 @@ namespace XRim.App
 
             if (_screens != null)
             {
-                _screens.ModePicked -= OnModePicked;
                 _screens.CoverConfirmed -= OnCoverConfirmed;
                 _screens.RematchPressed -= Rematch;
-                _screens.ChangeModePressed -= ShowModePicker;
+                _screens.MenuPressed -= ShowMenu;
                 _screens.ReplaySkipPressed -= OnReplaySkipPressed;
                 Destroy(_screens.gameObject);
             }
+
+            if (_shell != null)
+            {
+                _shell.PlayRequested -= OnPlayRequested;
+                _shell.Dispose();
+            }
+
+            if (_shellScreens != null) Destroy(_shellScreens.gameObject);
 
             if (_planningHud != null) Destroy(_planningHud.gameObject);
             if (_matchHud != null) Destroy(_matchHud.gameObject);
@@ -394,12 +417,16 @@ namespace XRim.App
         /// Starts a new match in this mode with its own plan sources (humans on this device, bots). Ends the current one.
         /// </summary>
         /// <param name="loadouts">What both sides bring (the pre-match pick, <see cref="BeginLoadoutPick"/>); null: the default loadout for both.</param>
-        public void BeginMatch(MatchMode mode, LoadoutReveal loadouts = null)
+        public void BeginMatch(MatchMode mode, LoadoutReveal loadouts = null) => BeginMatch(MatchRequest.For(mode), loadouts);
+
+        /// <summary>Starts a new match as the menu asked for it (a practice bot is the one it names). Ends the current one.</summary>
+        public void BeginMatch(MatchRequest request, LoadoutReveal loadouts = null)
         {
-            PrepareMatch(mode, loadouts);
+            PrepareMatch(request, loadouts);
+            MatchMode mode = request.Mode;
             var random = new XorShiftRandom(_setup.RandomSeed);
             IReadOnlyList<IPlanSource> sources = PlanSourceFactory.Create(mode, _setup, RulesSettings, side => _humans.Add(side), random, HumanSide,
-                BotSettings);
+                request.ApplyTo(BotSettings));
 
             // Hot-seat: it must follow the authority before the plan sources are bound, so planning opens behind the cover.
             if (mode == MatchMode.HotSeat)
@@ -412,34 +439,42 @@ namespace XRim.App
         }
 
         /// <summary>The same mode again, from a fresh snapshot of the tuning; the players pick their loadouts again, from their last picks.</summary>
-        public void Rematch() => BeginLoadoutPick(_mode);
+        public void Rematch() => BeginLoadoutPick(_request);
 
         /// <summary>
         /// The pre-match pick (GDD §6, Session 14): each human on this device locks in 3 of the weapons they own (behind a cover screen
         /// in hot-seat), the bots pick at random, then both loadouts are revealed and the match starts with them. Without match screens
         /// (the sandbox, a scene built in code) the match starts at once with the default loadout.
         /// </summary>
-        public void BeginLoadoutPick(MatchMode mode)
+        public void BeginLoadoutPick(MatchMode mode) => BeginLoadoutPick(MatchRequest.For(mode));
+
+        /// <summary>The pre-match pick for a match as the menu asked for it.</summary>
+        public void BeginLoadoutPick(MatchRequest request)
         {
             if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
+            MatchMode mode = request.Mode;
             if (_screens == null || mode == MatchMode.Sandbox)
             {
-                BeginMatch(mode);
+                BeginMatch(request);
                 return;
             }
 
             // The picker and the match built from it read the same snapshot, so a tuning edit never lands between the two.
             TearDownMatch();
             _mode = mode;
+            _request = request;
+            if (_shell != null) _shell.Hide();
             if (!_snapshotUnused) TakeSnapshot();
             _snapshotUnused = true;
 
-            var ownership = new AllWeaponsOwned(); // Session 18: the profile's owned weapons
+            // What the player owns (Session 18): the starting weapons and what they bought; both players on this device, and the bot, pick
+            // from the same collection (designer 2026-10-25, Q3). A scene without a profile lets every weapon be picked.
+            IWeaponOwnership ownership = _shell != null ? (IWeaponOwnership)new ProfileWeaponOwnership(_shell.Profile.Inventory) : new AllWeaponsOwned();
             if (!LoadoutOptions.CanFormALoadout(RulesSettings, ownership))
             {
                 Debug.LogWarning("[XRim] The weapons cannot make a valid loadout (3 pickable weapons, a shield if one is required): " +
                                  "starting with the default loadout.", this);
-                BeginMatch(mode);
+                BeginMatch(request);
                 return;
             }
 
@@ -459,7 +494,7 @@ namespace XRim.App
         {
             _lastPicks = new PerSide<IReadOnlyList<WeaponId>>(loadouts.Left, loadouts.Right);
             DisposeLoadoutPick();
-            BeginMatch(_mode, loadouts);
+            BeginMatch(_request, loadouts);
         }
 
         private void DisposeLoadoutPick()
@@ -470,35 +505,38 @@ namespace XRim.App
             _loadoutPick = null;
         }
 
-        /// <summary>Ends the current match and shows the mode picker.</summary>
-        public void ShowModePicker()
+        /// <summary>
+        /// Ends the current match and shows the game's menus (Session 18): the handedness question on a new profile, otherwise the main menu.
+        /// Does nothing visible where the scene has no menus (tests and tools, or a scene started on a mode).
+        /// </summary>
+        public void ShowMenu()
         {
             TearDownMatch();
             if (_audio != null) _audio.SetMusicPlaying(false);
-            if (_screens == null) return;
-
             if (_planningHud != null) _planningHud.SetVisible(false);
             if (_matchHud != null) _matchHud.SetVisible(false);
+            if (_screens != null) _screens.Hide();
             SetViewFlipped(false);
-            var options = new List<MenuOption>();
-            foreach (MatchMode mode in MatchLabels.PickerModes())
-            {
-                options.Add(MatchLabels.Option(mode));
-            }
-
-            _screens.ShowModePicker(MatchLabels.PickerTitle, MatchLabels.PickerNote, options);
+            if (_shell != null) _shell.Show();
         }
+
+        private void OnPlayRequested(MatchRequest request) => BeginLoadoutPick(request);
 
         /// <summary>
         /// Builds a match in this mode without plan sources yet: a fresh settings snapshot and policies, the authority and the flow.
         /// <see cref="StartMatch"/> then binds the sources (the sandbox's debug tools, or a test's scripted ones). Ends the current match.
         /// </summary>
-        public void PrepareMatch(MatchMode mode, LoadoutReveal loadouts = null)
+        public void PrepareMatch(MatchMode mode, LoadoutReveal loadouts = null) => PrepareMatch(MatchRequest.For(mode), loadouts);
+
+        /// <summary>As <see cref="PrepareMatch(MatchMode, LoadoutReveal)"/> for a match as the menu asked for it.</summary>
+        public void PrepareMatch(MatchRequest request, LoadoutReveal loadouts = null)
         {
             if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
             TearDownMatch();
 
+            MatchMode mode = request.Mode;
             _mode = mode;
+            _request = request;
             if (!_snapshotUnused) TakeSnapshot();
             _snapshotUnused = false;
             ShowArena();
@@ -523,6 +561,9 @@ namespace XRim.App
 
             // The flow follows the authority before any plan source is bound, so it sees each planning phase open before it locks.
             _flow = new ClientMatchFlow(_authority);
+            _tally = new MatchSummaryTally();
+            _rewardSettled = false;
+            _authority.TurnResolved += OnTurnResolvedForReward;
             _authority.MatchStarted += OnMatchStarted;
             _authority.PublicStateChanged += OnPublicStateChanged;
             _flow.PhaseChanged += OnPhaseChanged;
@@ -552,6 +593,8 @@ namespace XRim.App
             DiscardPendingTouches(); // the tap that started the match is not a stroke
             if (_screens != null) _screens.Hide();
             if (_matchHud != null) _matchHud.SetVisible(true);
+            ApplyPlayerVolumes();
+            ApplyEquippedLooks();
             _audio.SetMusicPlaying(true);
             TouchPlanSource human = _hotSeat == null && _humans != null ? _humans.Find(HumanSide) : null;
             SetViewFlipped(human != null && human.Layout.ArenaViewFlipped);
@@ -569,6 +612,7 @@ namespace XRim.App
             _shownHotSeatStage = HotSeatStage.Idle;
             if (_authority == null) return;
 
+            _authority.TurnResolved -= OnTurnResolvedForReward;
             _authority.MatchStarted -= OnMatchStarted;
             _authority.PublicStateChanged -= OnPublicStateChanged;
             _flow.PhaseChanged -= OnPhaseChanged;
@@ -900,11 +944,52 @@ namespace XRim.App
             _matchHud = MatchHud.Create(reference, _hudPanelSettings);
             _matchHud.SetVisible(false);
             _screens = MatchScreens.Create(reference, _hudPanelSettings);
-            _screens.ModePicked += OnModePicked;
             _screens.CoverConfirmed += OnCoverConfirmed;
             _screens.RematchPressed += Rematch;
-            _screens.ChangeModePressed += ShowModePicker;
+            _screens.MenuPressed += ShowMenu;
             _screens.ReplaySkipPressed += OnReplaySkipPressed;
+            if (_startup == MatchStartup.ShowMenu) ComposeShell(reference);
+        }
+
+        /// <summary>
+        /// The game's menus and the player profile (Session 18): the profile is read from the device now, and a damaged or newer file is
+        /// reported in the log (see <see cref="ProfileStore"/>). Economy tuning is read once per scene: edit it, then Play again.
+        /// </summary>
+        private void ComposeShell(Vector2Int reference)
+        {
+            var issues = new List<string>();
+            EconomySettings economy = _tuning.BuildEconomySettings(issues);
+            economy.Validate(issues);
+            foreach (string issue in issues)
+            {
+                Debug.LogWarning($"[XRim] {issue}", _tuning);
+            }
+
+            _shellScreens = ShellScreens.Create(reference, _hudPanelSettings);
+            var store = new ProfileStore(ProfileLocation.DefaultDirectory(), new ProfileJson(), ShopCatalogue.From(economy));
+            _shell = new MetaShell(_shellScreens, store, economy, () => RulesSettings);
+            _shell.PlayRequested += OnPlayRequested;
+
+            ProfileLoadResult load = _shell.LoadResult;
+            string where = store.FilePath;
+            if (load.Status == ProfileLoadStatus.Created) Debug.Log($"[XRim] No profile yet: a first launch. It will be saved to {where}.", this);
+            else if (string.IsNullOrEmpty(load.Message)) Debug.Log($"[XRim] Profile loaded from {where}.", this);
+            else Debug.LogWarning($"[XRim] Profile: {load.Message}", this);
+        }
+
+        /// <summary>The player volume sliders (Settings) reach the match sounds; without a profile the Audio asset mix is used as it is.</summary>
+        private void ApplyPlayerVolumes()
+        {
+            if (_audio == null) return;
+            if (_shell == null)
+            {
+                _audio.SetPlayerVolumes(MatchAudio.PlayerVolumeAsMixed, MatchAudio.PlayerVolumeAsMixed, MatchAudio.PlayerVolumeAsMixed,
+                    MatchAudio.PlayerVolumeAsMixed);
+                return;
+            }
+
+            AudioVolumes volumes = _shell.Profile.Volumes;
+            _audio.SetPlayerVolumes(volumes.Master, volumes.Music, volumes.Effects, volumes.Voices);
         }
 
         private T OwnedDefault<T>(ref ScriptableObject owned, string slot) where T : ScriptableObject
@@ -974,8 +1059,9 @@ namespace XRim.App
         }
 
         /// <summary>
-        /// Both dummies right-handed (a dev setting, D24), each with the loadout it picked, or the default loadout without a pick
-        /// (D8, flagged in <see cref="LoadoutSettings"/>: the sandbox, scenes built in code).
+        /// Each dummy with the loadout it picked, or the default loadout without a pick (D8, flagged in <see cref="LoadoutSettings"/>: the
+        /// sandbox, scenes built in code). A person dummy holds its weapon in the account hand (GDD §4, Decided: picked at first launch,
+        /// changeable in Settings, D24); a bot, and every dummy in a scene without a profile, in the right.
         /// </summary>
         private MatchSetup CreateSetup(RulesSettings rules, LoadoutReveal loadouts)
         {
@@ -987,7 +1073,7 @@ namespace XRim.App
 
             uint seed = _randomSeed != 0 ? (uint)_randomSeed : (uint)Environment.TickCount | 1u;
             PerSide<FighterSetup> fighters = PerSide<FighterSetup>.Create(side =>
-                new FighterSetup(Handedness.Right, loadouts != null ? loadouts.Of(side) : defaultLoadout));
+                FighterOf(side, loadouts != null ? loadouts.Of(side) : defaultLoadout));
             return new MatchSetup(fighters, seed);
         }
 
@@ -1006,9 +1092,25 @@ namespace XRim.App
         private PlanPreviewPresenter CreatePreview(Side side) => new PlanPreviewPresenter(_arenaRoot, _lineMaterial, side + "Preview",
             Policies, RulesSettings, SimulationSettings, Space, RulesSettings.FindBodyMove);
 
-        /// <summary>The screen as a player of this side sees it; mirrored for a left-handed dev setting (D24).</summary>
+        /// <summary>The screen as a player of this side sees it; mirrored for a left-handed account (GDD §4, Decided).</summary>
         private ScreenLayout LayoutFor(Side side) => new ScreenLayout(Screen.width, Screen.height, _input.BodyZoneWidthFraction,
-            _handedness.IsScreenMirrored(_input.DevHandedness), side);
+            _handedness.IsScreenMirrored(AccountHandedness()), side);
+
+        /// <summary>The hand the player picked at first launch (changeable in Settings); right in a scene without a profile.</summary>
+        private Handedness AccountHandedness() => _shell != null ? ProfileSetups.HandednessOf(_shell.Profile) : Handedness.Right;
+
+        /// <summary>
+        /// One side's fighter. With a profile: a person plays the account's hand and brings the signature moves the account owns, a bot
+        /// plays right-handed with the same moves (designer 2026-10-25, Q3). Without one (the sandbox, tests, tools): right-handed, and
+        /// every move of the catalogue.
+        /// </summary>
+        private FighterSetup FighterOf(Side side, IReadOnlyList<WeaponId> loadout)
+        {
+            if (_shell == null) return new FighterSetup(Handedness.Right, loadout);
+            return _request.PlaysHumanOn(side, HumanSide)
+                ? ProfileSetups.ForPlayer(_shell.Profile, loadout, _shell.Catalogue)
+                : ProfileSetups.ForBot(_shell.Profile, loadout, _shell.Catalogue);
+        }
 
         /// <summary>What the camera shows now, so touches map to the arena correctly even if the camera moves.</summary>
         private ArenaViewFrame ReadView() => CameraArenaView.Read(_camera, Space);
@@ -1291,13 +1393,54 @@ namespace XRim.App
             string summary = MatchOverText.Summary(outcome.TurnCount, MatchRealSeconds);
             Debug.Log($"[XRim] Match over ({_mode}): {title} {reason}. {summary}.", this);
             _audio.SetMusicPlaying(false);
-            if (_screens != null) _screens.ShowMatchOver(title, reason, summary);
+            string reward = SettleReward(outcome);
+            if (_screens != null) _screens.ShowMatchOver(title, reason, summary, reward);
         }
 
-        private void OnModePicked(int index)
+        private void OnTurnResolvedForReward(TurnResult result) => _tally?.AddTurn(result.Timeline.Events);
+
+        /// <summary>
+        /// Pays a finished match (GDD §16), once: what the match counted as (<see cref="MatchRequest.Kind"/>) and a summary of its events are
+        /// all the economy sees. Only the person playing against the bot can be paid, and only by the settings: hot-seat, practice and
+        /// two bots pay nothing. A scene without a profile (the sandbox, tests) pays nothing. Returns the line for the match-over screen.
+        /// </summary>
+        private string SettleReward(MatchOutcome outcome)
         {
-            IReadOnlyList<MatchMode> modes = MatchLabels.PickerModes();
-            if (index >= 0 && index < modes.Count) BeginLoadoutPick(modes[index]);
+            if (_shell == null || _tally == null || _rewardSettled || _mode == MatchMode.Sandbox) return string.Empty;
+
+            _rewardSettled = true;
+            RewardReceipt receipt = _shell.PayForMatch(_request.Kind, _tally.ToSummary(outcome), HumanSide);
+            Debug.Log($"[XRim] Reward for {_request}: {receipt.Decision}, proposed {receipt.Proposed}, paid {receipt.Paid}.", this);
+            return MatchOverText.RewardLine(receipt, _shell.Economy);
+        }
+
+        /// <summary>
+        /// The cosmetics the player has on reach the match (GDD §16): the hit-effect set of every person playing on this device, colours only.
+        /// Bots, and every dummy in a scene without a profile, wear the plain set. Presentation only: nothing here can change a turn.
+        /// </summary>
+        private void ApplyEquippedLooks()
+        {
+            if (_vfx == null) return;
+
+            string equipped = _shell != null ? _shell.Profile.Inventory.EquippedCosmetic(CosmeticKind.HitEffect) : null;
+            foreach (Side side in new[] { Side.Left, Side.Right })
+            {
+                bool wearsIt = _shell != null && _request.PlaysHumanOn(side, HumanSide);
+                _vfx.SetStyle(side, wearsIt ? CosmeticLooks.HitEffectStyle(equipped) : VfxStyles.Default());
+            }
+        }
+
+        // ----- debug (the Cheats tab) -----
+
+        /// <summary>Debug (the Cheats tab, Session 18): adds currency to the player's wallet. Does nothing in a scene without a profile.</summary>
+        public void GrantCurrency(long earned, long premium) => _shell?.GrantForDebug(earned, premium);
+
+        /// <summary>Debug (the Cheats tab, Session 18): ends the match, erases the saved profile and starts over as a first launch.</summary>
+        public void ResetProfile()
+        {
+            if (_shell == null) return;
+            ShowMenu();
+            _shell.ResetForDebug();
         }
 
         /// <summary>Serialized field names, for Editor tools that assign references through SerializedObject.</summary>
@@ -1305,7 +1448,7 @@ namespace XRim.App
         {
             public const string Tuning = nameof(_tuning);
             public const string Mode = nameof(_mode);
-            public const string PickModeAtStart = nameof(_pickModeAtStart);
+            public const string Startup = nameof(_startup);
             public const string SixBodies = nameof(_sixBodies);
             public const string TenBodies = nameof(_tenBodies);
             public const string ArenaRoot = nameof(_arenaRoot);

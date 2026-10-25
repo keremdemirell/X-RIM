@@ -126,7 +126,7 @@ namespace XRim.DebugTools.Sandbox
                 _ownsInput = true;
             }
 
-            _handedness = _input.DevHandedness;
+            _handedness = Handedness.Right; // the sandbox has its own live toggle; the player's pick belongs to the menus (Session 18)
             _director = _camera.GetComponent<FixedSideCameraDirector>();
             _reader = _bootstrap.GetComponent<TouchInputReader>();
             if (_reader == null) _reader = _bootstrap.gameObject.AddComponent<TouchInputReader>();

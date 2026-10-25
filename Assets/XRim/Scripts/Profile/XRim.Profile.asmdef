@@ -1,0 +1,18 @@
+{
+    "name": "XRim.Profile",
+    "rootNamespace": "XRim.Profile",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Economy"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

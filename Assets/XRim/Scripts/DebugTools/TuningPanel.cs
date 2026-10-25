@@ -79,6 +79,17 @@ namespace XRim.DebugTools
                     }
 
                     break;
+                case long number:
+                    if (TryEditText(key, number.ToString(CultureInfo.InvariantCulture), out string longText) &&
+                        long.TryParse(longText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedLong))
+                    {
+                        edited = parsedLong;
+                    }
+
+                    break;
+                case string text:
+                    if (TryEditText(key, text, out string editedText)) edited = editedText;
+                    break;
                 case bool flag:
                     edited = GUILayout.Toggle(flag, flag ? "on" : "off");
                     break;

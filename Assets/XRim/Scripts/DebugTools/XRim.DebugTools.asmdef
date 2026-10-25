@@ -5,6 +5,7 @@
         "XRim.Core",
         "XRim.Rules",
         "XRim.Economy",
+        "XRim.Profile",
         "XRim.Simulation",
         "XRim.Simulation.Unity2D",
         "XRim.Networking",

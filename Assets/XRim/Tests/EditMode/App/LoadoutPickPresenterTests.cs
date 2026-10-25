@@ -127,6 +127,41 @@ namespace XRim.Tests.EditMode.App
             Assert.That(_completedCount, Is.EqualTo(0));
         }
 
+        // --- A new player's three weapons (Session 18) ------------------------------------------------
+
+        [Test]
+        public void ANewPlayer_WhoOwnsOnlyTheThreeStartingWeapons_IsToldWhereMoreComeFrom()
+        {
+            LoadoutPickPresenter presenter = LoadoutPickPresenter.Create(_screens, _rules, new StartingWeapons(), MatchMode.HumanVsBot, Side.Left,
+                new RandomLoadoutPicker(), new XorShiftRandom(3u), null);
+            presenter.Begin();
+
+            Assert.That(_screens.Choices.Count, Is.EqualTo(3), "only what they own is offered");
+            Assert.That(_screens.PickerNote, Is.EqualTo(MatchLabels.LoadoutFewWeapons));
+        }
+
+        [Test]
+        public void APlayerWithManyWeapons_SeesTheUsualNote()
+        {
+            Start(MatchMode.HumanVsBot);
+
+            Assert.That(_screens.PickerNote, Is.EqualTo(MatchLabels.LoadoutNote));
+        }
+
+        [Test]
+        public void ABotMatch_GivesTheBotOnlyWhatThePlayerOwns()
+        {
+            LoadoutPickPresenter presenter = LoadoutPickPresenter.Create(_screens, _rules, new StartingWeapons(), MatchMode.HumanVsBot, Side.Left,
+                new RandomLoadoutPicker(), new XorShiftRandom(3u), null);
+            presenter.Completed += reveal => _completed = reveal;
+            presenter.Begin();
+            _screens.TapConfirm();
+            _screens.TapReveal();
+
+            Assert.That(_completed.Right, Is.EquivalentTo(new[] { WeaponIds.Rapier, WeaponIds.Mace, WeaponIds.Shield }),
+                "the bot picks from the same collection (designer 2026-10-25, Q3)");
+        }
+
         // --- Against a bot, and two bots -------------------------------------------------------------
 
         [Test]
@@ -205,13 +240,18 @@ namespace XRim.Tests.EditMode.App
             Assert.That(_completedCount, Is.EqualTo(1));
         }
 
+        /// <summary>A new player's weapons: the rapier, the mace and the shield.</summary>
+        private sealed class StartingWeapons : IWeaponOwnership
+        {
+            public bool Owns(WeaponId weapon) => weapon == WeaponIds.Rapier || weapon == WeaponIds.Mace || weapon == WeaponIds.Shield;
+        }
+
         /// <summary>Records what the presenter shows and lets a test tap.</summary>
         private sealed class FakeScreens : IMatchScreensView
         {
-            public event Action<int> ModePicked;
             public event Action CoverConfirmed;
             public event Action RematchPressed;
-            public event Action ChangeModePressed;
+            public event Action MenuPressed;
             public event Action ReplaySkipPressed;
             public event Action<int> LoadoutChoiceTapped;
             public event Action LoadoutConfirmed;
@@ -234,12 +274,9 @@ namespace XRim.Tests.EditMode.App
             public void TapChoice(int index) => LoadoutChoiceTapped?.Invoke(index);
             public void TapConfirm() => LoadoutConfirmed?.Invoke();
             public void TapReveal() => LoadoutRevealConfirmed?.Invoke();
-            public void TapMode(int index) => ModePicked?.Invoke(index);
             public void TapRematch() => RematchPressed?.Invoke();
-            public void TapChangeMode() => ChangeModePressed?.Invoke();
+            public void TapMenu() => MenuPressed?.Invoke();
             public void TapReplay() => ReplaySkipPressed?.Invoke();
-
-            public void ShowModePicker(string title, string note, IReadOnlyList<MenuOption> modes) => Note("modes");
 
             public void ShowLoadoutPicker(string title, string note, IReadOnlyList<LoadoutChoice> choices, string confirmText, bool canConfirm)
             {
@@ -266,7 +303,7 @@ namespace XRim.Tests.EditMode.App
                 Note("cover");
             }
 
-            public void ShowMatchOver(string title, string reason, string summary) => Note("over");
+            public void ShowMatchOver(string title, string reason, string summary, string reward) => Note("over");
 
             public void ShowReplay(string title, string caption, string hint) => Note("replay");
 

@@ -14,7 +14,7 @@ namespace XRim.Editor
         [MenuItem(EditorPaths.MenuSetup + "Create Match Scene", priority = 3)]
         public static void Create()
         {
-            if (!MatchSceneBuilder.Build(EditorPaths.MatchScenePath, "Match", MatchMode.HumanVsBot, true, true)) return;
+            if (!MatchSceneBuilder.Build(EditorPaths.MatchScenePath, "Match", MatchMode.HumanVsBot, MatchStartup.ShowMenu, true)) return;
 
             Debug.Log($"[XRim] Created {EditorPaths.MatchScenePath} (first in the build list). Press Play and pick a mode. The mouse is a " +
                       "finger: drag in the arena to draw, flick in the strip at your screen edge for a body move, press READY.");

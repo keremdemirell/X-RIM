@@ -4,11 +4,12 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using XRim.Core;
 using static XRim.Presentation.UI.HudElements;
+using static XRim.Presentation.UI.UiTheme;
 
 namespace XRim.Presentation.UI
 {
     /// <summary>
-    /// The full-screen moments around a match (UI Toolkit built in code, placeholder look): the mode picker, the hot-seat cover screen
+    /// The full-screen moments around a match (UI Toolkit built in code, placeholder look): the hot-seat cover screen
     /// (opaque, so the next player cannot see the arena or the last plan; a tap anywhere hands over) and the match-over screen, which
     /// leaves the final pose visible behind it, and (Session 13) the instant replay's banner over a see-through screen that skips the replay
     /// when tapped, and (Session 14) the pre-match loadout picker and the reveal of both loadouts. It draws above every HUD.
@@ -16,34 +17,25 @@ namespace XRim.Presentation.UI
     public sealed class MatchScreens : MonoBehaviour, IMatchScreensView
     {
         private const int SortingOrder = 200;
-        private const float OptionWidth = 760f;
-        private const float OptionHeight = 112f;
         private const float ActionWidth = 300f;
         private const float ActionHeight = 96f;
-        private const float Gap = 18f;
         private const float CardWidth = 540f;
         private const float CardHeight = 160f;
         private const float CardGap = 12f;
+        private const float RewardPopSeconds = 0.35f;
+        private const float RewardPopStartScale = 1.9f;
         private const float ConfirmWidth = 560f;
         private const float ConfirmHeight = 100f;
         private const float RevealColumnWidth = 620f;
 
-        private static readonly Color OpaqueColor = new Color(0.07f, 0.08f, 0.1f, 1f);
-        private static readonly Color DimmedColor = new Color(0f, 0f, 0f, 0.6f);
-        private static readonly Color RematchColor = new Color(0.2f, 0.7f, 0.3f, 1f);
         private static readonly Color ReplayBannerColor = new Color(0f, 0f, 0f, 0.45f);
         private static readonly Color ReplayTitleColor = new Color(1f, 0.25f, 0.2f, 1f);
-        private static readonly Color PickedCardColor = new Color(0.1f, 0.38f, 0.17f, 0.95f);
 
         [SerializeField] private UIDocument _document;
 
         private PanelSettings _ownedPanelSettings;
         private VisualElement _root;
         private HudSafeArea _safeArea;
-        private VisualElement _picker;
-        private Label _pickerTitle;
-        private Label _pickerNote;
-        private VisualElement _pickerOptions;
         private Button _cover;
         private Label _coverPlayer;
         private Label _coverInstruction;
@@ -52,6 +44,8 @@ namespace XRim.Presentation.UI
         private Label _overTitle;
         private Label _overReason;
         private Label _overSummary;
+        private Label _overReward;
+        private float _rewardShownAtSeconds = -1f;
         private Button _replay;
         private Label _replayTitle;
         private Label _replayCaption;
@@ -70,10 +64,9 @@ namespace XRim.Presentation.UI
         private VisualElement _revealRightWeapons;
         private Button _revealAction;
 
-        public event Action<int> ModePicked;
         public event Action CoverConfirmed;
         public event Action RematchPressed;
-        public event Action ChangeModePressed;
+        public event Action MenuPressed;
         public event Action ReplaySkipPressed;
         public event Action<int> LoadoutChoiceTapped;
         public event Action LoadoutConfirmed;
@@ -105,6 +98,22 @@ namespace XRim.Presentation.UI
         private void Update()
         {
             if (_root != null && _safeArea.Changed(out ScreenInsets insets)) PadScreens(insets);
+            AnimateReward();
+        }
+
+        /// <summary>
+        /// The reward line slams in: it starts big and settles to its size, so winning something is a small moment of its own. Real time, so
+        /// slow motion and hitstop never touch it; presentation only.
+        /// </summary>
+        private void AnimateReward()
+        {
+            if (_overReward == null || _rewardShownAtSeconds < 0f) return;
+
+            float progress = Mathf.Clamp01((Time.unscaledTime - _rewardShownAtSeconds) / RewardPopSeconds);
+            float eased = 1f - (1f - progress) * (1f - progress);
+            float scale = Mathf.Lerp(RewardPopStartScale, 1f, eased);
+            _overReward.style.scale = new Scale(new Vector3(scale, scale, 1f));
+            if (progress >= 1f) _rewardShownAtSeconds = -1f;
         }
 
         private void OnDestroy()
@@ -113,31 +122,6 @@ namespace XRim.Presentation.UI
         }
 
         // ----- IMatchScreensView -----
-
-        public void ShowModePicker(string title, string note, IReadOnlyList<MenuOption> modes)
-        {
-            if (_picker == null) return;
-
-            SetText(_pickerTitle, title);
-            SetText(_pickerNote, note);
-            _pickerOptions.Clear();
-            for (int i = 0; i < modes.Count; i++)
-            {
-                int index = i;
-                var button = new Button(() => ModePicked?.Invoke(index)) { text = string.Empty };
-                StyleButton(button, OptionWidth, OptionHeight, 34);
-                button.style.marginTop = Gap;
-                button.style.flexDirection = FlexDirection.Column;
-                button.style.justifyContent = Justify.Center;
-                button.style.alignItems = Align.Center;
-                Label optionTitle = Text(button, modes[i].Title, 36, TextColor);
-                optionTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-                Text(button, modes[i].Detail, 22, DimTextColor);
-                _pickerOptions.Add(button);
-            }
-
-            Show(_picker);
-        }
 
         public void ShowCover(string player, string instruction, string action)
         {
@@ -149,13 +133,18 @@ namespace XRim.Presentation.UI
             Show(_cover);
         }
 
-        public void ShowMatchOver(string title, string reason, string summary)
+        public void ShowMatchOver(string title, string reason, string summary, string reward)
         {
             if (_matchOver == null) return;
 
             SetText(_overTitle, title);
             SetText(_overReason, reason);
             SetText(_overSummary, summary);
+            bool paid = !string.IsNullOrEmpty(reward);
+            SetText(_overReward, reward);
+            _overReward.style.display = paid ? DisplayStyle.Flex : DisplayStyle.None;
+            _rewardShownAtSeconds = paid ? Time.unscaledTime : -1f;
+            if (paid) AnimateReward();
             Show(_matchOver);
         }
 
@@ -182,13 +171,13 @@ namespace XRim.Presentation.UI
                 bool picked = choices[i].PickedOrder > 0;
                 SetText(card.Title, picked ? choices[i].PickedOrder + ".  " + choices[i].Title : choices[i].Title);
                 SetText(card.Detail, choices[i].Detail);
-                card.Button.style.backgroundColor = picked ? PickedCardColor : ButtonColor;
+                card.Button.style.backgroundColor = picked ? ChosenColor : ButtonColor;
                 SetBorderColor(card.Button, picked ? HighlightColor : EdgeColor);
             }
 
             _loadoutConfirm.text = confirmText;
             _loadoutConfirm.SetEnabled(canConfirm);
-            _loadoutConfirm.style.backgroundColor = canConfirm ? RematchColor : ButtonColor;
+            _loadoutConfirm.style.backgroundColor = canConfirm ? ConfirmColor : ButtonColor;
             Show(_loadout);
         }
 
@@ -214,7 +203,6 @@ namespace XRim.Presentation.UI
         {
             PrepareRoot(root);
             _root = root;
-            BuildPicker();
             BuildCover();
             BuildMatchOver();
             BuildReplay();
@@ -227,28 +215,17 @@ namespace XRim.Presentation.UI
         /// <summary>Each screen's background still reaches every edge (the cover must hide everything); its content stays inside the safe area.</summary>
         private void PadScreens(ScreenInsets insets)
         {
-            foreach (VisualElement screen in new VisualElement[] { _picker, _cover, _matchOver, _replay, _loadout, _reveal })
+            foreach (VisualElement screen in new VisualElement[] { _cover, _matchOver, _replay, _loadout, _reveal })
             {
                 if (screen != null) PadBy(screen, insets);
             }
-        }
-
-        private void BuildPicker()
-        {
-            _picker = FullScreen(Plain(_root), OpaqueColor);
-            _pickerTitle = Text(_picker, string.Empty, 96, HighlightColor);
-            _pickerTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-            _pickerNote = Text(_picker, string.Empty, 22, DimTextColor);
-            _pickerNote.style.marginBottom = Gap;
-            _pickerOptions = Plain(_picker);
-            _pickerOptions.style.alignItems = Align.Center;
         }
 
         private void BuildCover()
         {
             _cover = new Button(() => CoverConfirmed?.Invoke()) { text = string.Empty };
             _root.Add(_cover);
-            FullScreen(_cover, OpaqueColor);
+            FullScreen(_cover, ScreenColor);
             _cover.style.borderTopWidth = 0;
             _cover.style.borderBottomWidth = 0;
             _cover.style.borderLeftWidth = 0;
@@ -268,20 +245,23 @@ namespace XRim.Presentation.UI
 
         private void BuildMatchOver()
         {
-            _matchOver = FullScreen(Plain(_root), DimmedColor);
+            _matchOver = FullScreen(Plain(_root), DimmedScreenColor);
             _overTitle = Text(_matchOver, string.Empty, 84, HighlightColor);
             _overTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
             _overReason = Text(_matchOver, string.Empty, 32, TextColor);
             _overReason.style.marginTop = Gap;
             _overSummary = Text(_matchOver, string.Empty, 24, DimTextColor);
             _overSummary.style.marginTop = Gap * 0.5f;
+            _overReward = Text(_matchOver, string.Empty, 60, HighlightColor);
+            _overReward.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _overReward.style.marginTop = Gap * 1.5f;
 
             VisualElement actions = Plain(_matchOver);
             actions.style.flexDirection = FlexDirection.Row;
             actions.style.marginTop = Gap * 3f;
             Button rematch = AddAction(actions, "REMATCH", () => RematchPressed?.Invoke());
-            rematch.style.backgroundColor = RematchColor;
-            AddAction(actions, "CHANGE MODE", () => ChangeModePressed?.Invoke());
+            rematch.style.backgroundColor = ConfirmColor;
+            AddAction(actions, "MENU", () => MenuPressed?.Invoke());
         }
 
         /// <summary>A see-through screen (the replay shows through it) with a banner across the top; a tap anywhere skips.</summary>
@@ -317,7 +297,7 @@ namespace XRim.Presentation.UI
         /// <summary>The loadout picker: a title, a note, the weapon cards in rows, and the lock-in button.</summary>
         private void BuildLoadout()
         {
-            _loadout = FullScreen(Plain(_root), OpaqueColor);
+            _loadout = FullScreen(Plain(_root), ScreenColor);
             _loadoutTitle = Text(_loadout, string.Empty, 64, HighlightColor);
             _loadoutTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
             _loadoutNote = Text(_loadout, string.Empty, 22, DimTextColor);
@@ -339,7 +319,7 @@ namespace XRim.Presentation.UI
         /// <summary>The reveal: both loadouts side by side with a tap to start.</summary>
         private void BuildReveal()
         {
-            _reveal = FullScreen(Plain(_root), OpaqueColor);
+            _reveal = FullScreen(Plain(_root), ScreenColor);
             _revealTitle = Text(_reveal, string.Empty, 72, HighlightColor);
             _revealTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
 
@@ -356,7 +336,7 @@ namespace XRim.Presentation.UI
 
             _revealAction = new Button(() => LoadoutRevealConfirmed?.Invoke()) { text = string.Empty };
             StyleButton(_revealAction, ConfirmWidth, ConfirmHeight, 36);
-            _revealAction.style.backgroundColor = RematchColor;
+            _revealAction.style.backgroundColor = ConfirmColor;
             _revealAction.style.marginTop = Gap * 3f;
             _reveal.Add(_revealAction);
         }
@@ -440,25 +420,9 @@ namespace XRim.Presentation.UI
             return button;
         }
 
-        /// <summary>Covers the whole screen and centres its content in a column.</summary>
-        private static VisualElement FullScreen(VisualElement element, Color background)
-        {
-            Absolute(element);
-            element.style.left = 0;
-            element.style.top = 0;
-            element.style.right = 0;
-            element.style.bottom = 0;
-            element.style.backgroundColor = background;
-            element.style.flexDirection = FlexDirection.Column;
-            element.style.justifyContent = Justify.Center;
-            element.style.alignItems = Align.Center;
-            element.pickingMode = PickingMode.Position; // a screen in front swallows touches meant for what is behind it
-            return element;
-        }
-
         private void Show(VisualElement screen)
         {
-            foreach (VisualElement candidate in new[] { _picker, _cover, _matchOver, _replay, _loadout, _reveal })
+            foreach (VisualElement candidate in new[] { _cover, _matchOver, _replay, _loadout, _reveal })
             {
                 if (candidate != null) candidate.style.display = candidate == screen ? DisplayStyle.Flex : DisplayStyle.None;
             }

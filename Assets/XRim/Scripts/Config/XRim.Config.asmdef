@@ -6,6 +6,7 @@
         "XRim.Rules",
         "XRim.Simulation",
         "XRim.Economy",
+        "XRim.Profile",
         "XRim.Bots"
     ],
     "includePlatforms": [],

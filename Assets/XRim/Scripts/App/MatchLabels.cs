@@ -3,31 +3,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using XRim.Core;
 using XRim.Presentation.Moments;
-using XRim.Presentation.UI;
 
 namespace XRim.App
 {
-    /// <summary>The words the match scene shows for each mode and player (placeholder copy until the meta shell, Session 18).</summary>
+    /// <summary>The words the match scene shows for each mode and player (the menus outside a match are ShellLabels).</summary>
     public static class MatchLabels
     {
         public const string You = "YOU";
-        public const string PickerTitle = "X-RIM";
-        public const string PickerNote = "First playable · developer opponents (D25) · tuning edits apply from the next match";
         public const string CoverInstruction = "Take the device. The other player looks away.";
-
-        /// <summary>The modes the picker offers, in order.</summary>
-        public static IReadOnlyList<MatchMode> PickerModes() => new[] { MatchMode.HotSeat, MatchMode.HumanVsBot, MatchMode.BotVsBot };
-
-        public static MenuOption Option(MatchMode mode)
-        {
-            switch (mode)
-            {
-                case MatchMode.HotSeat: return new MenuOption("HOT-SEAT", "Two players, one device: plan in turn behind a cover screen");
-                case MatchMode.HumanVsBot: return new MenuOption("VS BOT", "You on the left against a practice bot (the Bots tuning asset picks which)");
-                case MatchMode.BotVsBot: return new MenuOption("BOT VS BOT (WATCH)", "Two practice bots fight it out");
-                default: throw new ArgumentOutOfRangeException(nameof(mode), mode, "The picker does not offer this mode.");
-            }
-        }
 
         /// <summary>What each fighter is called in this mode: the human against the bot is "YOU".</summary>
         public static PerSide<string> FighterNames(MatchMode mode, Side humanSide) => PerSide<string>.Create(side => FighterName(mode, side, humanSide));
@@ -75,9 +58,12 @@ namespace XRim.App
         public static string CoverAction(float planningSeconds) =>
             "TAP TO START PLANNING (" + planningSeconds.ToString("0.#", CultureInfo.InvariantCulture) + " s)";
 
-        // ----- the pre-match loadout pick (Session 14; placeholder copy until the meta shell, Session 18) -----
+        // ----- the pre-match loadout pick (Session 14, GDD §6) -----
 
         public const string LoadoutNote = "The first weapon you pick is the one you start with. Both loadouts are shown when the match starts.";
+        /// <summary>Shown when the player owns no more weapons than there are slots: they pick them all, and are told where more come from.</summary>
+        public const string LoadoutFewWeapons = "These are all the weapons you own. Win against the bot to earn more, then spend it in the Shop.";
+
         public const string LoadoutSlotsFull = "All slots are full: tap a picked weapon to put it back first.";
         public const string LoadoutLockIn = "LOCK IN";
         public const string LoadoutShieldNeeded = "A SHIELD IS REQUIRED";

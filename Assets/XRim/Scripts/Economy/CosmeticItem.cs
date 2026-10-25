@@ -10,12 +10,21 @@ namespace XRim.Economy
         public EarnedAmount? EarnedPrice { get; }
         public PremiumAmount? PremiumPrice { get; }
 
-        public CosmeticItem(string id, CosmeticKind kind, EarnedAmount? earnedPrice, PremiumAmount? premiumPrice)
+        /// <summary>What the shop shows.</summary>
+        public string DisplayName { get; }
+
+        /// <summary>False until the art or sound for it exists: owning it is recorded, but nothing changes in a match.</summary>
+        public bool HasEffectYet { get; }
+
+        public CosmeticItem(string id, CosmeticKind kind, EarnedAmount? earnedPrice, PremiumAmount? premiumPrice, string displayName = null,
+            bool hasEffectYet = true)
         {
             Id = Guard.NotNull(id, nameof(id));
             Kind = kind;
             EarnedPrice = earnedPrice;
             PremiumPrice = premiumPrice;
+            DisplayName = string.IsNullOrEmpty(displayName) ? id : displayName;
+            HasEffectYet = hasEffectYet;
         }
     }
 }

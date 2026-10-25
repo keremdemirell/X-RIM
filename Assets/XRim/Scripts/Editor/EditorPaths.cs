@@ -10,6 +10,7 @@ namespace XRim.Editor
         public const string MenuBuild = "XRim/Build/";
         public const string MenuScenarios = "XRim/Scenarios/";
         public const string MenuBalance = "XRim/Balance/";
+        public const string MenuProfile = "XRim/Profile/";
 
         public const string XRimRoot = "Assets/XRim";
         public const string DataFolder = XRimRoot + "/Data";

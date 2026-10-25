@@ -13,5 +13,6 @@
   <Project Path="XRim.App.csproj" />
   <Project Path="XRim.Core.csproj" />
   <Project Path="XRim.Bots.csproj" />
+  <Project Path="XRim.Profile.csproj" />
   <Project Path="XRim.Economy.csproj" />
 </Solution>

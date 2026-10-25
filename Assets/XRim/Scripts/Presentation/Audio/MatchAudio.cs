@@ -45,6 +45,13 @@ namespace XRim.Presentation.Audio
         private IMusicIntensityDriver _musicIntensity;
         private XorShiftRandom _random;
         private int _nextEffect;
+        private float _playerMaster = PlayerVolumeAsMixed;
+        private float _playerMusic = PlayerVolumeAsMixed;
+        private float _playerEffects = PlayerVolumeAsMixed;
+        private float _playerVoices = PlayerVolumeAsMixed;
+
+        /// <summary>The player's sliders at their top: the Audio asset's mix exactly as the designer set it.</summary>
+        public const float PlayerVolumeAsMixed = 1f;
 
         /// <summary>How many sounds have played (tests and debug tools read it).</summary>
         public int PlayedCount { get; private set; }
@@ -66,6 +73,19 @@ namespace XRim.Presentation.Audio
             _musicIntensity = musicIntensity ?? new SteadyMusicIntensity();
             _random = new XorShiftRandom((uint)Environment.TickCount | 1u);
             CreateSources();
+        }
+
+        /// <summary>
+        /// The player's volume sliders (Settings, Session 18), each 0 to 1 of the Audio asset's mix, so they never fight the designer's balance
+        /// between music, effects and voices. Applies from the next sound and from the next time the music starts.
+        /// </summary>
+        public void SetPlayerVolumes(float master, float music, float effects, float voices)
+        {
+            _playerMaster = Mathf.Clamp01(master);
+            _playerMusic = Mathf.Clamp01(music);
+            _playerEffects = Mathf.Clamp01(effects);
+            _playerVoices = Mathf.Clamp01(voices);
+            if (_music != null && _audio != null) _music.volume = _audio.MusicVolume * _audio.MasterVolume * _playerMusic * _playerMaster;
         }
 
         /// <summary>A dummy's effects set (a cosmetic, GDD §16); null goes back to the Audio asset's.</summary>
@@ -96,7 +116,7 @@ namespace XRim.Presentation.Audio
                 return;
             }
 
-            _music.volume = _audio.MusicVolume * _audio.MasterVolume;
+            _music.volume = _audio.MusicVolume * _audio.MasterVolume * _playerMusic * _playerMaster;
             if (_music.clip != _audio.Music) _music.clip = _audio.Music;
             if (!_music.isPlaying) _music.Play();
         }
@@ -132,9 +152,9 @@ namespace XRim.Presentation.Audio
             }
 
             _lastPlayedRealSeconds[key] = now;
-            float category = voice ? _audio.VoiceVolume : _audio.EffectsVolume;
+            float category = voice ? _audio.VoiceVolume * _playerVoices : _audio.EffectsVolume * _playerEffects;
             source.clip = clip;
-            source.volume = Mathf.Clamp01(request.Volume * clips.Volume * category * _audio.MasterVolume);
+            source.volume = Mathf.Clamp01(request.Volume * clips.Volume * category * _audio.MasterVolume * _playerMaster);
             source.pitch = Pitch();
             source.Play();
             PlayedCount++;

@@ -33,8 +33,9 @@ namespace XRim.Editor
         private static readonly Color BackgroundColor = new Color(0.09f, 0.1f, 0.12f);
 
         /// <summary>Builds and saves the scene. False when the user cancelled or something it needs is missing.</summary>
+        /// <param name="startup">What the scene does at Play (the Match scene shows the menus, the sandbox waits for its tools).</param>
         /// <param name="first">Put the scene first in the build list (the scene a build starts in).</param>
-        public static bool Build(string scenePath, string sceneName, MatchMode mode, bool pickModeAtStart, bool first)
+        public static bool Build(string scenePath, string sceneName, MatchMode mode, MatchStartup startup, bool first)
         {
             if (AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath) != null &&
                 !EditorUtility.DisplayDialog("XRim", $"The {sceneName} scene already exists. Rebuild it? (It is generated; nothing in it is hand-made.)",
@@ -92,7 +93,7 @@ namespace XRim.Editor
             SetReference(bootstrap, MatchBootstrap.FieldNames.CameraDirector, cameraDirector);
             var serialized = new SerializedObject(bootstrap);
             serialized.FindProperty(MatchBootstrap.FieldNames.Mode).enumValueIndex = (int)mode;
-            serialized.FindProperty(MatchBootstrap.FieldNames.PickModeAtStart).boolValue = pickModeAtStart;
+            serialized.FindProperty(MatchBootstrap.FieldNames.Startup).enumValueIndex = (int)startup;
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.SaveScene(scene, scenePath);

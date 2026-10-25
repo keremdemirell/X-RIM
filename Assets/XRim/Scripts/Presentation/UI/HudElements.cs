@@ -108,6 +108,22 @@ namespace XRim.Presentation.UI
             style.marginBottom = 0;
         }
 
+        /// <summary>Covers the whole screen and centres its content in a column. It catches touches, so a screen in front hides what is behind it.</summary>
+        public static VisualElement FullScreen(VisualElement element, Color background)
+        {
+            Absolute(element);
+            element.style.left = 0;
+            element.style.top = 0;
+            element.style.right = 0;
+            element.style.bottom = 0;
+            element.style.backgroundColor = background;
+            element.style.flexDirection = FlexDirection.Column;
+            element.style.justifyContent = Justify.Center;
+            element.style.alignItems = Align.Center;
+            element.pickingMode = PickingMode.Position;
+            return element;
+        }
+
         /// <summary>Puts an absolutely placed element's four edges in from the screen's by the insets (a notch, rounded corners).</summary>
         public static void InsetEdges(VisualElement element, ScreenInsets insets)
         {
