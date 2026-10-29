@@ -36,6 +36,17 @@ namespace XRim.Tests.EditMode.App
 
         [TestCase(Side.Left)]
         [TestCase(Side.Right)]
+        public void Online_OnlyThisDevicesPlayerPlansHere(Side humanSide)
+        {
+            IReadOnlyList<IPlanSource> sources = Create(MatchMode.Online, humanSide);
+
+            Assert.That(_humansAsked, Is.EqualTo(new[] { humanSide }));
+            Assert.That(sources.Count, Is.EqualTo(1), "the opponent plans on their own device, through the server");
+            Assert.That(sources[0].Side, Is.EqualTo(humanSide));
+        }
+
+        [TestCase(Side.Left)]
+        [TestCase(Side.Right)]
         public void HumanVsBot_PutsTheHumanOnTheirSide_AndTheBotOnTheOther(Side humanSide)
         {
             IReadOnlyList<IPlanSource> sources = Create(MatchMode.HumanVsBot, humanSide);

@@ -24,6 +24,9 @@ namespace XRim.App
         private readonly LoadoutPickSession _session;
         private readonly MatchMode _mode;
         private readonly PerSide<string> _names;
+        private readonly bool _remoteOpponent;
+        private readonly Side _localSide;
+        private LoadoutReveal _remoteReveal;
         private string _notice;
         private bool _begun;
         private bool _finished;
@@ -31,14 +34,31 @@ namespace XRim.App
         /// <summary>The picks are made and confirmed: both loadouts, to start the match with.</summary>
         public event Action<LoadoutReveal> Completed;
 
+        /// <summary>
+        /// Online (Session 19): this device's player locked their pick in. It goes to the server, which holds it blind (GDD §6) until the
+        /// opponent has picked; <see cref="ShowRemoteReveal"/> then shows both. Nothing is drawn meanwhile: the caller shows the wait.
+        /// </summary>
+        public event Action<IReadOnlyList<WeaponId>> LocalPicked;
+
+        /// <param name="localSide">Online: the side this device's player plays (the other picks on their own device).</param>
         public LoadoutPickPresenter(IMatchScreensView screens, RulesSettings rules, LoadoutPickSession session, MatchMode mode,
-            PerSide<string> names)
+            PerSide<string> names, Side localSide = Side.Left)
         {
             _screens = Guard.NotNull(screens, nameof(screens));
             _rules = Guard.NotNull(rules, nameof(rules));
             _session = Guard.NotNull(session, nameof(session));
             _mode = mode;
             _names = Guard.NotNull(names, nameof(names));
+            _remoteOpponent = mode == MatchMode.Online;
+            _localSide = localSide;
+        }
+
+        /// <summary>Online: both loadouts as the server revealed them (GDD §6, Decided); the reveal shows them and its button starts the match.</summary>
+        public void ShowRemoteReveal(LoadoutReveal reveal)
+        {
+            if (!_remoteOpponent || _finished) return;
+            _remoteReveal = Guard.NotNull(reveal, nameof(reveal));
+            RenderReveal();
         }
 
         public LoadoutPickSession Session => _session;
@@ -47,7 +67,7 @@ namespace XRim.App
         /// Starts a pick for a match mode: the humans on this device pick, the bots lock a random valid loadout in at once (when
         /// they cannot, the default for the owned weapons).
         /// </summary>
-        /// <param name="humanSide">The side the human plays against the bot.</param>
+        /// <param name="humanSide">The side the human plays against the bot, or online (the opponent picks on their own device).</param>
         /// <param name="previousPicks">The last match's picks, to start from (a rematch); null for none.</param>
         public static LoadoutPickPresenter Create(IMatchScreensView screens, RulesSettings rules, IWeaponOwnership ownership, MatchMode mode,
             Side humanSide, IBotLoadoutPicker botPicker, IRandom random, PerSide<IReadOnlyList<WeaponId>> previousPicks)
@@ -68,7 +88,8 @@ namespace XRim.App
                     continue;
                 }
 
-                if (!botPicker.TryPick(rules, ownership, random, out IReadOnlyList<WeaponId> loadout))
+                // Online the other side picks on its own device: a stand-in fills its slot here and is never shown (the server reveals the real one).
+                if (mode == MatchMode.Online || !botPicker.TryPick(rules, ownership, random, out IReadOnlyList<WeaponId> loadout))
                 {
                     loadout = LoadoutOptions.DefaultFor(rules, ownership);
                 }
@@ -78,7 +99,7 @@ namespace XRim.App
             }
 
             var session = new LoadoutPickSession(rules, ownership, selection, humans, mode == MatchMode.HotSeat, previousPicks);
-            return new LoadoutPickPresenter(screens, rules, session, mode, MatchLabels.FighterNames(mode, humanSide));
+            return new LoadoutPickPresenter(screens, rules, session, mode, MatchLabels.FighterNames(mode, humanSide), humanSide);
         }
 
         /// <summary>Shows the first step and listens to the screen.</summary>
@@ -108,7 +129,9 @@ namespace XRim.App
             switch (mode)
             {
                 case MatchMode.HotSeat: return true;
-                case MatchMode.HumanVsBot: return side == humanSide;
+                case MatchMode.HumanVsBot:
+                case MatchMode.Online:
+                    return side == humanSide;
                 case MatchMode.BotVsBot: return false;
                 default: throw new ArgumentOutOfRangeException(nameof(mode), mode, "This mode has no loadout pick.");
             }
@@ -136,14 +159,20 @@ namespace XRim.App
             if (_finished || _session.Stage != LoadoutPickStage.Picking) return;
             _notice = null;
             _session.Confirm();
+            if (_remoteOpponent && _session.Stage == LoadoutPickStage.Reveal)
+            {
+                LocalPicked?.Invoke(_session.Result.Of(_localSide));
+                return;
+            }
+
             Render();
         }
 
         private void OnRevealConfirmed()
         {
-            if (_finished || !_session.ConfirmReveal()) return;
+            if (_finished || (_remoteOpponent && _remoteReveal == null) || !_session.ConfirmReveal()) return;
             _finished = true;
-            Completed?.Invoke(_session.Result);
+            Completed?.Invoke(_remoteReveal ?? _session.Result);
         }
 
         private void Render()
@@ -158,7 +187,7 @@ namespace XRim.App
                     RenderPicker();
                     break;
                 case LoadoutPickStage.Reveal:
-                    RenderReveal();
+                    if (!_remoteOpponent || _remoteReveal != null) RenderReveal(); // online, the wait is the caller's screen
                     break;
             }
         }
@@ -183,7 +212,7 @@ namespace XRim.App
 
         private void RenderReveal()
         {
-            LoadoutReveal reveal = _session.Result;
+            LoadoutReveal reveal = _remoteReveal ?? _session.Result;
             _screens.ShowLoadoutReveal(MatchLabels.RevealTitle, _names.Left, DisplayNames(reveal.Left), _names.Right,
                 DisplayNames(reveal.Right), MatchLabels.RevealAction);
         }

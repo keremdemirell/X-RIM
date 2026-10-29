@@ -1,0 +1,23 @@
+{
+    "name": "XRim.Server",
+    "rootNamespace": "XRim.Server",
+    "references": [
+        "XRim.Core",
+        "XRim.Rules",
+        "XRim.Simulation",
+        "XRim.Simulation.Unity2D",
+        "XRim.Networking",
+        "XRim.Config"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_SERVER || UNITY_EDITOR"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -20,7 +20,7 @@ namespace XRim.App
     {
         /// <param name="createHuman">Makes the plan source of a human playing that side on this device.</param>
         /// <param name="random">Every bot's choices, seeded by the match.</param>
-        /// <param name="humanSide">The side the human plays against the bot.</param>
+        /// <param name="humanSide">The side the human plays against the bot, or online (the side the server gave them).</param>
         /// <param name="bots">Which brain plays each bot side; null: the code defaults (the heuristic bot everywhere).</param>
         public static IReadOnlyList<IPlanSource> Create(MatchMode mode, MatchSetup setup, RulesSettings rules,
             Func<Side, IPlanSource> createHuman, IRandom random, Side humanSide = Side.Left, BotSettings bots = null)
@@ -43,6 +43,8 @@ namespace XRim.App
                     };
                 case MatchMode.HotSeat:
                     return new[] { createHuman(Side.Left), createHuman(Side.Right) };
+                case MatchMode.Online:
+                    return new[] { createHuman(humanSide) }; // the other side plans on its own device, through the server
                 case MatchMode.Sandbox:
                     throw new ArgumentException("The sandbox's plan sources come from the debug tools (MatchBootstrap.StartMatch).", nameof(mode));
                 default:

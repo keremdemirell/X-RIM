@@ -142,6 +142,7 @@ namespace XRim.App
                 () => Request(MatchRequest.HotSeat()),
                 () => Request(MatchRequest.VersusBot()),
                 () => ShowPractice(),
+                () => Request(MatchRequest.Online()),
             };
             _view.ShowMenu(ShellLabels.PlayTitle, ShellLabels.PlayNote, ShellLabels.PlayMenu(_economy), ShellLabels.Back);
         }

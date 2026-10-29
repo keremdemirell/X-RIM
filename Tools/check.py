@@ -3,7 +3,7 @@
 
 Usage, from the project root, in Git Bash or PowerShell:
 
-    python Tools/check.py [--pass editor|player|dev|all] [--no-tests] [--filter TEXT] [--verbose]
+    python Tools/check.py [--pass editor|player|dev|server|all] [--no-tests] [--filter TEXT] [--verbose]
 
 Every XRim.*.asmdef under Assets/ is compiled with Unity's bundled Roslyn compiler and Unity's own flags
 (taken from the .rsp files Unity writes under Library/Bee), in up to three passes: editor, player and
@@ -89,6 +89,8 @@ EDITOR_DEFINE_PREFIX = "UNITY_EDITOR"
 # Defines Unity sets in the Editor and in development players, but not in release players.
 DEVELOPMENT_ONLY_DEFINES = {"ENABLE_PROFILER", "DEBUG", "TRACE", "UNITY_ASSERTIONS"}
 DEVELOPMENT_BUILD_DEFINE = "DEVELOPMENT_BUILD"
+# Defined by a Dedicated Server player (Session 19): it brings XRim.Server into the server pass.
+SERVER_DEFINE = "UNITY_SERVER"
 SCRIPTING_BACKEND_DEFINES = {"ENABLE_MONO", "ENABLE_IL2CPP"}
 # Defines that name the target platform. A player pass for another platform replaces them.
 PLATFORM_IDENTITY_DEFINES = {
@@ -333,6 +335,33 @@ def _find_windows_proxy(windows_dir: str) -> Optional[PlayerProxy]:
         identity_defines=["UNITY_STANDALONE", "UNITY_STANDALONE_WIN", "PLATFORM_STANDALONE",
                           "PLATFORM_STANDALONE_WIN"],
         backend_define="ENABLE_MONO")
+
+
+def find_server_proxy(toolchain: Toolchain) -> Optional[PlayerProxy]:
+    """
+    The player the server pass compiles against: the Windows 64-bit Dedicated Server (Mono) when its module is installed, else the
+    Windows 64-bit Mono player standing in for it (the same engine API minus graphics). None when neither is installed.
+    """
+    engines = toolchain.unity_dir + "/Data/PlaybackEngines"
+    entries = {name.lower(): f"{engines}/{name}" for name in os.listdir(engines)} if os.path.isdir(engines) else {}
+    windows = entries.get("windowsstandalonesupport")
+    if windows is None:
+        return None
+    variations = windows + "/Variations"
+    server = variations + "/win64_server_nondevelopment_mono/Data/Managed"
+    server_dev = variations + "/win64_server_development_mono/Data/Managed"
+    if os.path.isdir(server):
+        return PlayerProxy(
+            label="Windows 64-bit Dedicated Server (Mono)",
+            asmdef_platform="WindowsStandalone64", plugin_platform=("Standalone", "Win64"), plugin_exclude_key="Win64",
+            release_managed_dir=server, development_managed_dir=server_dev if os.path.isdir(server_dev) else server,
+            identity_defines=["UNITY_STANDALONE", "UNITY_STANDALONE_WIN", "PLATFORM_STANDALONE", "PLATFORM_STANDALONE_WIN"],
+            backend_define="ENABLE_MONO")
+    player = _find_windows_proxy(windows)
+    if player is None:
+        return None
+    player.label = "Windows 64-bit Mono player, standing in for the Dedicated Server (its module is not installed)"
+    return player
 
 
 def find_player_proxy(toolchain: Toolchain, choice: str = PLAYER_AUTO) -> PlayerProxy:
@@ -797,14 +826,16 @@ class PassSpec:
     title: str
     is_player: bool
     development: bool
+    server: bool = False
 
 
 PASS_SPECS = {
     "editor": PassSpec("editor", "editor", False, False),
     "player": PassSpec("player", "player", True, False),
     "dev": PassSpec("dev", "dev player", True, True),
+    "server": PassSpec("server", "server player", True, False, True),
 }
-PASS_ORDER = ("editor", "player", "dev")
+PASS_ORDER = ("editor", "player", "dev", "server")
 
 
 def platform_inclusion(include: List[str], exclude: List[str], spec: PassSpec,
@@ -853,6 +884,8 @@ def transform_defines(defines: List[str], spec: PassSpec, proxy: PlayerProxy,
     extra = proxy.identity_defines + [proxy.backend_define]
     if spec.development:
         extra.append(DEVELOPMENT_BUILD_DEFINE)
+    if spec.server:
+        extra.append(SERVER_DEFINE)
     for define in extra:
         if define not in result:
             result.append(define)
@@ -908,6 +941,7 @@ class Checker:
         self.verbose: bool = arguments.verbose
         self.toolchain = find_toolchain()
         self.proxy = find_player_proxy(self.toolchain, arguments.player)
+        self.server_proxy = find_server_proxy(self.toolchain)
         self.packages = PackageIndex()
         self.scan = ProjectScan(self.packages)
         self.bee = BeeSnapshot()
@@ -924,6 +958,10 @@ class Checker:
         first_rsp = next((self.bee.response_file(name) for name in self.order if self.bee.response_file(name)), None)
         self.active_target = self.bee.active_build_target(first_rsp.defines if first_rsp else [])
 
+    def proxy_for(self, spec: PassSpec) -> PlayerProxy:
+        """The player a pass compiles against: the server pass its own, every other pass the mobile stand-in."""
+        return self.server_proxy if spec.server and self.server_proxy is not None else self.proxy
+
     # -- output --------------------------------------------------------------------------------------
 
     def print_header(self) -> None:
@@ -938,6 +976,8 @@ class Checker:
         print(f"  compiler:     {project_relative(self.toolchain.csc)} (.NET SDK {self.toolchain.sdk_version})")
         print(f"  Unity flags:  {project_relative(self.bee.dag)}/XRim.*.rsp, written {written}")
         print(f"  player proxy: {self.proxy.label}")
+        server_label = self.server_proxy.label if self.server_proxy else "none (no Windows playback engine): server pass skipped"
+        print(f"  server proxy: {server_label}")
         print(f"  assemblies:   {len(self.order)} XRim asmdefs under Assets/")
         for problem in self.scan.problems:
             print(f"  PROBLEM: {problem}")
@@ -981,9 +1021,9 @@ class Checker:
             notes.append("the asmdef changed after Unity last compiled it; references follow the asmdef, "
                          "other flags come from the older .rsp")
 
-        defines = transform_defines(rsp.defines, spec, self.proxy, self.active_target)
+        defines = transform_defines(rsp.defines, spec, self.proxy_for(spec), self.active_target)
         define_set = set(defines)
-        ok, reason = platform_inclusion(asmdef.include_platforms, asmdef.exclude_platforms, spec, self.proxy)
+        ok, reason = platform_inclusion(asmdef.include_platforms, asmdef.exclude_platforms, spec, self.proxy_for(spec))
         if ok:
             ok, reason = constraint_inclusion(asmdef.define_constraints, define_set)
         if not ok:
@@ -1063,8 +1103,8 @@ class Checker:
         managed_engine = self.toolchain.unity_dir + "/Data/Managed/UnityEngine"
         managed = self.toolchain.unity_dir + "/Data/Managed"
         playback = self.toolchain.unity_dir + "/Data/PlaybackEngines"
-        player_managed = (self.proxy.development_managed_dir if unit.spec.development
-                          else self.proxy.release_managed_dir)
+        proxy = self.proxy_for(unit.spec)
+        player_managed = proxy.development_managed_dir if unit.spec.development else proxy.release_managed_dir
         result = []
         for path in references:
             file_name = os.path.basename(path)
@@ -1085,7 +1125,7 @@ class Checker:
                 package = self.packages.asmdef(file_name[:-len(".ref.dll")])
                 if package is not None:
                     ok, reason = platform_inclusion(package.include_platforms, package.exclude_platforms,
-                                                    unit.spec, self.proxy)
+                                                    unit.spec, proxy)
                     if ok:
                         ok, reason = constraint_inclusion(package.define_constraints, defines)
                     if not ok:
@@ -1094,7 +1134,7 @@ class Checker:
                 result.append(path)
                 continue
             if any(is_under(path, root) for root in PACKAGE_ROOTS + (ASSETS_ROOT,)):
-                ok, reason = plugin_usable_in_player(path, self.proxy, defines)
+                ok, reason = plugin_usable_in_player(path, proxy, defines)
                 if not ok:
                     unit.dropped.append(f"{file_name} ({reason})")
                     continue
@@ -1245,10 +1285,13 @@ class Checker:
 
     def print_pass(self, spec: PassSpec, results: Dict[str, Tuple[Optional[CompileUnit], CompileResult]]) -> None:
         if spec.is_player:
-            managed = self.proxy.development_managed_dir if spec.development else self.proxy.release_managed_dir
+            proxy = self.proxy_for(spec)
+            managed = proxy.development_managed_dir if spec.development else proxy.release_managed_dir
             settings = "UNITY_EDITOR off, DEVELOPMENT_BUILD " + ("on" if spec.development else "off")
+            if spec.server:
+                settings += ", UNITY_SERVER on"
             print(f"\n{spec.title} pass ({settings}; engine DLLs from {project_relative(managed)})")
-            if self.active_target != self.proxy.asmdef_platform:
+            if self.active_target != proxy.asmdef_platform:
                 print(f"  note: the Editor's active build target is {self.active_target}; other platform feature "
                       f"defines come from it")
         else:
@@ -1280,7 +1323,7 @@ class Checker:
         rsp = next((self.bee.response_file(name) for name in self.order if self.bee.response_file(name)), None)
         if rsp is None:
             return
-        after = transform_defines(rsp.defines, spec, self.proxy, self.active_target)
+        after = transform_defines(rsp.defines, spec, self.proxy_for(spec), self.active_target)
         removed = [define for define in rsp.defines if define not in after]
         added = [define for define in after if define not in rsp.defines]
         print(f"  defines removed: {' '.join(removed) or '-'}")
@@ -1517,6 +1560,9 @@ class Checker:
         editor_results = None
         for key in passes:
             spec = PASS_SPECS[key]
+            if spec.server and self.server_proxy is None:
+                print(f"\n{spec.title} pass: skipped (no Windows playback engine to stand in for the Dedicated Server)")
+                continue
             results = self.run_pass(spec)
             self.print_pass(spec, results)
             if key == "editor":
@@ -1542,7 +1588,7 @@ def parse_arguments(argv: List[str]) -> argparse.Namespace:
         prog="python Tools/check.py",
         description="Compile every XRim assembly outside the Unity Editor, guard the engine-free assemblies "
                     "and run the engine-free EditMode tests. See Tools/README.md.")
-    parser.add_argument("--pass", dest="pass_name", choices=("editor", "player", "dev", "all"), default="all",
+    parser.add_argument("--pass", dest="pass_name", choices=("editor", "player", "dev", "server", "all"), default="all",
                         help="which compile pass to run (default: all)")
     parser.add_argument("--player", choices=(PLAYER_AUTO, PLAYER_ANDROID, PLAYER_WINDOWS), default=PLAYER_AUTO,
                         help="playback engine the player passes compile against: android, windows, or auto "

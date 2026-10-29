@@ -519,15 +519,27 @@ namespace XRim.Tests.EditMode.App
         }
 
         [Test]
-        public void Play_OffersHotSeatVsBotAndPractice()
+        public void Play_OffersHotSeatVsBotPracticeAndOnline()
         {
             AnswerHandedness(Handedness.Right);
 
             _view.PickOption(ShellLabels.MainPlay);
 
             Assert.That(_view.Title, Is.EqualTo(ShellLabels.PlayTitle));
-            Assert.That(_view.Options.Count, Is.EqualTo(3));
+            Assert.That(_view.Options.Count, Is.EqualTo(4));
             Assert.That(_view.BackText, Is.EqualTo(ShellLabels.Back));
+        }
+
+        [Test]
+        public void Online_AsksForAnOnlineMatch_AndHidesTheMenus()
+        {
+            AnswerHandedness(Handedness.Right);
+            _view.PickOption(ShellLabels.MainPlay);
+
+            _view.PickOption(ShellLabels.PlayOnline);
+
+            Assert.That(_requests, Is.EqualTo(new[] { MatchRequest.Online() }));
+            Assert.That(_shell.IsShowing, Is.False);
         }
 
         [Test]

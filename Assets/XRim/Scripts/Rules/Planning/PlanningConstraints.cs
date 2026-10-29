@@ -30,6 +30,34 @@ namespace XRim.Rules.Planning
         /// <summary>The status effects shaping this turn (a stun, a stagger), in the order they were applied. For the HUD.</summary>
         public IReadOnlyList<StatusKind> Statuses => _statuses;
 
+        /// <summary>
+        /// The body moves forbidden one by one (a lost leg, §12), in the enum's order, so a server can send these limits to a client exactly
+        /// (Session 19). <see cref="AreAllBodyMovesForbidden"/> covers the stun's "no move at all".
+        /// </summary>
+        public IReadOnlyList<BodyMove> ForbiddenBodyMoves
+        {
+            get
+            {
+                var moves = new List<BodyMove>(_forbiddenBodyMoves);
+                moves.Sort();
+                return moves;
+            }
+        }
+
+        /// <summary>Every body move but none is forbidden (<see cref="ForbidAllBodyMoves"/>).</summary>
+        public bool AreAllBodyMovesForbidden => _allBodyMovesForbidden;
+
+        /// <summary>The loadout weapons that cannot be picked this turn, in ordinal order of their ids (Session 19: sent to a client).</summary>
+        public IReadOnlyList<WeaponId> ForbiddenWeapons
+        {
+            get
+            {
+                var weapons = new List<WeaponId>(_forbiddenWeapons);
+                weapons.Sort((a, b) => string.CompareOrdinal(a.Value, b.Value));
+                return weapons;
+            }
+        }
+
         /// <summary>No move is always allowed: the dummy holds its pose (GDD §3).</summary>
         public bool IsBodyMoveAllowed(BodyMove move) =>
             move == BodyMove.None || (!_allBodyMovesForbidden && !_forbiddenBodyMoves.Contains(move));

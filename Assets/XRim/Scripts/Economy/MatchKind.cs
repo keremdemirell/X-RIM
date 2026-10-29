@@ -14,5 +14,11 @@ namespace XRim.Economy
 
         /// <summary>A bot of the player's choosing, or two bots to watch: no stakes, so nothing is paid by default.</summary>
         Practice = 2,
+
+        /// <summary>
+        /// Another player through the online server (Session 19): pays nothing by default until the server decides rewards (designer
+        /// 2026-10-25, Q2), because a reward the phone decides can be faked.
+        /// </summary>
+        Online = 3,
     }
 }

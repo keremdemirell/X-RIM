@@ -30,6 +30,9 @@ namespace XRim.App
         private string _shownShoutScreenRight;
         private string _shownTurn;
         private string _shownBannerDetail;
+        private string _shownBannerTitle;
+        private string _noticeTitle = string.Empty;
+        private string _noticeDetail = string.Empty;
 
         public MatchHudPresenter(IMatchHudView view, ClientMatchFlow flow, RulesSettings rules, PerSide<string> names)
         {
@@ -41,6 +44,16 @@ namespace XRim.App
 
         /// <param name="playbackTime">Where playback of the current turn is; null when it is not playing.</param>
         /// <param name="viewFlipped">The arena is drawn mirrored, so the right dummy is on the left of the screen.</param>
+        /// <summary>
+        /// Online (Session 19): a connection notice for the banner ("Opponent reconnecting", with the wait left), shown instead of the
+        /// sudden-death banner while it lasts; empty clears it. Applied on the next <see cref="Tick"/>.
+        /// </summary>
+        public void SetNotice(string title, string detail)
+        {
+            _noticeTitle = title ?? string.Empty;
+            _noticeDetail = detail ?? string.Empty;
+        }
+
         public void Tick(SimTime? playbackTime, bool viewFlipped)
         {
             TurnResult turn = _flow.CurrentResult;
@@ -128,10 +141,15 @@ namespace XRim.App
                 _view.ShowTurn(text);
             }
 
-            string detail = suddenDeath ? SuddenDeathDetail(repeatsSoFar, _rules.SuddenDeath.MaxRepeatsWithoutHit) : string.Empty;
-            if (_shownBannerDetail == detail) return;
+            // A connection notice (online, Session 19) takes the banner while it lasts; sudden death's comes back after it.
+            bool notice = _noticeTitle.Length > 0;
+            string title = notice ? _noticeTitle : suddenDeath ? SuddenDeathTitle : string.Empty;
+            string detail = notice ? _noticeDetail
+                : suddenDeath ? SuddenDeathDetail(repeatsSoFar, _rules.SuddenDeath.MaxRepeatsWithoutHit) : string.Empty;
+            if (_shownBannerTitle == title && _shownBannerDetail == detail) return;
+            _shownBannerTitle = title;
             _shownBannerDetail = detail;
-            _view.ShowBanner(suddenDeath ? SuddenDeathTitle : string.Empty, detail);
+            _view.ShowBanner(title, detail);
         }
 
         private sealed class Shown

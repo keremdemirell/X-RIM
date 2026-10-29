@@ -612,7 +612,7 @@ namespace XRim.Tests.EditMode.Rules.Match
 
         private sealed class EveryTurnIsIdlePolicy : IIdleTurnPolicy
         {
-            public bool IsIdle(TurnPlan plan) => true;
+            public bool IsIdle(Side side, TurnPlan plan) => true;
         }
     }
 }

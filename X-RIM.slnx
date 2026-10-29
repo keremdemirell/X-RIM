@@ -15,4 +15,5 @@
   <Project Path="XRim.Bots.csproj" />
   <Project Path="XRim.Profile.csproj" />
   <Project Path="XRim.Economy.csproj" />
+  <Project Path="XRim.Server.csproj" />
 </Solution>

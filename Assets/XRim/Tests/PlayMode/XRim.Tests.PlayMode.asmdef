@@ -13,7 +13,8 @@
         "XRim.Bots",
         "XRim.Input",
         "XRim.Presentation",
-        "XRim.App"
+        "XRim.App",
+        "XRim.Server"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

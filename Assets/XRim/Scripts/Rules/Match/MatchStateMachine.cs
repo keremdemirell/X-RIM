@@ -186,7 +186,7 @@ namespace XRim.Rules.Match
             foreach (Side side in new[] { Side.Left, Side.Right })
             {
                 FighterState fighter = State.Fighters[side];
-                fighter.ConsecutiveIdleTurns = Policies.IdleTurn.IsIdle(LockedPlans[side]) ? fighter.ConsecutiveIdleTurns + 1 : 0;
+                fighter.ConsecutiveIdleTurns = Policies.IdleTurn.IsIdle(side, LockedPlans[side]) ? fighter.ConsecutiveIdleTurns + 1 : 0;
                 TurnPlan plan = LockedPlans[side];
                 WeaponTraitRules.EndTurn(fighter, plan.Path.IsEmpty ? null : Settings.FindWeapon(plan.Weapon), Settings.Traits);
             }

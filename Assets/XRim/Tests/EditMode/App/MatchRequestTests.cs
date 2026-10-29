@@ -30,6 +30,16 @@ namespace XRim.Tests.EditMode.App
         }
 
         [Test]
+        public void Online_PaysNothingByDefault_AndThePersonPlaysTheSideTheServerGave()
+        {
+            Assert.That(MatchRequest.For(MatchMode.Online), Is.EqualTo(MatchRequest.Online()));
+            Assert.That(MatchRequest.Online().Kind, Is.EqualTo(MatchKind.Online));
+            Assert.That(new EconomySettings().Pays(MatchKind.Online), Is.False, "Q2: until the server decides rewards");
+            Assert.That(MatchRequest.Online().PlaysHumanOn(Side.Right, Side.Right), Is.True);
+            Assert.That(MatchRequest.Online().PlaysHumanOn(Side.Left, Side.Right), Is.False);
+        }
+
+        [Test]
         public void PlaysHumanOn_SaysWhichSidesAPersonPlans()
         {
             Assert.That(MatchRequest.HotSeat().PlaysHumanOn(Side.Left, Side.Left), Is.True);

@@ -16,6 +16,7 @@ namespace XRim.Editor
     /// <item>Fullscreen, rendering outside the safe area (the HUDs inset themselves by <c>Screen.safeArea</c>) and optimized frame
     /// pacing (Swappy).</item>
     /// <item>A valid Android package name (Unity derives one; see <see cref="DevelopmentApplicationIdentifier"/>).</item>
+    /// <item>Internet access required (Session 19: online play uses sockets, which Unity's automatic permission detection does not see).</item>
     /// </list>
     /// </summary>
     internal static class AndroidPlayerSettingsApplier
@@ -72,6 +73,13 @@ namespace XRim.Editor
             {
                 PlayerSettings.Android.optimizedFramePacing = true;
                 changes.Add("optimized frame pacing");
+            }
+
+            // Online play (Session 19) talks to the server over plain sockets, which Unity's automatic detection does not see.
+            if (!PlayerSettings.Android.forceInternetPermission)
+            {
+                PlayerSettings.Android.forceInternetPermission = true;
+                changes.Add("internet access required (online play)");
             }
 
             string identifier = PlayerSettings.GetApplicationIdentifier(android);

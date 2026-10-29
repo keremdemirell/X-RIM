@@ -1,3 +1,4 @@
+using XRim.Core;
 using XRim.Core.Gdd;
 
 namespace XRim.Rules.Planning
@@ -9,6 +10,7 @@ namespace XRim.Rules.Planning
     [GddTbd("§3", "Which inputs reset the forfeit counter", Proposal = "Any body move, drawn path or signature move")]
     public interface IIdleTurnPolicy
     {
-        bool IsIdle(TurnPlan plan);
+        /// <param name="side">Whose plan it is (Session 19: a server can tell a turn the player missed while disconnected, GDD §3).</param>
+        bool IsIdle(Side side, TurnPlan plan);
     }
 }

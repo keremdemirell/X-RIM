@@ -45,6 +45,9 @@ namespace XRim.Tests.EditMode.Simulation
             return text.ToString();
         }
 
+        /// <summary>Any value's public fields and properties, recursively, with exact floats (Session 19: a protocol message before and after a round trip).</summary>
+        public static string OfValue(object value) => Describe(value, MaxDepth);
+
         /// <summary>A frozen board with exact floats: its rules state (limbs included) and every pose value, so two boards can be compared.</summary>
         public static string OfBoard(BoardSnapshot board) =>
             "state " + State(board.State) + Environment.NewLine + "pose " + Describe(board.Pose, MaxDepth);

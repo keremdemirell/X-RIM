@@ -9,6 +9,9 @@ using XRim.Core.Gdd;
 using XRim.Economy;
 using XRim.Input;
 using XRim.Networking;
+using XRim.Networking.Client;
+using XRim.Networking.Protocol;
+using XRim.Networking.Transport;
 using XRim.Presentation.Arena;
 using XRim.Presentation.Audio;
 using XRim.Presentation.Cameras;
@@ -66,8 +69,8 @@ namespace XRim.App
         /// <summary>How many played turns the debug pacing list keeps.</summary>
         private const int PacingHistoryTurns = 8;
 
-        /// <summary>The human plays the left dummy against the bot.</summary>
-        private const Side HumanSide = Side.Left;
+        /// <summary>The human plays the left dummy against the bot; online the server says which side (Session 19).</summary>
+        private const Side DefaultHumanSide = Side.Left;
 
         /// <summary>
         /// Mixed into the seed of the bots' loadout picks, so they never repeat the random numbers the same seed gives the bots' plans
@@ -141,6 +144,8 @@ namespace XRim.App
         private int _previousTargetFrameRate;
         private int _previousVSyncCount;
         private bool _displayApplied;
+        private bool _runInBackgroundApplied;
+        private bool _previousRunInBackground;
         private TouchInputReader _touchReader;
         private Material _lineMaterial;
         private PerSide<DummyView> _views;
@@ -164,7 +169,14 @@ namespace XRim.App
         private ScriptedSeverContactHandler _severCheat;
         private ScriptedKnockOutContactHandler _knockOutCheat;
         private ScriptedStatusContactHandler _statusCheat;
-        private LocalTurnAuthority _authority;
+        private ITurnAuthority _authority;
+        private LocalTurnAuthority _local;
+        private RemoteTurnAuthority _remote;
+        private OnlineMatchStarter _online;
+        private NetworkSettings _network;
+        private readonly OnlineNotices _onlineNotices = new OnlineNotices();
+        private CommandRejection? _pendingRefusal;
+        private Side _humanSide = DefaultHumanSide;
         private ClientMatchFlow _flow;
         private PlanSourceBinder _binder;
         private MatchSetup _setup;
@@ -208,8 +220,14 @@ namespace XRim.App
         /// <summary>The dummy prefabs the physics world spawns (debug tools build their own worlds from them).</summary>
         public RagdollPrefabSet RagdollPrefabs { get; private set; }
 
-        /// <summary>The current match's authority; null before a match is prepared (the mode picker).</summary>
+        /// <summary>
+        /// The current match's authority: this device's own (<see cref="LocalTurnAuthority"/>) offline, the server's
+        /// (<see cref="RemoteTurnAuthority"/>) online; null before a match is prepared.
+        /// </summary>
         public ITurnAuthority Authority => _authority;
+
+        /// <summary>True during an online match (Session 19): the server resolves the turns and the debug cheats do nothing.</summary>
+        public bool IsOnline => _remote != null;
 
         public ClientMatchFlow Flow => _flow;
 
@@ -287,7 +305,7 @@ namespace XRim.App
             set
             {
                 _infiniteInk = value;
-                if (Policies != null) ApplyInfiniteInk(Policies);
+                if (Policies != null && _remote == null) ApplyInfiniteInk(Policies); // online the server's rules hold
             }
         }
 
@@ -340,7 +358,8 @@ namespace XRim.App
             }
             else if (_startup == MatchStartup.StartMode)
             {
-                BeginMatch(_mode);
+                if (_mode == MatchMode.Online) BeginLoadoutPick(MatchRequest.Online());
+                else BeginMatch(_mode);
             }
         }
 
@@ -349,11 +368,18 @@ namespace XRim.App
             if (!_composed) return;
 
             float delta = Time.unscaledDeltaTime;
+            if (_online != null)
+            {
+                _clock.Advance(delta); // the link pings and notices a silent server on this clock
+                _online.Tick();
+            }
+
             if (_started)
             {
                 // The clock stands still while it is frozen (debug) and while a replay or a saved scenario plays: they show a turn that is
-                // not the one being planned, so they must never eat planning time or run out the wait for the playback report.
-                bool clockStopped = IsPlanningTimerFrozen || _replay.IsPlaying || _scenarioOnScreen != null;
+                // not the one being planned, so they must never eat planning time or run out the wait for the playback report. Online it
+                // never stands still: the server's clock runs, and the phone's countdown follows it.
+                bool clockStopped = _remote == null && (IsPlanningTimerFrozen || _replay.IsPlaying || _scenarioOnScreen != null);
                 if (_hotSeat != null) _hotSeat.Advance(clockStopped ? 0.0 : delta); // hot-seat runs the planning timer per player
                 else if (!clockStopped) _clock.Advance(delta);
                 _humans?.TickInput();
@@ -422,10 +448,11 @@ namespace XRim.App
         /// <summary>Starts a new match as the menu asked for it (a practice bot is the one it names). Ends the current one.</summary>
         public void BeginMatch(MatchRequest request, LoadoutReveal loadouts = null)
         {
+            if (request.Mode == MatchMode.Online) throw new ArgumentException("An online match starts through BeginLoadoutPick: the server pairs the players.", nameof(request));
             PrepareMatch(request, loadouts);
             MatchMode mode = request.Mode;
             var random = new XorShiftRandom(_setup.RandomSeed);
-            IReadOnlyList<IPlanSource> sources = PlanSourceFactory.Create(mode, _setup, RulesSettings, side => _humans.Add(side), random, HumanSide,
+            IReadOnlyList<IPlanSource> sources = PlanSourceFactory.Create(mode, _setup, RulesSettings, side => _humans.Add(side), random, _humanSide,
                 request.ApplyTo(BotSettings));
 
             // Hot-seat: it must follow the authority before the plan sources are bound, so planning opens behind the cover.
@@ -453,6 +480,12 @@ namespace XRim.App
         {
             if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
             MatchMode mode = request.Mode;
+            if (mode == MatchMode.Online)
+            {
+                BeginOnline(request);
+                return;
+            }
+
             if (_screens == null || mode == MatchMode.Sandbox)
             {
                 BeginMatch(request);
@@ -484,7 +517,7 @@ namespace XRim.App
             SetViewFlipped(false);
 
             uint seed = _randomSeed != 0 ? (uint)_randomSeed ^ LoadoutPickSeedSalt : (uint)Environment.TickCount | 1u;
-            _loadoutPick = LoadoutPickPresenter.Create(_screens, RulesSettings, ownership, mode, HumanSide, new RandomLoadoutPicker(),
+            _loadoutPick = LoadoutPickPresenter.Create(_screens, RulesSettings, ownership, mode, _humanSide, new RandomLoadoutPicker(),
                 new XorShiftRandom(seed), _lastPicks);
             _loadoutPick.Completed += OnLoadoutsPicked;
             _loadoutPick.Begin();
@@ -532,6 +565,7 @@ namespace XRim.App
         public void PrepareMatch(MatchRequest request, LoadoutReveal loadouts = null)
         {
             if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
+            if (request.Mode == MatchMode.Online) throw new ArgumentException("An online match is prepared by the server's join (PrepareOnlineMatch).", nameof(request));
             TearDownMatch();
 
             MatchMode mode = request.Mode;
@@ -557,8 +591,17 @@ namespace XRim.App
             }
 
             var options = new LocalTurnAuthorityOptions { PlaybackHold = new PlaybackHoldSettings { Mode = PlaybackHoldMode.ClientReport } };
-            _authority = new LocalTurnAuthority(_setup, RulesSettings, SimulationSettings, Policies, _simulator, _clock, options);
+            _local = new LocalTurnAuthority(_setup, RulesSettings, SimulationSettings, Policies, _simulator, _clock, options);
+            _authority = _local;
+            FollowAuthority(mode);
+        }
 
+        /// <summary>
+        /// The client side of a match around its authority, local or remote: the flow, the reward tally, the board, the humans on this device
+        /// and the HUD presenters.
+        /// </summary>
+        private void FollowAuthority(MatchMode mode)
+        {
             // The flow follows the authority before any plan source is bound, so it sees each planning phase open before it locks.
             _flow = new ClientMatchFlow(_authority);
             _tally = new MatchSummaryTally();
@@ -569,7 +612,7 @@ namespace XRim.App
             _flow.PhaseChanged += OnPhaseChanged;
             if (mode == MatchMode.Sandbox) return;
 
-            _names = MatchLabels.FighterNames(mode, HumanSide);
+            _names = MatchLabels.FighterNames(mode, _humanSide);
             _humans = new LocalPlayers(CreateTouchSource, CreatePreview);
             if (_planningHud != null)
             {
@@ -596,7 +639,7 @@ namespace XRim.App
             ApplyPlayerVolumes();
             ApplyEquippedLooks();
             _audio.SetMusicPlaying(true);
-            TouchPlanSource human = _hotSeat == null && _humans != null ? _humans.Find(HumanSide) : null;
+            TouchPlanSource human = _hotSeat == null && _humans != null ? _humans.Find(_humanSide) : null;
             SetViewFlipped(human != null && human.Layout.ArenaViewFlipped);
             _authority.Start();
             SyncHotSeat();
@@ -605,6 +648,7 @@ namespace XRim.App
         private void TearDownMatch()
         {
             DisposeLoadoutPick();
+            DisposeOnline(true);
             _playbackReportPending = false;
             _scenarioOnScreen = null;
             StopReplay();
@@ -627,7 +671,18 @@ namespace XRim.App
             _matchHudPresenter = null;
             _humans = null;
             _hotSeat = null;
+            if (_remote != null)
+            {
+                UnsubscribeOnline();
+                _remote.Leave();
+                _remote = null;
+            }
+
+            _onlineNotices.Clear();
+            _pendingRefusal = null;
+            _humanSide = DefaultHumanSide;
             _authority = null;
+            _local = null;
             _simulator = null;
             _severCheat = null;
             _knockOutCheat = null;
@@ -665,10 +720,10 @@ namespace XRim.App
         /// </summary>
         public bool SetTurnCounter(int turnIndex)
         {
-            if (_authority == null || turnIndex < 0) return false;
-            MatchPhase phase = _authority.Phase;
+            if (_local == null || turnIndex < 0) return false;
+            MatchPhase phase = _local.Phase;
             if (phase != MatchPhase.TurnStart && phase != MatchPhase.SuddenDeathSetup && phase != MatchPhase.Planning) return false;
-            _authority.SetTurnIndexForDebug(turnIndex);
+            _local.SetTurnIndexForDebug(turnIndex);
             return true;
         }
 
@@ -676,10 +731,10 @@ namespace XRim.App
         /// Debug (the Cheats tab's signature refill, Session 15): this dummy's signature moves are charged again from the next planning
         /// phase (the once-per-match move back, the bar full). Does nothing between matches.
         /// </summary>
-        public void QueueSignatureRefill(Side side) => _authority?.QueueSignatureRefillForDebug(side);
+        public void QueueSignatureRefill(Side side) => _local?.QueueSignatureRefillForDebug(side);
 
         /// <summary>Whether a signature refill waits for the next planning phase for this side (debug).</summary>
-        public bool IsSignatureRefillQueued(Side side) => _authority != null && _authority.IsSignatureRefillQueued(side);
+        public bool IsSignatureRefillQueued(Side side) => _local != null && _local.IsSignatureRefillQueued(side);
 
         // ----- debug -----
 
@@ -917,10 +972,29 @@ namespace XRim.App
 
         private void RestoreDisplay()
         {
+            if (_runInBackgroundApplied)
+            {
+                _runInBackgroundApplied = false;
+                Application.runInBackground = _previousRunInBackground;
+            }
+
             if (!_displayApplied) return;
             _displayApplied = false;
             Application.targetFrameRate = _previousTargetFrameRate;
             QualitySettings.vSyncCount = _previousVSyncCount;
+        }
+
+        /// <summary>
+        /// Online (Session 19): the game keeps running while its window is not in front (a desktop window, or the Editor's Play mode), so it
+        /// keeps answering the server; a paused window falls silent and the server lets it go after <see cref="NetworkSettings.ConnectionTimeoutSeconds"/>.
+        /// A phone sent to the background is paused by the system whatever this says, and rejoins when it comes back. Put back when the scene goes.
+        /// </summary>
+        private void KeepRunningInBackground()
+        {
+            if (_runInBackgroundApplied) return;
+            _runInBackgroundApplied = true;
+            _previousRunInBackground = Application.runInBackground;
+            Application.runInBackground = true;
         }
 
         /// <summary>The HUDs and screens of a real match (the sandbox has its own panels).</summary>
@@ -1107,7 +1181,7 @@ namespace XRim.App
         private FighterSetup FighterOf(Side side, IReadOnlyList<WeaponId> loadout)
         {
             if (_shell == null) return new FighterSetup(Handedness.Right, loadout);
-            return _request.PlaysHumanOn(side, HumanSide)
+            return _request.PlaysHumanOn(side, _humanSide)
                 ? ProfileSetups.ForPlayer(_shell.Profile, loadout, _shell.Catalogue)
                 : ProfileSetups.ForBot(_shell.Profile, loadout, _shell.Catalogue);
         }
@@ -1127,7 +1201,7 @@ namespace XRim.App
         private TouchPlanSource ShownHuman()
         {
             if (_hotSeat != null) return _hotSeat.Stage == HotSeatStage.Planning ? _hotSeat.ActivePlayer : null;
-            return _humans != null ? _humans.Find(HumanSide) : null;
+            return _humans != null ? _humans.Find(_humanSide) : null;
         }
 
         /// <summary>
@@ -1188,6 +1262,12 @@ namespace XRim.App
                     _planningPresenter.Source = shown;
                     _planningPresenter.Tick(_clock.NowSeconds, shown != null ? _humans.PreviewOf(shown) : null);
                 }
+            }
+
+            if (_matchHudPresenter != null && _remote != null)
+            {
+                double now = _clock.NowSeconds;
+                _matchHudPresenter.SetNotice(_onlineNotices.Title(now), _onlineNotices.Detail(now));
             }
 
             _matchHudPresenter?.Tick(_playback.IsPlaying ? _playback.Player.CurrentTime : (SimTime?)null, _viewFlipped);
@@ -1259,6 +1339,14 @@ namespace XRim.App
         /// </summary>
         private void LogSimulatedTurn(TurnResult turn)
         {
+            if (_remote != null)
+            {
+                Debug.Log(string.Format(CultureInfo.InvariantCulture, "[XRim] Turn {0} (Online) resolved by the server: {1:0.000} s of playback, {2}. " +
+                                        "Round trip {3:0} ms.", turn.TurnIndex + 1, turn.Timeline.Duration.Seconds, turn.EndReason,
+                    _remote.RoundTripSeconds * 1000.0), this);
+                return;
+            }
+
             TurnTimeline timeline = turn.Timeline;
             int steps = timeline.Frames.Count > 0 ? timeline.Frames[timeline.Frames.Count - 1].Step : 0;
             Debug.Log(string.Format(CultureInfo.InvariantCulture,
@@ -1321,7 +1409,7 @@ namespace XRim.App
             _replay.Begin(turn, moment, ReplaySettings.From(_feelConfig));
             if (_screens != null)
             {
-                PerSide<string> names = _names ?? MatchLabels.FighterNames(_mode, HumanSide);
+                PerSide<string> names = _names ?? MatchLabels.FighterNames(_mode, _humanSide);
                 _screens.ShowReplay(MatchLabels.ReplayTitle, MatchLabels.MomentCaption(moment.Kind, moment.Hero, names), MatchLabels.ReplayHint);
             }
         }
@@ -1387,7 +1475,7 @@ namespace XRim.App
 
         private void ShowMatchOver(MatchOutcome outcome)
         {
-            PerSide<string> names = _names ?? MatchLabels.FighterNames(_mode, HumanSide);
+            PerSide<string> names = _names ?? MatchLabels.FighterNames(_mode, _humanSide);
             string title = MatchOverText.Title(outcome, names);
             string reason = MatchOverText.Reason(outcome, names);
             string summary = MatchOverText.Summary(outcome.TurnCount, MatchRealSeconds);
@@ -1409,7 +1497,7 @@ namespace XRim.App
             if (_shell == null || _tally == null || _rewardSettled || _mode == MatchMode.Sandbox) return string.Empty;
 
             _rewardSettled = true;
-            RewardReceipt receipt = _shell.PayForMatch(_request.Kind, _tally.ToSummary(outcome), HumanSide);
+            RewardReceipt receipt = _shell.PayForMatch(_request.Kind, _tally.ToSummary(outcome), _humanSide);
             Debug.Log($"[XRim] Reward for {_request}: {receipt.Decision}, proposed {receipt.Proposed}, paid {receipt.Paid}.", this);
             return MatchOverText.RewardLine(receipt, _shell.Economy);
         }
@@ -1425,10 +1513,188 @@ namespace XRim.App
             string equipped = _shell != null ? _shell.Profile.Inventory.EquippedCosmetic(CosmeticKind.HitEffect) : null;
             foreach (Side side in new[] { Side.Left, Side.Right })
             {
-                bool wearsIt = _shell != null && _request.PlaysHumanOn(side, HumanSide);
+                bool wearsIt = _shell != null && _request.PlaysHumanOn(side, _humanSide);
                 _vfx.SetStyle(side, wearsIt ? CosmeticLooks.HitEffectStyle(equipped) : VfxStyles.Default());
             }
         }
+
+        // ----- online (Session 19) -----
+
+        /// <summary>
+        /// Online (Session 19, GDD §18 server-authoritative): connects to the server, says hello with the account's hand and the signature
+        /// moves it owns, and leaves the rest to an <see cref="OnlineMatchStarter"/> (finding an opponent, the blind pick, the reveal). The
+        /// match then plays through a <see cref="RemoteTurnAuthority"/>: the server resolves every turn and this device plays the results back.
+        /// The debug cheats do nothing online (they act on a local match).
+        /// </summary>
+        /// <param name="host">Where the server is; null: the Network asset's address (127.0.0.1 by default).</param>
+        /// <param name="port">Its port; null: the Network asset's (7777).</param>
+        public void BeginOnline(MatchRequest request, string host = null, int? port = null)
+        {
+            if (!_composed) throw new InvalidOperationException("The match scene did not compose (see the Console).");
+            if (_screens == null)
+            {
+                Debug.LogError("[XRim] Online play needs the match screens (the Match scene).", this);
+                return;
+            }
+
+            TearDownMatch();
+            _mode = MatchMode.Online;
+            _request = request;
+            if (_shell != null) _shell.Hide();
+            if (_planningHud != null) _planningHud.SetVisible(false);
+            if (_matchHud != null) _matchHud.SetVisible(false);
+            if (_audio != null) _audio.SetMusicPlaying(false);
+            SetViewFlipped(false);
+
+            var issues = new List<string>();
+            _network = _tuning.BuildNetworkSettings(issues);
+            foreach (string issue in issues)
+            {
+                Debug.LogWarning($"[XRim] {issue}", _tuning);
+            }
+
+            KeepRunningInBackground();
+            string serverHost = string.IsNullOrWhiteSpace(host) ? _network.ServerHost : host;
+            int serverPort = port ?? _network.Port;
+            var link = new ServerLink(() => TcpNetConnection.Connect(serverHost, serverPort), _clock, _network);
+            var join = new OnlineMatchJoin(link, new ClientHelloMessage(AccountHandedness(), OwnedSignatureMoves()));
+            IWeaponOwnership ownership = _shell != null ? (IWeaponOwnership)new ProfileWeaponOwnership(_shell.Profile.Inventory) : new AllWeaponsOwned();
+            _online = new OnlineMatchStarter(_screens, join, new SettingsTextJson(), ownership, _lastPicks,
+                MatchLabels.OnlineFindingNote(serverHost, serverPort));
+            _online.Ready += OnOnlineReady;
+            _online.Failed += OnOnlineFailed;
+            _online.Cancelled += OnOnlineCancelled;
+            Debug.Log($"[XRim] Online: connecting to {serverHost}:{serverPort}.", this);
+            _online.Begin();
+        }
+
+        /// <summary>The signature moves this player brings online: those the account owns; every move of the catalogue without a profile.</summary>
+        private IReadOnlyList<SignatureMoveId> OwnedSignatureMoves()
+        {
+            if (_shell != null) return ProfileSetups.OwnedSignatureMoves(_shell.Profile, _shell.Catalogue);
+            var moves = new List<SignatureMoveId>();
+            foreach (SignatureMoveStats move in RulesSettings.SignatureMoves)
+            {
+                moves.Add(move.MoveId);
+            }
+
+            return moves;
+        }
+
+        /// <summary>Both loadouts are revealed: the match is built around the server's authority and starts.</summary>
+        private void OnOnlineReady()
+        {
+            OnlineMatchStarter starter = _online;
+            DisposeOnline(false); // the link goes on: the match's authority takes it over
+            _lastPicks = new PerSide<IReadOnlyList<WeaponId>>(starter.Reveal.Left, starter.Reveal.Right);
+            PrepareOnlineMatch(starter);
+            StartMatch(PlanSourceFactory.Create(MatchMode.Online, _setup, RulesSettings, side => _humans.Add(side), new XorShiftRandom(1u), _humanSide));
+        }
+
+        /// <summary>
+        /// The match with the server's settings (the phone previews strokes and ink with them) and the setup it revealed, around a
+        /// <see cref="RemoteTurnAuthority"/> on this device's clock. Nothing is simulated here.
+        /// </summary>
+        private void PrepareOnlineMatch(OnlineMatchStarter starter)
+        {
+            TearDownMatch();
+            _mode = MatchMode.Online;
+            RulesSettings = starter.Rules;
+            SimulationSettings = starter.Simulation;
+            Policies = new RulePolicies();
+            _snapshotUnused = false; // the next offline match takes this device's own tuning again
+            _humanSide = starter.Join.Side;
+            ShowArena();
+            BuildViews(SimulationSettings.Segmentation);
+            _setup = starter.Join.Started.Setup;
+            _remote = starter.Join.CreateAuthority(RulesSettings, SimulationSettings, Policies, _clock, _network);
+            _authority = _remote;
+            SubscribeOnline();
+            FollowAuthority(MatchMode.Online);
+        }
+
+        private void SubscribeOnline()
+        {
+            _remote.ConnectionChanged += OnOwnConnectionChanged;
+            _remote.Ended += OnOnlineEnded;
+            _remote.OpponentConnectionChanged += OnOpponentConnectionChanged;
+            _remote.CommandRefused += OnCommandRefused;
+            _remote.OwnPlanRestored += OnOwnPlanRestored;
+            _remote.Resynchronized += OnResynchronized;
+        }
+
+        private void UnsubscribeOnline()
+        {
+            _remote.ConnectionChanged -= OnOwnConnectionChanged;
+            _remote.Ended -= OnOnlineEnded;
+            _remote.OpponentConnectionChanged -= OnOpponentConnectionChanged;
+            _remote.CommandRefused -= OnCommandRefused;
+            _remote.OwnPlanRestored -= OnOwnPlanRestored;
+            _remote.Resynchronized -= OnResynchronized;
+        }
+
+        private void OnOwnConnectionChanged(bool connected) => _onlineNotices.OwnConnection(connected);
+
+        private void OnOpponentConnectionChanged(ConnectionNoticeMessage notice) => _onlineNotices.Opponent(notice, _clock.NowSeconds);
+
+        /// <summary>The server refused a command the phone had allowed: its note shows once the plan is put back (<see cref="OnOwnPlanRestored"/>).</summary>
+        private void OnCommandRefused(CommandRejection rejection) => _pendingRefusal = rejection;
+
+        /// <summary>The phone's copy of the plan is the server's again: the HUD's record follows, with the refusal's note if there was one.</summary>
+        private void OnOwnPlanRestored()
+        {
+            TouchPlanSource human = _humans?.Find(_humanSide);
+            if (human != null && _remote.OwnPlan != null) OnlinePlanResync.Apply(human.Draft, _remote.OwnPlan, _remote.OwnStroke, _pendingRefusal);
+            _pendingRefusal = null;
+        }
+
+        /// <summary>Rejoined: the board as it stands now (a turn may have resolved meanwhile), unless a turn is playing.</summary>
+        private void OnResynchronized(BoardSnapshot board)
+        {
+            if (_flow != null && _flow.Phase != ClientPhase.Playback && !_replay.IsPlaying) ShowBoard(board);
+        }
+
+        /// <summary>The link ended for good during the match. A normal end is the match-over screen's; anything else says what happened.</summary>
+        private void OnOnlineEnded(GoodbyeReason reason)
+        {
+            if (reason == GoodbyeReason.MatchOver || (_flow != null && _flow.Phase == ClientPhase.MatchOver)) return;
+            ShowOnlineProblem(MatchLabels.ConnectionLostTitle, MatchLabels.OnlineEndReason(reason));
+        }
+
+        private void OnOnlineFailed(string reason)
+        {
+            DisposeOnline(true);
+            ShowOnlineProblem(MatchLabels.OnlineFailedTitle, reason);
+        }
+
+        private void OnOnlineCancelled()
+        {
+            DisposeOnline(true);
+            ShowMenu();
+        }
+
+        /// <summary>Online play stopped: the end screen says why; REMATCH looks for a new match, MENU goes back.</summary>
+        private void ShowOnlineProblem(string title, string reason)
+        {
+            Debug.LogWarning($"[XRim] Online: {title}. {reason}", this);
+            _onlineNotices.Clear();
+            if (_planningHud != null) _planningHud.SetVisible(false);
+            if (_audio != null) _audio.SetMusicPlaying(false);
+            if (_screens != null) _screens.ShowMatchOver(title, reason, string.Empty, string.Empty);
+        }
+
+        /// <param name="closeLink">False when the match's authority takes the link over.</param>
+        private void DisposeOnline(bool closeLink)
+        {
+            if (_online == null) return;
+            _online.Ready -= OnOnlineReady;
+            _online.Failed -= OnOnlineFailed;
+            _online.Cancelled -= OnOnlineCancelled;
+            _online.Dispose();
+            if (closeLink) _online.Join.Link.Close();
+            _online = null;
+        }
+
 
         // ----- debug (the Cheats tab) -----
 

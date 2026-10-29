@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using XRim.Core;
+using XRim.Networking.Protocol;
 using XRim.Presentation.Moments;
 
 namespace XRim.App
@@ -10,6 +11,47 @@ namespace XRim.App
     public static class MatchLabels
     {
         public const string You = "YOU";
+        public const string Opponent = "OPPONENT";
+
+        // Online (Session 19; placeholder copy until Session 22).
+        public const string OnlineFindingTitle = "FINDING AN OPPONENT";
+        public const string OnlineWaitingPickTitle = "WAITING FOR YOUR OPPONENT";
+        public const string OnlineWaitingPickNote = "They are picking their weapons.";
+        public const string OnlineCancel = "LEAVE";
+        public const string OnlineFailedTitle = "COULD NOT PLAY ONLINE";
+        public const string OpponentLeftBeforeStart = "Your opponent left before the match started.";
+        public const string OnlineSettingsUnreadable = "The server's settings could not be read.";
+        public const string ConnectionLostTitle = "CONNECTION LOST";
+        public const string OnlineReconnectingTitle = "RECONNECTING…";
+        public const string OnlineReconnectingDetail = "Your connection dropped. The match goes on; you rejoin by yourself.";
+        public const string OpponentDisconnectedTitle = "OPPONENT DISCONNECTED";
+        public const string OpponentDisconnectedDetail = "The match goes on: they can come back.";
+        public const string OpponentGoneTitle = "OPPONENT AWAY";
+        public const string OpponentGoneDetail = "Their turns are idle until they return.";
+        public const string OpponentReconnectingTitle = "OPPONENT RECONNECTING";
+
+        /// <summary>The finding screen's note: where this device looks for the server.</summary>
+        public static string OnlineFindingNote(string host, int port) =>
+            string.Format(CultureInfo.InvariantCulture, "Server {0}:{1} · waiting for another player", host, port);
+
+        /// <summary>How long the server still holds the next turn for a dropped opponent.</summary>
+        public static string OpponentReconnectingDetail(double secondsLeft) =>
+            string.Format(CultureInfo.InvariantCulture, "Waiting for them: {0:0} s", Math.Max(0.0, Math.Ceiling(secondsLeft)));
+
+        /// <summary>Why online play stopped, in words (the server's own detail goes to the log, not the screen).</summary>
+        public static string OnlineEndReason(GoodbyeReason reason)
+        {
+            switch (reason)
+            {
+                case GoodbyeReason.VersionMismatch: return "This build and the server are different versions. Update both.";
+                case GoodbyeReason.ReconnectRefused: return "The match you were in is over.";
+                case GoodbyeReason.ServerStopping: return "The server stopped.";
+                case GoodbyeReason.ProtocolViolation: return "The server refused this device.";
+                case GoodbyeReason.MatchOver: return "The match is over.";
+                case GoodbyeReason.TimedOut: return "The server heard nothing from this device for too long. Try again.";
+                default: return "The server cannot be reached. Is it running, and is the address right (Tuning tab, Network)?";
+            }
+        }
         public const string CoverInstruction = "Take the device. The other player looks away.";
 
         /// <summary>What each fighter is called in this mode: the human against the bot is "YOU".</summary>
@@ -22,6 +64,7 @@ namespace XRim.App
                 case MatchMode.HumanVsBot: return side == humanSide ? You : "BOT";
                 case MatchMode.HotSeat: return HotSeatPlayer(side);
                 case MatchMode.BotVsBot: return side == Side.Left ? "LEFT BOT" : "RIGHT BOT";
+                case MatchMode.Online: return side == humanSide ? You : Opponent;
                 default: return side.ToString().ToUpperInvariant();
             }
         }

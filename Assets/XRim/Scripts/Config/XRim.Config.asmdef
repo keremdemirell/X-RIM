@@ -7,7 +7,8 @@
         "XRim.Simulation",
         "XRim.Economy",
         "XRim.Profile",
-        "XRim.Bots"
+        "XRim.Bots",
+        "XRim.Networking"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

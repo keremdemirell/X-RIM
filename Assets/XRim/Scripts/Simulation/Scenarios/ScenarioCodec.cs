@@ -38,7 +38,7 @@ namespace XRim.Simulation.Scenarios
                 Note = scenario.Note,
                 SavedAt = savedAt ?? string.Empty,
                 WorldUnitsPerArenaUnit = scenario.WorldUnitsPerArenaUnit,
-                State = ToData(input.Board.State),
+                State = StateToData(input.Board.State),
                 Pose = input.Board.Pose.Clone(),
                 LeftPlan = ToData(input.Plans.Left),
                 RightPlan = ToData(input.Plans.Right),
@@ -63,7 +63,7 @@ namespace XRim.Simulation.Scenarios
 
             CheckPose(data.Pose.Left, "left");
             CheckPose(data.Pose.Right, "right");
-            var board = new BoardSnapshot(FromData(data.State), data.Pose.Clone());
+            var board = new BoardSnapshot(StateFromData(data.State), data.Pose.Clone());
             var plans = new PerSide<TurnPlan>(FromData(data.LeftPlan), FromData(data.RightPlan));
             var input = new TurnInput(board, plans, data.Rules, data.Simulation);
             return new Scenario(data.Name, data.Note, input, data.WorldUnitsPerArenaUnit, data.HasExpected ? data.Expected : null);
@@ -71,7 +71,11 @@ namespace XRim.Simulation.Scenarios
 
         // --- Rules state ---------------------------------------------------------------------
 
-        private static MatchStateData ToData(MatchState state) => new MatchStateData
+        /// <summary>
+        /// The rules state in plain fields. Public so the online protocol (Session 19) carries a board in the same shape a scenario saves,
+        /// and a new field is added in one place.
+        /// </summary>
+        public static MatchStateData StateToData(MatchState state) => new MatchStateData
         {
             TurnIndex = state.TurnIndex,
             IsSuddenDeath = state.IsSuddenDeath,
@@ -82,8 +86,10 @@ namespace XRim.Simulation.Scenarios
             RightWall = ToData(state.Walls.Right),
         };
 
-        private static MatchState FromData(MatchStateData data)
+        /// <summary>The rules state back from its plain fields; a missing fighter or a wrong limb count is a <see cref="FormatException"/>.</summary>
+        public static MatchState StateFromData(MatchStateData data)
         {
+            if (data == null) throw new FormatException("The rules state is missing.");
             var fighters = new PerSide<FighterState>(FromData(data.Left, "left"), FromData(data.Right, "right"));
             var walls = new PerSide<ElectricWallState>(FromData(data.LeftWall), FromData(data.RightWall));
             return new MatchState(fighters, walls)

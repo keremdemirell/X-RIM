@@ -224,7 +224,7 @@ namespace XRim.Tests.EditMode.Bots
 
                 foreach (CommandResult result in results) Assert.That(result.Accepted, Is.True, $"seed {seed}: {result.Rejection}");
                 Assert.That(validator.Validate(session).Accepted, Is.True, $"seed {seed}");
-                Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(session.CurrentPlan), Is.False, $"seed {seed}: never idle");
+                Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, session.CurrentPlan), Is.False, $"seed {seed}: never idle");
                 if (session.CurrentPlan.Signature.IsEmpty) continue;
                 signaturePlans++;
                 used.Add(session.CurrentPlan.Signature);

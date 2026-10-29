@@ -409,7 +409,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
             PlanningSession session = Session();
             Use(session, SignatureTestData.Jab);
 
-            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(session.CurrentPlan), Is.False);
+            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, session.CurrentPlan), Is.False);
         }
     }
 }

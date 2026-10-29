@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using XRim.Bots;
 using XRim.Economy;
+using XRim.Networking;
 using XRim.Rules.Settings;
 using XRim.Simulation;
 
@@ -45,6 +46,9 @@ namespace XRim.Config
 
         [Header("Bots (practice and development opponents; never rules)")]
         [SerializeField] private BotConfig _bots;
+
+        [Header("Online (connections; never rules)")]
+        [SerializeField] private NetworkConfig _network;
 
         public InputConfig InputConfig => _input;
 
@@ -92,13 +96,16 @@ namespace XRim.Config
         /// <summary>Which bot plays where and how the heuristic bot plays (Session 16); code defaults while the slot is empty.</summary>
         public BotSettings BuildBotSettings(ICollection<string> issues) => Snapshot(_bots, nameof(_bots), issues);
 
+        /// <summary>How online matches treat connections (Session 19: the port, the waits, the timeouts); code defaults while the slot is empty.</summary>
+        public NetworkSettings BuildNetworkSettings(ICollection<string> issues) => Snapshot(_network, nameof(_network), issues);
+
         /// <summary>Every settings asset that wraps an engine-free settings class, for the inspector and tuning panel.</summary>
         public IEnumerable<SettingsConfigBase> SettingsConfigs()
         {
             SettingsConfigBase[] singles =
             {
                 _match, _paths, _damage, _hitZones, _clash, _electricWall, _arena, _loadout, _signature, _suddenDeath, _traits,
-                _simulation, _economy, _bots,
+                _simulation, _economy, _bots, _network,
             };
             foreach (SettingsConfigBase config in singles)
             {
@@ -185,6 +192,7 @@ namespace XRim.Config
             public const string Display = nameof(_display);
             public const string Audio = nameof(_audio);
             public const string Bots = nameof(_bots);
+            public const string Network = nameof(_network);
         }
     }
 }

@@ -50,3 +50,4 @@ MonoBehaviour:
   _display: {fileID: 11400000, guid: 96778fafffa132b45b24be5e3e022dd4, type: 2}
   _audio: {fileID: 11400000, guid: db93716e1699ccb44ad15c748e0e91e2, type: 2}
   _bots: {fileID: 11400000, guid: 47b1c1363aa3c2b40819824dc01e75d7, type: 2}
+  _network: {fileID: 11400000, guid: 5991eecfb6af0a34cb3c7b7292c75c4e, type: 2}

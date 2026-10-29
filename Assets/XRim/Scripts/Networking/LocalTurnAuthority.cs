@@ -79,6 +79,12 @@ namespace XRim.Networking
         /// <summary>Set once the match is over.</summary>
         public MatchOutcome Outcome => Machine.Outcome;
 
+        /// <summary>
+        /// A side's planning session while planning is open, null otherwise (Session 19: a server resends a player their own plan, and their
+        /// own deadline, after a refusal or a reconnect). Read only: commands still go through <see cref="Send"/>.
+        /// </summary>
+        internal PlanningSession SessionOf(Side side) => Machine.Phase == MatchPhase.Planning ? Machine.Sessions[side] : null;
+
         public void Start()
         {
             Machine.Start(); // throws on a second call or a broken loadout

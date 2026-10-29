@@ -19,7 +19,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
         [Test]
         public void IdleTurn_APlanWithNothingSetIsIdle()
         {
-            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(TurnPlan.Empty(WeaponIds.Rapier)), Is.True);
+            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, TurnPlan.Empty(WeaponIds.Rapier)), Is.True);
         }
 
         [TestCase(BodyMove.Crouch)]
@@ -30,7 +30,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
         {
             var plan = new TurnPlan(WeaponIds.Rapier, move, WeaponPath.Empty, default, false);
 
-            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(plan), Is.False);
+            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, plan), Is.False);
         }
 
         [Test]
@@ -38,7 +38,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
         {
             var plan = new TurnPlan(WeaponIds.Rapier, BodyMove.None, Thrust(400f), default, false);
 
-            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(plan), Is.False);
+            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, plan), Is.False);
         }
 
         [Test]
@@ -46,7 +46,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
         {
             var plan = new TurnPlan(WeaponIds.Rapier, BodyMove.None, WeaponPath.Empty, SomeSignature, false);
 
-            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(plan), Is.False);
+            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, plan), Is.False);
         }
 
         [Test]
@@ -54,7 +54,7 @@ namespace XRim.Tests.EditMode.Rules.Planning
         {
             var plan = new TurnPlan(WeaponIds.Mace, BodyMove.None, WeaponPath.Empty, default, true);
 
-            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(plan), Is.True);
+            Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, plan), Is.True);
         }
 
         // --- Public state ----------------------------------------------------------------------

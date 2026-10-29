@@ -14,7 +14,8 @@
         "XRim.Input",
         "XRim.Presentation",
         "XRim.App",
-        "XRim.DebugTools"
+        "XRim.DebugTools",
+        "XRim.Server"
     ],
     "includePlatforms": [
         "Editor"

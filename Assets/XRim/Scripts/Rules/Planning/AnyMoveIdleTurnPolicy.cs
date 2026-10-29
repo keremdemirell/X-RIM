@@ -8,7 +8,7 @@ namespace XRim.Rules.Planning
     /// </summary>
     public sealed class AnyMoveIdleTurnPolicy : IIdleTurnPolicy
     {
-        public bool IsIdle(TurnPlan plan)
+        public bool IsIdle(Side side, TurnPlan plan)
         {
             Guard.NotNull(plan, nameof(plan));
             return plan.BodyMove == BodyMove.None && plan.Path.IsEmpty && plan.Signature.IsEmpty;

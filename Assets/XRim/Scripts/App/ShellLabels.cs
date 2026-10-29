@@ -40,6 +40,7 @@ namespace XRim.App
         public const int PlayHotSeat = 0;
         public const int PlayVersusBot = 1;
         public const int PlayPractice = 2;
+        public const int PlayOnline = 3;
 
         public const int PracticeHeuristic = 0;
         public const int PracticeRandom = 1;
@@ -47,7 +48,7 @@ namespace XRim.App
 
         public static IReadOnlyList<MenuOption> MainMenu() => new[]
         {
-            new MenuOption("PLAY", "Hot-seat, against a bot, or practice"),
+            new MenuOption("PLAY", "Hot-seat, against a bot, practice, or online"),
             new MenuOption("LOADOUT", "Your weapons, signature moves and looks"),
             new MenuOption("SHOP", "Spend what you earn on new weapons, moves and looks"),
             new MenuOption("SETTINGS", "Handedness and volume"),
@@ -58,6 +59,7 @@ namespace XRim.App
             new MenuOption("HOT-SEAT", "Two players, one device: plan in turn behind a cover screen"),
             new MenuOption("VS BOT", VersusBotDetail(economy)),
             new MenuOption("PRACTICE", "Pick your bot, or watch two bots fight"),
+            new MenuOption("ONLINE", "Another player through the test server (nothing is paid yet)"),
         };
 
         public static IReadOnlyList<MenuOption> PracticeMenu() => new[]

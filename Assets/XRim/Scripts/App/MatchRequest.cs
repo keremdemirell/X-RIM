@@ -34,6 +34,9 @@ namespace XRim.App
         /// <summary>The player against a bot of their choosing: no stakes, nothing is paid by default.</summary>
         public static MatchRequest Practice(BotBrainKind brain) => new MatchRequest(MatchMode.HumanVsBot, MatchKind.Practice, brain);
 
+        /// <summary>Another player through the online server (Session 19): pays nothing by default (designer 2026-10-25, Q2).</summary>
+        public static MatchRequest Online() => new MatchRequest(MatchMode.Online, MatchKind.Online, null);
+
         /// <summary>Two bots fight and the player watches.</summary>
         public static MatchRequest WatchBots() => new MatchRequest(MatchMode.BotVsBot, MatchKind.Practice, null);
 
@@ -46,6 +49,7 @@ namespace XRim.App
                 case MatchMode.HumanVsBot: return VersusBot();
                 case MatchMode.BotVsBot: return WatchBots();
                 case MatchMode.Sandbox: return new MatchRequest(MatchMode.Sandbox, MatchKind.Practice, null);
+                case MatchMode.Online: return Online();
                 default: throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown match mode.");
             }
         }
@@ -57,7 +61,9 @@ namespace XRim.App
             switch (Mode)
             {
                 case MatchMode.HotSeat: return true;
-                case MatchMode.HumanVsBot: return side == humanSide;
+                case MatchMode.HumanVsBot:
+                case MatchMode.Online:
+                    return side == humanSide;
                 default: return false;
             }
         }

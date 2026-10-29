@@ -3,8 +3,8 @@
 ## `check.py`: compile and test X-RIM without the Unity Editor
 
 ```
-python Tools/check.py                       # all three passes, the guard and the tests
-python Tools/check.py --pass editor         # one pass: editor | player | dev | all (default all)
+python Tools/check.py                       # all four passes, the guard and the tests
+python Tools/check.py --pass editor         # one pass: editor | player | dev | server | all (default all)
 python Tools/check.py --player windows      # player passes against: auto (default) | android | windows
 python Tools/check.py --no-tests            # compile and guard only
 python Tools/check.py --filter Resampler    # run only tests whose full name contains the text
@@ -28,7 +28,7 @@ Run it from the project root in Git Bash or PowerShell, after every batch of cha
    - The analyzers and source generators all run outside Unity. If one ever fails to load, the tool drops it and prints a note.
    - A module that Unity has never compiled borrows the `.rsp` of an XRim assembly of the same kind (engine-free, runtime, editor or test), with a note.
    - A package reference that cannot be found fails the check with a message saying what is missing.
-3. **Three compile passes.** A pass fails on any error, and on any warning that the `.rsp` does not suppress. The setup compiled with 0 warnings, so every warning is new. A warning does not stop dependent assemblies from compiling; an error does.
+3. **Four compile passes.** A pass fails on any error, and on any warning that the `.rsp` does not suppress. The setup compiled with 0 warnings, so every warning is new. A warning does not stop dependent assemblies from compiling; an error does.
 4. **Engine-free guard.** It runs for every asmdef with `noEngineReferences: true`.
    - It confirms the compile had no `UnityEngine*` or `UnityEditor*` reference.
    - It compiles the probe `using UnityEngine; class Probe : MonoBehaviour {}` with that assembly's references. The probe must fail with "type or namespace not found".
@@ -45,8 +45,9 @@ Run it from the project root in Git Bash or PowerShell, after every batch of cha
 | `editor` | Unity's `.rsp` defines, as is | `Editor/Data/Managed/UnityEngine` | all |
 | `player` | editor defines minus the Editor-only and development-only lists below, plus the player's platform defines | the proxy player's managed engine DLLs (Android: `AndroidPlayer/Variations/il2cpp/Managed`; Windows: the non-development `Data/Managed`) | no Editor-only or test asmdefs; define constraints evaluated (`XRim.DebugTools` is excluded) |
 | `dev` | the `player` defines plus `DEVELOPMENT_BUILD`, keeping the development-only list | the same Android folder (development and release share it; only the defines differ), or the Windows development `Data/Managed` | as `player`, so `XRim.DebugTools` is included |
+| `server` | the `player` defines for Windows (`UNITY_STANDALONE`, `UNITY_STANDALONE_WIN`, …, `ENABLE_MONO`) plus `UNITY_SERVER` | the Windows 64-bit Dedicated Server's `Data/Managed` when its module is installed, else the Windows 64-bit Mono player's standing in for it | as `player`, plus `XRim.Server` (its define constraint is `UNITY_SERVER \|\| UNITY_EDITOR`); skipped with a note when no Windows playback engine is installed |
 
-**Which player.** `--player auto` (the default) uses the Android playback engine when `Editor/Data/PlaybackEngines/AndroidPlayer` has a managed folder, preferring the IL2CPP variation (ARM64 is IL2CPP-only; the Mono variation ships only 32-bit libraries), and falls back to the Windows 64-bit Mono player when it does not. `--player android` and `--player windows` force one and fail if it is not installed; `--player windows` is how the fallback is tested. The header prints which one was used (`player proxy:`).
+**Which player.** `--player auto` (the default) uses the Android playback engine when `Editor/Data/PlaybackEngines/AndroidPlayer` has a managed folder, preferring the IL2CPP variation (ARM64 is IL2CPP-only; the Mono variation ships only 32-bit libraries), and falls back to the Windows 64-bit Mono player when it does not. `--player android` and `--player windows` force one and fail if it is not installed; `--player windows` is how the fallback is tested. The header prints which one was used (`player proxy:`). The `server` pass (Session 19) always compiles against Windows, whatever `--player` says, because the online server is a Dedicated Server player and never a phone build; the header prints it as `server proxy:`.
 
 In both player passes:
 - **Dropped references.** `UnityEditor*` references, Editor tooling DLLs, package assemblies whose asmdef is Editor-only or whose define constraints fail, and precompiled plugins whose `.meta` does not enable them for the player (for example `Mono.Cecil.dll`).

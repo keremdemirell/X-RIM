@@ -70,6 +70,10 @@ namespace XRim.Economy
         [GddTbd("§17", "Bot opponent and practice", Proposal = "Designer 2026-10-25: practice has no stakes")]
         public bool PaysInPractice = false;
 
+        /// <summary>Off until the server owns the profile and decides rewards (Sessions 20, 22): a phone-decided online reward can be faked.</summary>
+        [GddTbd("§16", "Which matches pay", Proposal = "Designer 2026-10-25 (Q2): online matches pay nothing until the server decides rewards")]
+        public bool PaysInOnline = false;
+
         /// <summary>Weapons, shields and signature moves (earned currency only, Decided). The starting ones cost nothing and are owned from the start.</summary>
         [GddTbd("§6", "Starting weapons and default loadout", Proposal = "Designer 2026-10-15: rapier, mace and shield; sword and spear are unlockables")]
         [GddTbd("§16", "Progression structure and prices", Proposal = "Designer 2026-10-25: no levels, placeholder prices")]
@@ -87,6 +91,7 @@ namespace XRim.Economy
                 case MatchKind.VersusBot: return PaysInVersusBot;
                 case MatchKind.HotSeat: return PaysInHotSeat;
                 case MatchKind.Practice: return PaysInPractice;
+                case MatchKind.Online: return PaysInOnline;
                 default: throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown match kind.");
             }
         }

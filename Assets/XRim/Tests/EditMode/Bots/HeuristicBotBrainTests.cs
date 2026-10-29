@@ -192,7 +192,7 @@ namespace XRim.Tests.EditMode.Bots
                         foreach (CommandResult result in results)
                             Assert.That(result.Accepted, Is.True, $"{name}, seed {seed}: {result.Rejection}");
                         Assert.That(validator.Validate(session).Accepted, Is.True, $"{name}, seed {seed}: the plan validates");
-                        Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(session.CurrentPlan), Is.False, $"{name}, seed {seed}: never idle");
+                        Assert.That(new AnyMoveIdleTurnPolicy().IsIdle(Side.Left, session.CurrentPlan), Is.False, $"{name}, seed {seed}: never idle");
                         if (!session.CurrentPlan.Signature.IsEmpty) continue;
                         Assert.That(session.CurrentPath.WasClampedByReach, Is.False, $"{name}, seed {seed}: inside its own reach");
                         Assert.That(session.CurrentPath.Inked.WasCut, Is.False, $"{name}, seed {seed}: within its ink");

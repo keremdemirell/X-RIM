@@ -45,6 +45,29 @@ namespace XRim.Tests.EditMode.App
             return presenter;
         }
 
+        [Test]
+        public void Online_ThePickGoesToTheServer_AndTheRevealShowsWhatTheServerRevealed()
+        {
+            LoadoutPickPresenter presenter = Start(MatchMode.Online);
+            IReadOnlyList<WeaponId> sent = null;
+            presenter.LocalPicked += picks => sent = picks;
+
+            _screens.TapConfirm();
+            _screens.TapReveal();
+
+            Assert.That(sent, Is.Not.Null.And.Count.EqualTo(RuleConstants.LoadoutSlotCount), "the pick goes out");
+            Assert.That(_screens.Last, Is.Not.EqualTo("reveal"), "nothing is revealed before the server says so");
+            Assert.That(_completedCount, Is.EqualTo(0));
+
+            var fromServer = new LoadoutReveal(new PerSide<IReadOnlyList<WeaponId>>(sent, new[] { WeaponIds.Spear, WeaponIds.Sword, WeaponIds.Shield }));
+            presenter.ShowRemoteReveal(fromServer);
+            _screens.TapReveal();
+
+            Assert.That(_screens.RevealRight, Is.EqualTo(new[] { "SPEAR", "SWORD", "SHIELD" }));
+            Assert.That(_completed, Is.SameAs(fromServer));
+            Assert.That(_completedCount, Is.EqualTo(1));
+        }
+
         private static string[] Orders(IReadOnlyList<LoadoutChoice> choices)
         {
             var picked = new string[RuleConstants.LoadoutSlotCount];
@@ -247,7 +270,7 @@ namespace XRim.Tests.EditMode.App
         }
 
         /// <summary>Records what the presenter shows and lets a test tap.</summary>
-        private sealed class FakeScreens : IMatchScreensView
+        internal sealed class FakeScreens : IMatchScreensView
         {
             public event Action CoverConfirmed;
             public event Action RematchPressed;
